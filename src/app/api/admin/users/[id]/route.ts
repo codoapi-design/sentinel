@@ -20,7 +20,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // جلب ملف المستخدم
+    // Fetch user profile
     const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
       .select('*')
@@ -31,14 +31,14 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // جلب محافظ المستخدم
+    // Fetch user wallets
     const { data: wallets } = await supabase
       .from('wallets')
       .select('*')
       .eq('user_id', id)
       .order('created_at', { ascending: false });
 
-    // جلب آخر المعاملات
+    // Fetch recent transactions
     const walletIds = (wallets || []).map(w => w.id);
     let transactions: unknown[] = [];
     if (walletIds.length > 0) {
@@ -51,14 +51,14 @@ export async function GET(
       transactions = txData || [];
     }
 
-    // جلب استخدام AI
+    // Fetch AI usage
     const { data: aiUsage } = await supabase
       .from('ai_usage')
       .select('*')
       .eq('user_id', id)
       .single();
 
-    // جلب إعدادات البريد
+    // Fetch email settings
     const { data: emailSettings } = await supabase
       .from('email_settings')
       .select('*')
@@ -99,12 +99,12 @@ export async function PUT(
     const body = await request.json();
     const { plan, status, ban_reason, full_name } = body;
 
-    // التحقق من الصلاحيات
+    // Verify permissions
     if (status === 'banned' && !canPerformAction(role, 'write')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
-    // تحديث ملف المستخدم
+    // Update user profile
     const updates: Record<string, unknown> = {};
     if (plan) updates.plan = plan;
     if (status) updates.status = status;
@@ -120,7 +120,7 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // تسجيل الإجراء
+    // Log the action
     await logAdminAction({
       adminId: session.user.id,
       action: `update_user_${Object.keys(updates).join('_')}`,

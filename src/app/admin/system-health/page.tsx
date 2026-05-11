@@ -70,9 +70,9 @@ export default function AdminSystemHealthPage() {
   }, [autoRefresh, fetchData]);
 
   const statusConfig = {
-    operational: { icon: CheckCircle, color: '#0ecb81', bg: 'bg-[#0ecb81]/10', text: 'يعمل', label: 'تشغيلي' },
-    degraded: { icon: AlertTriangle, color: '#f7931a', bg: 'bg-[#f7931a]/10', text: 'متأثر', label: 'متدهور' },
-    down: { icon: XCircle, color: '#f6465d', bg: 'bg-[#f6465d]/10', text: 'متوقف', label: 'متوقف' },
+    operational: { icon: CheckCircle, color: '#0ecb81', bg: 'bg-[#0ecb81]/10', text: 'Running', label: 'Operational' },
+    degraded: { icon: AlertTriangle, color: '#f7931a', bg: 'bg-[#f7931a]/10', text: 'Affected', label: 'Degraded' },
+    down: { icon: XCircle, color: '#f6465d', bg: 'bg-[#f6465d]/10', text: 'Stopped', label: 'Down' },
   };
 
   const overallConfig = statusConfig[(data?.overallStatus || 'operational') as keyof typeof statusConfig];
@@ -100,9 +100,9 @@ export default function AdminSystemHealthPage() {
               <OverallIcon className="h-6 w-6" style={{ color: overallConfig.color }} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-[#f7f8f8]">حالة النظام: {overallConfig.label}</h3>
+              <h3 className="text-lg font-bold text-[#f7f8f8]">System Status: {overallConfig.label}</h3>
               <p className="text-xs text-[#8a8f98]">
-                آخر فحص: {data ? new Date().toLocaleTimeString('ar') : '---'} - وقت التشغيل: {data?.metrics.uptime || '---'}
+                Last check: {data ? new Date().toLocaleTimeString('en') : '---'} - Uptime: {data?.metrics.uptime || '---'}
               </p>
             </div>
           </div>
@@ -114,14 +114,14 @@ export default function AdminSystemHealthPage() {
               }`}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${autoRefresh ? 'animate-spin' : ''}`} />
-              تحديث تلقائي
+              Auto Refresh
             </button>
             <button
               onClick={fetchData}
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-[#8a8f98] hover:text-[#f7f8f8] text-xs transition-colors"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-              تحديث
+              Refresh
             </button>
           </div>
         </div>
@@ -132,28 +132,28 @@ export default function AdminSystemHealthPage() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="h-4 w-4 text-[#0052ff]" />
-            <span className="text-[10px] text-[#8a8f98]">متوسط الاستجابة</span>
+            <span className="text-[10px] text-[#8a8f98]">Avg Response</span>
           </div>
           <p className="text-xl font-bold text-[#f7f8f8]">{data?.metrics.avgLatency || 0}ms</p>
         </div>
         <div className="bg-[#0c0d0e] border border-[#0ecb81]/10 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="h-4 w-4 text-[#0ecb81]" />
-            <span className="text-[10px] text-[#8a8f98]">وقت التشغيل</span>
+            <span className="text-[10px] text-[#8a8f98]">Uptime</span>
           </div>
           <p className="text-xl font-bold text-[#0ecb81]">{data?.metrics.uptime || '---'}</p>
         </div>
         <div className="bg-[#0c0d0e] border border-[#f7931a]/10 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="h-4 w-4 text-[#f7931a]" />
-            <span className="text-[10px] text-[#8a8f98]">تنبيهات نشطة</span>
+            <span className="text-[10px] text-[#8a8f98]">Active Alerts</span>
           </div>
           <p className="text-xl font-bold text-[#f7931a]">{data?.metrics.activeAlerts || 0}</p>
         </div>
         <div className="bg-[#0c0d0e] border border-[#f6465d]/10 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <XCircle className="h-4 w-4 text-[#f6465d]" />
-            <span className="text-[10px] text-[#8a8f98]">تنبيهات حرجة</span>
+            <span className="text-[10px] text-[#8a8f98]">Critical Alerts</span>
           </div>
           <p className="text-xl font-bold text-[#f6465d]">{data?.metrics.criticalAlerts || 0}</p>
         </div>
@@ -163,7 +163,7 @@ export default function AdminSystemHealthPage() {
       <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <Server className="h-4 w-4 text-[#0052ff]" />
-          <h3 className="text-sm font-semibold text-[#f7f8f8]">حالة الخدمات</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8]">Service Status</h3>
         </div>
         <div className="space-y-2">
           {(data?.services || []).map((service) => {
@@ -189,14 +189,14 @@ export default function AdminSystemHealthPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="text-left">
-                    <p className="text-[10px] text-[#8a8f98]">الاستجابة</p>
+                  <div className="text-right">
+                    <p className="text-[10px] text-[#8a8f98]">Response</p>
                     <p className={`text-xs font-medium ${service.latency < 100 ? 'text-[#0ecb81]' : service.latency < 500 ? 'text-[#f7931a]' : 'text-[#f6465d]'}`}>
                       {service.latency}ms
                     </p>
                   </div>
-                  <div className="text-left">
-                    <p className="text-[10px] text-[#8a8f98]">الحالة</p>
+                  <div className="text-right">
+                    <p className="text-[10px] text-[#8a8f98]">Status</p>
                     <span className={`text-[10px] px-2 py-0.5 rounded ${config.bg}`} style={{ color: config.color }}>
                       {config.label}
                     </span>
@@ -214,23 +214,23 @@ export default function AdminSystemHealthPage() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Database className="h-4 w-4 text-[#0ecb81]" />
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">إحصائيات قاعدة البيانات</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8]">Database Statistics</h3>
           </div>
           <div className="space-y-3">
             <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
-              <span className="text-xs text-[#8a8f98]">المستخدمين</span>
+              <span className="text-xs text-[#8a8f98]">Users</span>
               <span className="text-xs text-[#f7f8f8] font-medium">{(data?.metrics.totalUsers || 0).toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
-              <span className="text-xs text-[#8a8f98]">المحافظ</span>
+              <span className="text-xs text-[#8a8f98]">Wallets</span>
               <span className="text-xs text-[#f7f8f8] font-medium">{(data?.metrics.totalWallets || 0).toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
-              <span className="text-xs text-[#8a8f98]">صفحات المحتوى</span>
+              <span className="text-xs text-[#8a8f98]">Content Pages</span>
               <span className="text-xs text-[#f7f8f8] font-medium">{data?.metrics.totalContent || 0}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
-              <span className="text-xs text-[#8a8f98]">تنبيهات النظام</span>
+              <span className="text-xs text-[#8a8f98]">System Alerts</span>
               <span className="text-xs text-[#f7f8f8] font-medium">{data?.metrics.totalAlerts || 0}</span>
             </div>
           </div>
@@ -240,7 +240,7 @@ export default function AdminSystemHealthPage() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Cpu className="h-4 w-4 text-[#627eea]" />
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">بيئة التشغيل</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8]">Runtime Environment</h3>
           </div>
           <div className="space-y-3">
             <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
@@ -248,11 +248,11 @@ export default function AdminSystemHealthPage() {
               <span className="text-xs text-[#f7f8f8] font-mono">{data?.environment.nodeVersion || '---'}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
-              <span className="text-xs text-[#8a8f98]">المنطقة</span>
+              <span className="text-xs text-[#8a8f98]">Region</span>
               <span className="text-xs text-[#f7f8f8]">{data?.environment.vercelRegion || 'local'}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
-              <span className="text-xs text-[#8a8f98]">رابط النشر</span>
+              <span className="text-xs text-[#8a8f98]">Deployment URL</span>
               <span className="text-xs text-[#0052ff] font-mono truncate max-w-[180px]" dir="ltr">
                 {data?.environment.deploymentUrl || '---'}
               </span>
@@ -263,14 +263,14 @@ export default function AdminSystemHealthPage() {
           <div className="mt-4 pt-4 border-t border-white/5">
             <div className="flex items-center gap-2 mb-3">
               <Zap className="h-3.5 w-3.5 text-[#f7931a]" />
-              <h4 className="text-xs font-semibold text-[#f7f8f8]">حدود المعدل</h4>
+              <h4 className="text-xs font-semibold text-[#f7f8f8]">Rate Limits</h4>
             </div>
             <div className="space-y-2">
               {Object.entries(data?.rateLimits || {}).map(([plan, info]) => (
                 <div key={plan} className="flex items-center justify-between p-2 bg-white/[0.02] rounded-lg">
                   <span className="text-[10px] text-[#8a8f98] capitalize">{plan}</span>
                   <span className="text-[10px] text-[#f7f8f8]">
-                    {info.limit === -1 ? 'غير محدود' : `${info.limit} طلب/${info.period}`}
+                    {info.limit === -1 ? 'Unlimited' : `${info.limit} requests/${info.period}`}
                   </span>
                 </div>
               ))}
@@ -283,7 +283,7 @@ export default function AdminSystemHealthPage() {
       <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <Globe className="h-4 w-4 text-[#f7931a]" />
-          <h3 className="text-sm font-semibold text-[#f7f8f8]">سجل التشغيل (آخر 30 يوم)</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8]">Uptime History (Last 30 Days)</h3>
         </div>
         <div className="space-y-3">
           {(data?.services || []).map((service) => (
@@ -303,7 +303,7 @@ export default function AdminSystemHealthPage() {
                         status === 'degraded' ? 'bg-[#f7931a]' :
                         'bg-[#f6465d]'
                       } ${!isRecent ? 'opacity-50' : ''}`}
-                      title={`يوم ${30 - i}`}
+                      title={`Day ${30 - i}`}
                     />
                   );
                 })}
@@ -315,15 +315,15 @@ export default function AdminSystemHealthPage() {
         <div className="flex items-center gap-4 mt-4 pt-3 border-t border-white/5">
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm bg-[#0ecb81]" />
-            <span className="text-[9px] text-[#8a8f98]">تشغيلي</span>
+            <span className="text-[9px] text-[#8a8f98]">Operational</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm bg-[#f7931a]" />
-            <span className="text-[9px] text-[#8a8f98]">متأثر</span>
+            <span className="text-[9px] text-[#8a8f98]">Degraded</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm bg-[#f6465d]" />
-            <span className="text-[9px] text-[#8a8f98]">متوقف</span>
+            <span className="text-[9px] text-[#8a8f98]">Down</span>
           </div>
         </div>
       </div>

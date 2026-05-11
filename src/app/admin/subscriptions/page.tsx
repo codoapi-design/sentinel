@@ -69,7 +69,7 @@ export default function AdminSubscriptionsPage() {
   }, [fetchSubscriptions]);
 
   const exportCSV = () => {
-    const headers = ['البريد', 'الاسم', 'الباقة', 'الحالة', 'تاريخ التسجيل'];
+    const headers = ['Email', 'Name', 'Plan', 'Status', 'Registration Date'];
     const rows = subscriptions.map(u => [
       u.email, u.full_name, u.plan, u.status,
       u.created_at?.split('T')[0],
@@ -127,7 +127,7 @@ export default function AdminSubscriptionsPage() {
             />
           </div>
           <p className="text-[10px] text-[#8a8f98] mt-1">
-            {totalSubs ? Math.round(((stats?.starter || 0) / totalSubs) * 100) : 0}% من الإجمالي
+            {totalSubs ? Math.round(((stats?.starter || 0) / totalSubs) * 100) : 0}% of Total
           </p>
         </div>
 
@@ -149,7 +149,7 @@ export default function AdminSubscriptionsPage() {
             />
           </div>
           <p className="text-[10px] text-[#0ecb81] mt-1">
-            {totalSubs ? Math.round(((stats?.pro || 0) / totalSubs) * 100) : 0}% من الإجمالي
+            {totalSubs ? Math.round(((stats?.pro || 0) / totalSubs) * 100) : 0}% of Total
           </p>
         </div>
 
@@ -171,7 +171,7 @@ export default function AdminSubscriptionsPage() {
             />
           </div>
           <p className="text-[10px] text-[#f7931a] mt-1">
-            {totalSubs ? Math.round(((stats?.enterprise || 0) / totalSubs) * 100) : 0}% من الإجمالي
+            {totalSubs ? Math.round(((stats?.enterprise || 0) / totalSubs) * 100) : 0}% of Total
           </p>
         </div>
       </div>
@@ -180,7 +180,7 @@ export default function AdminSubscriptionsPage() {
       <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="h-4 w-4 text-[#0052ff]" />
-          <h3 className="text-sm font-semibold text-[#f7f8f8]">نمو الاشتراكات (آخر 12 شهر)</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8]">Subscription Growth (Last 12 Months)</h3>
         </div>
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -206,13 +206,13 @@ export default function AdminSubscriptionsPage() {
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
               <input
                 type="text"
-                placeholder="بحث بالبريد أو الاسم..."
+                placeholder="Search by email or name..."
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                className="bg-[#0c0d0e] border border-white/10 rounded-lg pr-10 pl-4 py-2 text-sm text-[#d0d6e0] placeholder-[#8a8f98] w-[260px] focus:outline-none focus:border-[#0052ff]/50"
+                className="bg-[#0c0d0e] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-[#d0d6e0] placeholder-[#8a8f98] w-[260px] focus:outline-none focus:border-[#0052ff]/50"
               />
             </div>
 
@@ -221,7 +221,7 @@ export default function AdminSubscriptionsPage() {
               onChange={(e) => { setPlanFilter(e.target.value); setPage(1); }}
               className="bg-[#0c0d0e] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#d0d6e0] focus:outline-none focus:border-[#0052ff]/50"
             >
-              <option value="">كل الباقات</option>
+              <option value="">All Plans</option>
               <option value="starter">Starter</option>
               <option value="pro">Pro</option>
               <option value="enterprise">Enterprise</option>
@@ -233,7 +233,7 @@ export default function AdminSubscriptionsPage() {
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-[#8a8f98] hover:text-[#f7f8f8] text-sm transition-colors"
           >
             <Download className="h-4 w-4" />
-            تصدير CSV
+            Export CSV
           </button>
         </div>
 
@@ -243,11 +243,11 @@ export default function AdminSubscriptionsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5">
-                  <th className="text-right px-4 py-3 text-xs text-[#8a8f98] font-medium">المستخدم</th>
-                  <th className="text-right px-4 py-3 text-xs text-[#8a8f98] font-medium">الباقة</th>
-                  <th className="text-right px-4 py-3 text-xs text-[#8a8f98] font-medium">الحالة</th>
-                  <th className="text-right px-4 py-3 text-xs text-[#8a8f98] font-medium">المحافظ</th>
-                  <th className="text-right px-4 py-3 text-xs text-[#8a8f98] font-medium">تاريخ التسجيل</th>
+                  <th className="text-left px-4 py-3 text-xs text-[#8a8f98] font-medium">User</th>
+                  <th className="text-left px-4 py-3 text-xs text-[#8a8f98] font-medium">Plan</th>
+                  <th className="text-left px-4 py-3 text-xs text-[#8a8f98] font-medium">Status</th>
+                  <th className="text-left px-4 py-3 text-xs text-[#8a8f98] font-medium">Wallets</th>
+                  <th className="text-left px-4 py-3 text-xs text-[#8a8f98] font-medium">Registration Date</th>
                 </tr>
               </thead>
               <tbody>
@@ -261,7 +261,7 @@ export default function AdminSubscriptionsPage() {
                   </tr>
                 ) : subscriptions.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-12 text-[#8a8f98]">لا توجد اشتراكات</td>
+                    <td colSpan={5} className="text-center py-12 text-[#8a8f98]">No subscriptions found</td>
                   </tr>
                 ) : (
                   subscriptions.map((sub) => (
@@ -272,7 +272,7 @@ export default function AdminSubscriptionsPage() {
                             {(sub.full_name || sub.email).charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[#f7f8f8] truncate text-xs font-medium">{sub.full_name || 'بدون اسم'}</p>
+                            <p className="text-[#f7f8f8] truncate text-xs font-medium">{sub.full_name || 'No Name'}</p>
                             <p className="text-[#8a8f98] truncate text-[10px]">{sub.email}</p>
                           </div>
                         </div>
@@ -288,12 +288,12 @@ export default function AdminSubscriptionsPage() {
                           sub.status === 'suspended' ? 'bg-[#f7931a]/10 text-[#f7931a]' :
                           'bg-[#f6465d]/10 text-[#f6465d]'
                         }`}>
-                          {sub.status === 'active' ? 'نشط' : sub.status === 'suspended' ? 'معلق' : 'محظور'}
+                          {sub.status === 'active' ? 'Active' : sub.status === 'suspended' ? 'Suspended' : 'Banned'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-[#d0d6e0]">{sub.wallet_count}</td>
                       <td className="px-4 py-3 text-xs text-[#8a8f98]">
-                        {new Date(sub.created_at).toLocaleDateString('ar')}
+                        {new Date(sub.created_at).toLocaleDateString('en')}
                       </td>
                     </tr>
                   ))
@@ -306,7 +306,7 @@ export default function AdminSubscriptionsPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
               <span className="text-xs text-[#8a8f98]">
-                عرض {((page - 1) * 20) + 1} - {Math.min(page * 20, total)} من {total}
+                Showing {((page - 1) * 20) + 1} - {Math.min(page * 20, total)} of {total}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -314,7 +314,7 @@ export default function AdminSubscriptionsPage() {
                   disabled={page === 1}
                   className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] disabled:opacity-30 transition-colors"
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
                 <span className="text-xs text-[#f7f8f8]">{page}</span>
                 <button
@@ -322,7 +322,7 @@ export default function AdminSubscriptionsPage() {
                   disabled={page === totalPages}
                   className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] disabled:opacity-30 transition-colors"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>

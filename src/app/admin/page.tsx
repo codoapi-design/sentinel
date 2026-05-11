@@ -89,10 +89,10 @@ export default function AdminDashboard() {
   const estimatedMRR = (stats?.proUsers || 0) * 29 + (stats?.enterpriseUsers || 0) * 99;
 
   const statCards = [
-    { title: 'إجمالي المستخدمين', value: stats?.totalUsers || 0, icon: Users, change: stats?.usersGrowth || 0, color: '#0052ff' },
-    { title: 'الاشتراكات النشطة', value: stats?.activeUsers || 0, icon: CreditCard, change: 0, color: '#0ecb81' },
-    { title: 'المحافظ المتصلة', value: stats?.totalWallets || 0, icon: Wallet, change: 0, color: '#f7931a' },
-    { title: 'إجمالي المعاملات', value: stats?.totalTransactions || 0, icon: Activity, change: 0, color: '#627eea' },
+    { title: 'Total Users', value: stats?.totalUsers || 0, icon: Users, change: stats?.usersGrowth || 0, color: '#0052ff' },
+    { title: 'Active Subscriptions', value: stats?.activeUsers || 0, icon: CreditCard, change: 0, color: '#0ecb81' },
+    { title: 'Connected Wallets', value: stats?.totalWallets || 0, icon: Wallet, change: 0, color: '#f7931a' },
+    { title: 'Total Transactions', value: stats?.totalTransactions || 0, icon: Activity, change: 0, color: '#627eea' },
   ];
 
   // Wallet distribution mock data
@@ -101,7 +101,7 @@ export default function AdminDashboard() {
     { name: 'BSC', value: 20 },
     { name: 'Polygon', value: 15 },
     { name: 'Arbitrum', value: 12 },
-    { name: 'أخرى', value: 8 },
+    { name: 'Other', value: 8 },
   ];
 
   return (
@@ -138,7 +138,7 @@ export default function AdminDashboard() {
         <div className="bg-[#0c0d0e] border border-[#0ecb81]/10 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <CreditCard className="h-4 w-4 text-[#0ecb81]" />
-            <span className="text-[10px] text-[#8a8f98]">الإيراد الشهري التقديري</span>
+            <span className="text-[10px] text-[#8a8f98]">Estimated Monthly Revenue</span>
           </div>
           <p className="text-lg font-bold text-[#0ecb81]">${estimatedMRR.toLocaleString()}</p>
           <p className="text-[9px] text-[#8a8f98]">Pro x$29 + Enterprise x$99</p>
@@ -146,28 +146,28 @@ export default function AdminDashboard() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Bot className="h-4 w-4 text-[#627eea]" />
-            <span className="text-[10px] text-[#8a8f98]">محادثات AI</span>
+            <span className="text-[10px] text-[#8a8f98]">AI Chats</span>
           </div>
           <p className="text-lg font-bold text-[#f7f8f8]">{(stats?.aiChatsTotal || 0).toLocaleString()}</p>
-          <p className="text-[9px] text-[#8a8f98]">إجمالي منذ البداية</p>
+          <p className="text-[9px] text-[#8a8f98]">Total since launch</p>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Zap className="h-4 w-4 text-[#f7931a]" />
-            <span className="text-[10px] text-[#8a8f98]">تحليلات AI</span>
+            <span className="text-[10px] text-[#8a8f98]">AI Analyses</span>
           </div>
           <p className="text-lg font-bold text-[#f7f8f8]">{(stats?.aiAnalysesTotal || 0).toLocaleString()}</p>
-          <p className="text-[9px] text-[#8a8f98]">إجمالي منذ البداية</p>
+          <p className="text-[9px] text-[#8a8f98]">Total since launch</p>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Globe className="h-4 w-4 text-[#0052ff]" />
-            <span className="text-[10px] text-[#8a8f98]">معدل التحويل</span>
+            <span className="text-[10px] text-[#8a8f98]">Conversion Rate</span>
           </div>
           <p className="text-lg font-bold text-[#f7f8f8]">
             {stats?.totalUsers ? Math.round(((stats.proUsers + stats.enterpriseUsers) / stats.totalUsers) * 100) : 0}%
           </p>
-          <p className="text-[9px] text-[#8a8f98]">مستخدمين مدفوعين</p>
+          <p className="text-[9px] text-[#8a8f98]">Paying users</p>
         </div>
       </div>
 
@@ -176,7 +176,7 @@ export default function AdminDashboard() {
         {/* User Growth Chart */}
         <div className="lg:col-span-2 bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">نمو المستخدمين</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8]">User Growth</h3>
             <div className="flex items-center gap-1">
               {(['7d', '30d', '90d'] as const).map((range) => (
                 <button
@@ -186,7 +186,7 @@ export default function AdminDashboard() {
                     timeRange === range ? 'bg-[#0052ff]/10 text-[#0052ff]' : 'text-[#8a8f98] hover:text-[#f7f8f8]'
                   }`}
                 >
-                  {range === '7d' ? '7 أيام' : range === '30d' ? '30 يوم' : '90 يوم'}
+                  {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
                 </button>
               ))}
             </div>
@@ -201,7 +201,7 @@ export default function AdminDashboard() {
                   contentStyle={{ backgroundColor: '#191a1b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
                   labelStyle={{ color: '#8a8f98' }}
                 />
-                <Area type="monotone" dataKey="count" stroke="#0052ff" fill="#0052ff20" strokeWidth={2} name="المستخدمين" />
+                <Area type="monotone" dataKey="count" stroke="#0052ff" fill="#0052ff20" strokeWidth={2} name="Users" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -209,7 +209,7 @@ export default function AdminDashboard() {
 
         {/* Plan Distribution */}
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">توزيع الباقات</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Plan Distribution</h3>
           <div className="h-[180px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -249,7 +249,7 @@ export default function AdminDashboard() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Wallet className="h-4 w-4 text-[#f7931a]" />
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">توزيع الشبكات</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8]">Network Distribution</h3>
           </div>
           <div className="h-[160px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -270,7 +270,7 @@ export default function AdminDashboard() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <UserPlus className="h-4 w-4 text-[#0ecb81]" />
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">آخر التسجيلات</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8]">Recent Signups</h3>
           </div>
           <div className="space-y-2.5">
             {(stats?.recentSignups || []).slice(0, 6).map((signup, i) => (
@@ -281,7 +281,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="min-w-0">
                     <span className="text-xs text-[#d0d6e0] truncate block">{signup.email}</span>
-                    <span className="text-[9px] text-[#8a8f98]">{new Date(signup.created_at).toLocaleDateString('ar')}</span>
+                    <span className="text-[9px] text-[#8a8f98]">{new Date(signup.created_at).toLocaleDateString('en-US')}</span>
                   </div>
                 </div>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded shrink-0 ${
@@ -294,7 +294,7 @@ export default function AdminDashboard() {
               </div>
             ))}
             {(!stats?.recentSignups || stats.recentSignups.length === 0) && (
-              <div className="text-center py-4 text-xs text-[#8a8f98]">لا توجد تسجيلات حديثة</div>
+              <div className="text-center py-4 text-xs text-[#8a8f98]">No recent signups</div>
             )}
           </div>
         </div>
@@ -303,7 +303,7 @@ export default function AdminDashboard() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <AlertTriangle className="h-4 w-4 text-[#f7931a]" />
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">صحة النظام</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8]">System Health</h3>
           </div>
           <div className="space-y-2">
             {(systemHealth?.services || []).map((service) => (
@@ -326,24 +326,24 @@ export default function AdminDashboard() {
       <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <Bot className="h-4 w-4 text-[#627eea]" />
-          <h3 className="text-sm font-semibold text-[#f7f8f8]">ملخص الذكاء الاصطناعي</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8]">AI Overview</h3>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-white/[0.02] rounded-lg p-3">
             <p className="text-lg font-bold text-[#f7f8f8]">{(stats?.aiChatsTotal || 0).toLocaleString()}</p>
-            <p className="text-[10px] text-[#8a8f98]">إجمالي المحادثات</p>
+            <p className="text-[10px] text-[#8a8f98]">Total Chats</p>
           </div>
           <div className="bg-white/[0.02] rounded-lg p-3">
             <p className="text-lg font-bold text-[#f7f8f8]">{(stats?.aiAnalysesTotal || 0).toLocaleString()}</p>
-            <p className="text-[10px] text-[#8a8f98]">إجمالي التحليلات</p>
+            <p className="text-[10px] text-[#8a8f98]">Total Analyses</p>
           </div>
           <div className="bg-white/[0.02] rounded-lg p-3">
             <p className="text-lg font-bold text-[#627eea]">openai/o4-mini</p>
-            <p className="text-[10px] text-[#8a8f98]">النموذج المستخدم</p>
+            <p className="text-[10px] text-[#8a8f98]">Model Used</p>
           </div>
           <div className="bg-white/[0.02] rounded-lg p-3">
             <p className="text-lg font-bold text-[#f7931a]">OpenRouter</p>
-            <p className="text-[10px] text-[#8a8f98]">مزود الخدمة</p>
+            <p className="text-[10px] text-[#8a8f98]">Service Provider</p>
           </div>
         </div>
       </div>

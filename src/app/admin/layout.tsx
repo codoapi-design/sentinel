@@ -27,18 +27,18 @@ import {
 } from 'lucide-react';
 
 const navItems = [
-  { id: 'dashboard', label: 'لوحة المعلومات', icon: LayoutDashboard, href: '/admin' },
-  { id: 'analytics', label: 'التحليلات', icon: TrendingUp, href: '/admin/analytics' },
-  { id: 'users', label: 'المستخدمين', icon: Users, href: '/admin/users' },
-  { id: 'subscriptions', label: 'الاشتراكات', icon: CreditCard, href: '/admin/subscriptions' },
-  { id: 'ai-usage', label: 'استخدام الذكاء', icon: Bot, href: '/admin/ai-usage' },
-  { id: 'api-monitoring', label: 'مراقبة API', icon: Key, href: '/admin/api-monitoring' },
-  { id: 'system-health', label: 'صحة النظام', icon: Activity, href: '/admin/system-health' },
-  { id: 'alerts', label: 'التنبيهات', icon: AlertTriangle, href: '/admin/alerts' },
-  { id: 'audit-log', label: 'سجل التدقيق', icon: ScrollText, href: '/admin/audit-log' },
-  { id: 'content', label: 'المحتوى', icon: FileText, href: '/admin/content' },
-  { id: 'notifications', label: 'الإشعارات', icon: MessageSquare, href: '/admin/notifications' },
-  { id: 'settings', label: 'الإعدادات', icon: Settings, href: '/admin/settings' },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/admin' },
+  { id: 'analytics', label: 'Analytics', icon: TrendingUp, href: '/admin/analytics' },
+  { id: 'users', label: 'Users', icon: Users, href: '/admin/users' },
+  { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard, href: '/admin/subscriptions' },
+  { id: 'ai-usage', label: 'AI Usage', icon: Bot, href: '/admin/ai-usage' },
+  { id: 'api-monitoring', label: 'API Monitoring', icon: Key, href: '/admin/api-monitoring' },
+  { id: 'system-health', label: 'System Health', icon: Activity, href: '/admin/system-health' },
+  { id: 'alerts', label: 'Alerts', icon: AlertTriangle, href: '/admin/alerts' },
+  { id: 'audit-log', label: 'Audit Log', icon: ScrollText, href: '/admin/audit-log' },
+  { id: 'content', label: 'Content', icon: FileText, href: '/admin/content' },
+  { id: 'notifications', label: 'Notifications', icon: MessageSquare, href: '/admin/notifications' },
+  { id: 'settings', label: 'Settings', icon: Settings, href: '/admin/settings' },
 ];
 
 const roleColors: Record<string, string> = {
@@ -48,9 +48,9 @@ const roleColors: Record<string, string> = {
 };
 
 const roleLabels: Record<string, string> = {
-  super_admin: 'مدير أعلى',
-  admin: 'مدير',
-  viewer: 'مشاهد',
+  super_admin: 'Super Admin',
+  admin: 'Admin',
+  viewer: 'Viewer',
 };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -100,7 +100,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="min-h-screen bg-[#08090a] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-[#0052ff]/30 border-t-[#0052ff] rounded-full animate-spin" />
-          <span className="text-sm text-[#8a8f98]">جاري التحميل...</span>
+          <span className="text-sm text-[#8a8f98]">Loading...</span>
         </div>
       </div>
     );
@@ -113,10 +113,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const activeSection = navItems.find(item => pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href)))?.id || 'dashboard';
 
   return (
-    <div className="min-h-screen bg-[#08090a] flex" dir="rtl">
+    <div className="min-h-screen bg-[#08090a] flex" dir="ltr">
       {/* Sidebar - Desktop */}
       <aside
-        className={`hidden lg:flex flex-col border-l border-white/5 bg-[#0c0d0e] transition-all duration-300 ${
+        className={`hidden lg:flex flex-col border-r border-white/5 bg-[#0c0d0e] transition-all duration-300 ${
           sidebarCollapsed ? 'w-[64px]' : 'w-[240px]'
         }`}
       >
@@ -137,7 +137,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             onClick={toggleSidebar}
             className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] hover:text-[#f7f8f8] transition-colors"
           >
-            {sidebarCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
         </div>
 
@@ -185,7 +185,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="fixed inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} />
-          <aside className="fixed right-0 top-0 bottom-0 w-[260px] bg-[#0c0d0e] border-l border-white/5 flex flex-col">
+          <aside className="fixed left-0 top-0 bottom-0 w-[260px] bg-[#0c0d0e] border-r border-white/5 flex flex-col">
             <div className="h-16 flex items-center justify-between px-4 border-b border-white/5">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-[#0052ff] rounded-lg flex items-center justify-center">
@@ -230,7 +230,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Menu className="h-5 w-5" />
             </button>
             <h1 className="text-base font-semibold text-[#f7f8f8]">
-              {navItems.find(i => i.id === activeSection)?.label || 'لوحة المعلومات'}
+              {navItems.find(i => i.id === activeSection)?.label || 'Dashboard'}
             </h1>
           </div>
 
@@ -252,7 +252,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 router.push('/admin/login');
               }}
               className="p-2 rounded-lg hover:bg-[#f6465d]/10 text-[#8a8f98] hover:text-[#f6465d] transition-colors"
-              title="تسجيل الخروج"
+              title="Sign Out"
             >
               <LogOut className="h-4 w-4" />
             </button>

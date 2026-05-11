@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowRight, Wallet, Activity, Bot, Mail, Shield,
+  ArrowLeft, Wallet, Activity, Bot, Mail, Shield,
   CheckCircle, XCircle, Ban, Clock,
 } from 'lucide-react';
 
@@ -78,9 +78,9 @@ export default function AdminUserDetailPage() {
   if (!profile) {
     return (
       <div className="text-center py-16 text-[#8a8f98]">
-        <p>المستخدم غير موجود</p>
+        <p>User not found</p>
         <button onClick={() => router.push('/admin/users')} className="mt-4 text-[#0052ff] text-sm hover:underline">
-          العودة لقائمة المستخدمين
+          Back to users list
         </button>
       </div>
     );
@@ -96,14 +96,14 @@ export default function AdminUserDetailPage() {
     suspended: 'bg-[#f7931a]/10 text-[#f7931a]',
     banned: 'bg-[#f6465d]/10 text-[#f6465d]',
   };
-  const statusLabels: Record<string, string> = { active: 'نشط', suspended: 'معلق', banned: 'محظور' };
+  const statusLabels: Record<string, string> = { active: 'Active', suspended: 'Suspended', banned: 'Banned' };
   const planLabels: Record<string, string> = { starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise' };
 
   const tabs = [
-    { id: 'overview', label: 'نظرة عامة' },
-    { id: 'wallets', label: `المحافظ (${wallets.length})` },
-    { id: 'transactions', label: `المعاملات (${transactions.length})` },
-    { id: 'ai', label: 'استخدام AI' },
+    { id: 'overview', label: 'Overview' },
+    { id: 'wallets', label: `Wallets (${wallets.length})` },
+    { id: 'transactions', label: `Transactions (${transactions.length})` },
+    { id: 'ai', label: 'AI Usage' },
   ];
 
   return (
@@ -111,7 +111,7 @@ export default function AdminUserDetailPage() {
       {/* Back + Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => router.push('/admin/users')} className="p-2 rounded-lg hover:bg-white/5 text-[#8a8f98]">
-          <ArrowRight className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="flex-1">
           <h2 className="text-lg font-semibold text-[#f7f8f8]">{profile.full_name || profile.email}</h2>
@@ -130,30 +130,30 @@ export default function AdminUserDetailPage() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <Wallet className="h-4 w-4 text-[#f7931a] mb-2" />
           <p className="text-lg font-bold text-[#f7f8f8]">{profile.wallet_count}</p>
-          <p className="text-[10px] text-[#8a8f98]">المحافظ</p>
+          <p className="text-[10px] text-[#8a8f98]">Wallets</p>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <Activity className="h-4 w-4 text-[#627eea] mb-2" />
           <p className="text-lg font-bold text-[#f7f8f8]">{profile.transaction_count}</p>
-          <p className="text-[10px] text-[#8a8f98]">المعاملات</p>
+          <p className="text-[10px] text-[#8a8f98]">Transactions</p>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <Bot className="h-4 w-4 text-[#0052ff] mb-2" />
           <p className="text-lg font-bold text-[#f7f8f8]">{(aiUsage as Record<string, unknown>)?.chat_count as number || 0}</p>
-          <p className="text-[10px] text-[#8a8f98]">محادثات AI</p>
+          <p className="text-[10px] text-[#8a8f98]">AI Chats</p>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <Clock className="h-4 w-4 text-[#0ecb81] mb-2" />
           <p className="text-sm font-bold text-[#f7f8f8]">
-            {profile.last_active_at ? new Date(profile.last_active_at).toLocaleDateString('ar') : '—'}
+            {profile.last_active_at ? new Date(profile.last_active_at).toLocaleDateString('en') : '—'}
           </p>
-          <p className="text-[10px] text-[#8a8f98]">آخر نشاط</p>
+          <p className="text-[10px] text-[#8a8f98]">Last Active</p>
         </div>
       </div>
 
       {/* Admin Actions */}
       <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-        <h3 className="text-xs font-semibold text-[#8a8f98] mb-3">إجراءات المدير</h3>
+        <h3 className="text-xs font-semibold text-[#8a8f98] mb-3">Admin Actions</h3>
         <div className="flex flex-wrap gap-2">
           {/* Change Plan */}
           {(['starter', 'pro', 'enterprise'] as const).map((p) => (
@@ -174,26 +174,26 @@ export default function AdminUserDetailPage() {
           {/* Status Actions */}
           {profile.status === 'active' && (
             <button onClick={() => updateUser({ status: 'suspended' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[#f7931a]/10 text-[#f7931a] hover:bg-[#f7931a]/20 transition-colors">
-              <Ban className="h-3 w-3" /> تعليق
+              <Ban className="h-3 w-3" /> Suspend
             </button>
           )}
           {profile.status === 'suspended' && (
             <button onClick={() => updateUser({ status: 'active' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[#0ecb81]/10 text-[#0ecb81] hover:bg-[#0ecb81]/20 transition-colors">
-              <CheckCircle className="h-3 w-3" /> تفعيل
+              <CheckCircle className="h-3 w-3" /> Activate
             </button>
           )}
           {profile.status !== 'banned' ? (
-            <button onClick={() => { const r = prompt('سبب الحظر:'); if (r) updateUser({ status: 'banned', ban_reason: r }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[#f6465d]/10 text-[#f6465d] hover:bg-[#f6465d]/20 transition-colors">
-              <XCircle className="h-3 w-3" /> حظر
+            <button onClick={() => { const r = prompt('Ban reason:'); if (r) updateUser({ status: 'banned', ban_reason: r }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[#f6465d]/10 text-[#f6465d] hover:bg-[#f6465d]/20 transition-colors">
+              <XCircle className="h-3 w-3" /> Ban
             </button>
           ) : (
             <button onClick={() => updateUser({ status: 'active', ban_reason: null })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[#0ecb81]/10 text-[#0ecb81] hover:bg-[#0ecb81]/20 transition-colors">
-              <CheckCircle className="h-3 w-3" /> إلغاء الحظر
+              <CheckCircle className="h-3 w-3" /> Unban
             </button>
           )}
         </div>
         {profile.ban_reason && (
-          <p className="mt-2 text-xs text-[#f6465d]">سبب الحظر: {profile.ban_reason}</p>
+          <p className="mt-2 text-xs text-[#f6465d]">Ban reason: {profile.ban_reason}</p>
         )}
       </div>
 
@@ -216,12 +216,12 @@ export default function AdminUserDetailPage() {
       {activeTab === 'overview' && (
         <div className="space-y-4">
           <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-            <h3 className="text-xs font-semibold text-[#8a8f98] mb-3">معلومات الحساب</h3>
+            <h3 className="text-xs font-semibold text-[#8a8f98] mb-3">Account Info</h3>
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div><span className="text-[#8a8f98]">البريد:</span> <span className="text-[#f7f8f8]">{profile.email}</span></div>
-              <div><span className="text-[#8a8f98]">الاسم:</span> <span className="text-[#f7f8f8]">{profile.full_name || '—'}</span></div>
-              <div><span className="text-[#8a8f98]">التسجيل:</span> <span className="text-[#f7f8f8]">{new Date(profile.created_at).toLocaleDateString('ar')}</span></div>
-              <div><span className="text-[#8a8f98]">المعرف:</span> <span className="text-[#f7f8f8] font-mono text-[10px]">{profile.user_id.slice(0, 16)}...</span></div>
+              <div><span className="text-[#8a8f98]">Email:</span> <span className="text-[#f7f8f8]">{profile.email}</span></div>
+              <div><span className="text-[#8a8f98]">Name:</span> <span className="text-[#f7f8f8]">{profile.full_name || '—'}</span></div>
+              <div><span className="text-[#8a8f98]">Registered:</span> <span className="text-[#f7f8f8]">{new Date(profile.created_at).toLocaleDateString('en')}</span></div>
+              <div><span className="text-[#8a8f98]">ID:</span> <span className="text-[#f7f8f8] font-mono text-[10px]">{profile.user_id.slice(0, 16)}...</span></div>
             </div>
           </div>
         </div>
@@ -232,19 +232,19 @@ export default function AdminUserDetailPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/5">
-                <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98]">العنوان</th>
-                <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98]">التسمية</th>
-                <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98]">آخر مزامنة</th>
+                <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98]">Address</th>
+                <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98]">Label</th>
+                <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98]">Last Synced</th>
               </tr>
             </thead>
             <tbody>
               {wallets.length === 0 ? (
-                <tr><td colSpan={3} className="text-center py-8 text-xs text-[#8a8f98]">لا توجد محافظ</td></tr>
+                <tr><td colSpan={3} className="text-center py-8 text-xs text-[#8a8f98]">No wallets found</td></tr>
               ) : wallets.map((w, i) => (
                 <tr key={i} className="border-b border-white/[0.03]">
                   <td className="px-4 py-2.5 text-xs text-[#d0d6e0] font-mono">{(w.address as string)?.slice(0, 10)}...{(w.address as string)?.slice(-6)}</td>
                   <td className="px-4 py-2.5 text-xs text-[#f7f8f8]">{(w.label as string) || '—'}</td>
-                  <td className="px-4 py-2.5 text-xs text-[#8a8f98]">{w.last_synced_at ? new Date(w.last_synced_at as string).toLocaleDateString('ar') : '—'}</td>
+                  <td className="px-4 py-2.5 text-xs text-[#8a8f98]">{w.last_synced_at ? new Date(w.last_synced_at as string).toLocaleDateString('en') : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -257,16 +257,16 @@ export default function AdminUserDetailPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/5">
-                <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98]">التاريخ</th>
-                <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98]">النوع</th>
-                <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98]">التوكن</th>
-                <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98]">القيمة</th>
-                <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98]">الشبكة</th>
+                <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98]">Date</th>
+                <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98]">Type</th>
+                <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98]">Token</th>
+                <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98]">Value</th>
+                <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98]">Network</th>
               </tr>
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-8 text-xs text-[#8a8f98]">لا توجد معاملات</td></tr>
+                <tr><td colSpan={5} className="text-center py-8 text-xs text-[#8a8f98]">No transactions found</td></tr>
               ) : (transactions as Array<Record<string, unknown>>).slice(0, 20).map((tx, i) => (
                 <tr key={i} className="border-b border-white/[0.03]">
                   <td className="px-4 py-2.5 text-xs text-[#8a8f98]">{tx.date as string || '—'}</td>
@@ -286,11 +286,11 @@ export default function AdminUserDetailPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-white/[0.02] rounded-lg p-3">
               <p className="text-lg font-bold text-[#f7f8f8]">{(aiUsage.chat_count as number) || 0}</p>
-              <p className="text-[10px] text-[#8a8f98]">المحادثات</p>
+              <p className="text-[10px] text-[#8a8f98]">Chats</p>
             </div>
             <div className="bg-white/[0.02] rounded-lg p-3">
               <p className="text-lg font-bold text-[#f7f8f8]">{(aiUsage.analysis_count as number) || 0}</p>
-              <p className="text-[10px] text-[#8a8f98]">التحليلات</p>
+              <p className="text-[10px] text-[#8a8f98]">Analyses</p>
             </div>
             <div className="bg-white/[0.02] rounded-lg p-3">
               <p className="text-lg font-bold text-[#f7f8f8]">{((aiUsage.total_input_tokens as number) || 0).toLocaleString()}</p>

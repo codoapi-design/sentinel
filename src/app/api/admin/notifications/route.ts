@@ -131,7 +131,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        message: `تم إرسال رسالة اختبار "${template.name}" إلى ${testEmail || session.user.email}`,
+        message: `Test notification "${template.name}" sent to ${testEmail || session.user.email}`,
       });
     }
 

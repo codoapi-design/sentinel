@@ -87,7 +87,7 @@ export default function AdminAiUsagePage() {
             <div className="p-1.5 rounded-lg bg-[#627eea]/10">
               <MessageSquare className="h-3.5 w-3.5 text-[#627eea]" />
             </div>
-            <span className="text-[10px] text-[#8a8f98]">إجمالي المحادثات</span>
+            <span className="text-[10px] text-[#8a8f98]">Total Chats</span>
           </div>
           <p className="text-xl font-bold text-[#f7f8f8]">{formatNumber(stats?.totalChats || 0)}</p>
         </div>
@@ -97,7 +97,7 @@ export default function AdminAiUsagePage() {
             <div className="p-1.5 rounded-lg bg-[#0052ff]/10">
               <BarChart3 className="h-3.5 w-3.5 text-[#0052ff]" />
             </div>
-            <span className="text-[10px] text-[#8a8f98]">إجمالي التحليلات</span>
+            <span className="text-[10px] text-[#8a8f98]">Total Analyses</span>
           </div>
           <p className="text-xl font-bold text-[#f7f8f8]">{formatNumber(stats?.totalAnalyses || 0)}</p>
         </div>
@@ -127,7 +127,7 @@ export default function AdminAiUsagePage() {
             <div className="p-1.5 rounded-lg bg-[#f6465d]/10">
               <Coins className="h-3.5 w-3.5 text-[#f6465d]" />
             </div>
-            <span className="text-[10px] text-[#8a8f98]">التكلفة التقديرية</span>
+            <span className="text-[10px] text-[#8a8f98]">Estimated Cost</span>
           </div>
           <p className="text-xl font-bold text-[#f7f8f8]">${stats?.estimatedCost || '0.00'}</p>
         </div>
@@ -137,7 +137,7 @@ export default function AdminAiUsagePage() {
       <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="h-4 w-4 text-[#627eea]" />
-          <h3 className="text-sm font-semibold text-[#f7f8f8]">استخدام الذكاء الاصطناعي (آخر 30 يوم)</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8]">AI Usage (Last 30 Days)</h3>
         </div>
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -149,8 +149,8 @@ export default function AdminAiUsagePage() {
                 contentStyle={{ backgroundColor: '#191a1b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
                 labelStyle={{ color: '#8a8f98' }}
               />
-              <Area type="monotone" dataKey="chats" stroke="#627eea" fill="#627eea20" strokeWidth={2} name="محادثات" />
-              <Area type="monotone" dataKey="analyses" stroke="#0ecb81" fill="#0ecb8120" strokeWidth={2} name="تحليلات" />
+              <Area type="monotone" dataKey="chats" stroke="#627eea" fill="#627eea20" strokeWidth={2} name="Chats" />
+              <Area type="monotone" dataKey="analyses" stroke="#0ecb81" fill="#0ecb8120" strokeWidth={2} name="Analyses" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -162,11 +162,11 @@ export default function AdminAiUsagePage() {
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Bot className="h-4 w-4 text-[#f7931a]" />
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">أكثر المستخدمين استخداماً</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8]">Top Users</h3>
           </div>
           <div className="space-y-3">
             {topUsers.length === 0 ? (
-              <p className="text-center text-xs text-[#8a8f98] py-4">لا توجد بيانات</p>
+              <p className="text-center text-xs text-[#8a8f98] py-4">No data available</p>
             ) : (
               topUsers.map((user, i) => (
                 <div key={user.user_id} className="flex items-center gap-3 p-2 rounded-lg bg-white/[0.02]">
@@ -181,11 +181,11 @@ export default function AdminAiUsagePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] text-[#8a8f98] font-mono truncate">{user.user_id.slice(0, 12)}...</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[9px] text-[#627eea]">{user.chat_count} محادثة</span>
-                      <span className="text-[9px] text-[#0ecb81]">{user.analysis_count} تحليل</span>
+                      <span className="text-[9px] text-[#627eea]">{user.chat_count} chats</span>
+                      <span className="text-[9px] text-[#0ecb81]">{user.analysis_count} analyses</span>
                     </div>
                   </div>
-                  <div className="text-left">
+                  <div className="text-right">
                     <p className="text-[10px] text-[#f7f8f8]">{formatNumber(user.total_input_tokens + user.total_output_tokens)}</p>
                     <p className="text-[8px] text-[#8a8f98]">tokens</p>
                   </div>
@@ -198,18 +198,18 @@ export default function AdminAiUsagePage() {
         {/* Usage Table */}
         <div className="lg:col-span-2 bg-[#0c0d0e] border border-white/5 rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-white/5">
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">سجل الاستخدام</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8]">Usage Log</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5">
-                  <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98] font-medium">المستخدم</th>
-                  <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98] font-medium">المحادثات</th>
-                  <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98] font-medium">التحليلات</th>
-                  <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98] font-medium">Input Tokens</th>
-                  <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98] font-medium">Output Tokens</th>
-                  <th className="text-right px-4 py-2.5 text-xs text-[#8a8f98] font-medium">التكلفة</th>
+                  <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98] font-medium">User</th>
+                  <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98] font-medium">Chats</th>
+                  <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98] font-medium">Analyses</th>
+                  <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98] font-medium">Input Tokens</th>
+                  <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98] font-medium">Output Tokens</th>
+                  <th className="text-left px-4 py-2.5 text-xs text-[#8a8f98] font-medium">Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -223,7 +223,7 @@ export default function AdminAiUsagePage() {
                   </tr>
                 ) : usage.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-[#8a8f98]">لا توجد بيانات استخدام</td>
+                    <td colSpan={6} className="text-center py-12 text-[#8a8f98]">No usage data available</td>
                   </tr>
                 ) : (
                   usage.map((entry) => (
@@ -249,7 +249,7 @@ export default function AdminAiUsagePage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
               <span className="text-xs text-[#8a8f98]">
-                صفحة {page} من {totalPages}
+                Page {page} of {totalPages}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -257,14 +257,14 @@ export default function AdminAiUsagePage() {
                   disabled={page === 1}
                   className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] disabled:opacity-30 transition-colors"
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setPage(Math.min(totalPages, page + 1))}
                   disabled={page === totalPages}
                   className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] disabled:opacity-30 transition-colors"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -276,20 +276,20 @@ export default function AdminAiUsagePage() {
       <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <Bot className="h-4 w-4 text-[#627eea]" />
-          <h3 className="text-sm font-semibold text-[#f7f8f8]">معلومات النموذج</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8]">Model Information</h3>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white/[0.02] rounded-lg p-4">
-            <p className="text-xs text-[#8a8f98] mb-1">النموذج المستخدم</p>
+            <p className="text-xs text-[#8a8f98] mb-1">Model Used</p>
             <p className="text-sm text-[#f7f8f8] font-mono">openai/o4-mini</p>
           </div>
           <div className="bg-white/[0.02] rounded-lg p-4">
-            <p className="text-xs text-[#8a8f98] mb-1">مزود الخدمة</p>
+            <p className="text-xs text-[#8a8f98] mb-1">Provider</p>
             <p className="text-sm text-[#f7f8f8]">OpenRouter</p>
           </div>
           <div className="bg-white/[0.02] rounded-lg p-4">
-            <p className="text-xs text-[#8a8f98] mb-1">سعر Input / Output</p>
-            <p className="text-sm text-[#f7f8f8]">$0.003 / $0.015 لكل 1M tokens</p>
+            <p className="text-xs text-[#8a8f98] mb-1">Input / Output Price</p>
+            <p className="text-sm text-[#f7f8f8]">$0.003 / $0.015 per 1M tokens</p>
           </div>
         </div>
       </div>

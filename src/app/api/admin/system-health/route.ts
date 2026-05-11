@@ -30,7 +30,7 @@ async function checkService(name: string, checkFn: () => Promise<{ ok: boolean; 
       latency: Date.now() - start,
       uptime: '0%',
       lastCheck: new Date().toISOString(),
-      details: 'فشل الاتصال',
+      details: 'Connection failed',
     };
   }
 }
@@ -56,7 +56,7 @@ export async function GET() {
       return {
         ok: count !== null,
         latency: Date.now() - start,
-        details: count !== null ? `قاعدة البيانات متصلة - ${count} مديرين` : 'فشل الاتصال',
+        details: count !== null ? `Database connected - ${count} admins` : 'Connection failed',
       };
     });
 
@@ -65,7 +65,7 @@ export async function GET() {
       const start = Date.now();
       const apiKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
       if (!apiKey) {
-        return { ok: false, latency: 0, details: 'مفتاح API غير مكون' };
+        return { ok: false, latency: 0, details: 'API key not configured' };
       }
       try {
         const res = await fetch(`https://eth-mainnet.g.alchemy.com/v2/${apiKey}`, {
@@ -77,10 +77,10 @@ export async function GET() {
         return {
           ok: !!data.result,
           latency: Date.now() - start,
-          details: data.result ? `متصل - آخر بلوك: ${parseInt(data.result, 16)}` : 'استجابة غير صالحة',
+          details: data.result ? `Connected - latest block: ${parseInt(data.result, 16)}` : 'Invalid response',
         };
       } catch {
-        return { ok: false, latency: Date.now() - start, details: 'فشل الاتصال' };
+        return { ok: false, latency: Date.now() - start, details: 'Connection failed' };
       }
     });
 
@@ -89,12 +89,12 @@ export async function GET() {
       const start = Date.now();
       const apiKey = process.env.OPENROUTER_API_KEY;
       if (!apiKey) {
-        return { ok: false, latency: 0, details: 'مفتاح API غير مكون' };
+        return { ok: false, latency: 0, details: 'API key not configured' };
       }
       return {
         ok: true,
         latency: Date.now() - start,
-        details: 'مزود AI مكون بشكل صحيح - openai/o4-mini',
+        details: 'AI provider configured correctly - openai/o4-mini',
       };
     });
 
@@ -105,7 +105,7 @@ export async function GET() {
       return {
         ok: !!url || process.env.VERCEL === '1',
         latency: Date.now() - start,
-        details: process.env.VERCEL === '1' ? `يعمل على Vercel - ${process.env.VERCEL_REGION || 'auto'}` : 'بيئة محلية',
+        details: process.env.VERCEL === '1' ? `Running on Vercel - ${process.env.VERCEL_REGION || 'auto'}` : 'Local environment',
       };
     });
 
@@ -115,7 +115,7 @@ export async function GET() {
       return {
         ok: hasKey,
         latency: 0,
-        details: hasKey ? 'مكون بشكل صحيح' : 'مفاتيح AWS غير مكونة',
+        details: hasKey ? 'Configured correctly' : 'AWS keys not configured',
       };
     });
 
@@ -123,7 +123,7 @@ export async function GET() {
     const telegramCheck = await checkService('Telegram Bot', async () => {
       const token = process.env.TELEGRAM_BOT_TOKEN;
       if (!token) {
-        return { ok: false, latency: 0, details: 'توكن البوت غير مكون' };
+        return { ok: false, latency: 0, details: 'Bot token not configured' };
       }
       const start = Date.now();
       try {
@@ -132,10 +132,10 @@ export async function GET() {
         return {
           ok: data.ok,
           latency: Date.now() - start,
-          details: data.ok ? `متصل - @${data.result.username}` : 'توكن غير صالح',
+          details: data.ok ? `Connected - @${data.result.username}` : 'Invalid token',
         };
       } catch {
-        return { ok: false, latency: Date.now() - start, details: 'فشل الاتصال' };
+        return { ok: false, latency: Date.now() - start, details: 'Connection failed' };
       }
     });
 
@@ -194,9 +194,9 @@ export async function GET() {
       },
       // Rate limit info
       rateLimits: {
-        starter: { limit: 100, period: 'ساعة' },
-        pro: { limit: 500, period: 'ساعة' },
-        enterprise: { limit: -1, period: 'غير محدود' },
+        starter: { limit: 100, period: 'hour' },
+        pro: { limit: 500, period: 'hour' },
+        enterprise: { limit: -1, period: 'unlimited' },
       },
       // Environment info
       environment: {

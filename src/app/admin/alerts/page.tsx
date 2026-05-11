@@ -116,7 +116,7 @@ export default function AdminAlertsPage() {
   };
 
   const handleDelete = async (alertId: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا التنبيه؟')) return;
+    if (!confirm('Are you sure you want to delete this alert?')) return;
     try {
       const res = await fetch('/api/admin/alerts', {
         method: 'POST',
@@ -132,15 +132,15 @@ export default function AdminAlertsPage() {
   };
 
   const severityConfig = {
-    critical: { icon: XCircle, color: '#f6465d', bg: 'bg-[#f6465d]/10', border: 'border-[#f6465d]/20', label: 'حرج' },
-    warning: { icon: AlertTriangle, color: '#f7931a', bg: 'bg-[#f7931a]/10', border: 'border-[#f7931a]/20', label: 'تحذير' },
-    info: { icon: Info, color: '#0052ff', bg: 'bg-[#0052ff]/10', border: 'border-[#0052ff]/20', label: 'معلومات' },
+    critical: { icon: XCircle, color: '#f6465d', bg: 'bg-[#f6465d]/10', border: 'border-[#f6465d]/20', label: 'Critical' },
+    warning: { icon: AlertTriangle, color: '#f7931a', bg: 'bg-[#f7931a]/10', border: 'border-[#f7931a]/20', label: 'Warning' },
+    info: { icon: Info, color: '#0052ff', bg: 'bg-[#0052ff]/10', border: 'border-[#0052ff]/20', label: 'Info' },
   };
 
   const statusLabels: Record<string, string> = {
-    active: 'نشط',
-    acknowledged: 'تم التعرف',
-    resolved: 'تم الحل',
+    active: 'Active',
+    acknowledged: 'Acknowledged',
+    resolved: 'Resolved',
   };
 
   const statusBadge: Record<string, string> = {
@@ -159,55 +159,55 @@ export default function AdminAlertsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-[#0c0d0e] border border-white/10 rounded-2xl w-full max-w-lg">
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
-              <h3 className="text-sm font-semibold text-[#f7f8f8]">إنشاء تنبيه جديد</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8]">Create New Alert</h3>
               <button onClick={() => setShowCreateModal(false)} className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98]">
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="text-xs text-[#8a8f98] mb-1.5 block">عنوان التنبيه</label>
+                <label className="text-xs text-[#8a8f98] mb-1.5 block">Alert Title</label>
                 <input
                   type="text"
                   value={newAlert.title}
                   onChange={(e) => setNewAlert({ ...newAlert, title: e.target.value })}
                   className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50"
-                  placeholder="مثال: مشكلة في الاتصال بقاعدة البيانات"
+                  placeholder="e.g. Database connection issue"
                 />
               </div>
               <div>
-                <label className="text-xs text-[#8a8f98] mb-1.5 block">التفاصيل</label>
+                <label className="text-xs text-[#8a8f98] mb-1.5 block">Details</label>
                 <textarea
                   value={newAlert.message}
                   onChange={(e) => setNewAlert({ ...newAlert, message: e.target.value })}
                   className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50 min-h-[100px]"
-                  placeholder="وصف المشكلة أو التنبيه..."
+                  placeholder="Describe the issue or alert..."
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">مستوى الخطورة</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Severity Level</label>
                   <select
                     value={newAlert.severity}
                     onChange={(e) => setNewAlert({ ...newAlert, severity: e.target.value as 'critical' | 'warning' | 'info' })}
                     className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50"
                   >
-                    <option value="info">معلومات</option>
-                    <option value="warning">تحذير</option>
-                    <option value="critical">حرج</option>
+                    <option value="info">Info</option>
+                    <option value="warning">Warning</option>
+                    <option value="critical">Critical</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">المصدر</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Source</label>
                   <select
                     value={newAlert.source}
                     onChange={(e) => setNewAlert({ ...newAlert, source: e.target.value })}
                     className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50"
                   >
-                    <option value="admin">مدير</option>
-                    <option value="system">نظام</option>
-                    <option value="security">أمن</option>
-                    <option value="monitoring">مراقبة</option>
+                    <option value="admin">Admin</option>
+                    <option value="system">System</option>
+                    <option value="security">Security</option>
+                    <option value="monitoring">Monitoring</option>
                   </select>
                 </div>
               </div>
@@ -217,7 +217,7 @@ export default function AdminAlertsPage() {
                 onClick={() => setShowCreateModal(false)}
                 className="px-4 py-2 rounded-lg bg-white/5 text-[#8a8f98] hover:text-[#f7f8f8] text-sm transition-colors"
               >
-                إلغاء
+                Cancel
               </button>
               <button
                 onClick={handleCreate}
@@ -225,7 +225,7 @@ export default function AdminAlertsPage() {
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0052ff] hover:bg-[#0045d1] text-white text-sm font-medium transition-colors disabled:opacity-50"
               >
                 {creating ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="h-4 w-4" />}
-                إنشاء
+                Create
               </button>
             </div>
           </div>
@@ -240,7 +240,7 @@ export default function AdminAlertsPage() {
               <div className="p-2 rounded-lg bg-[#f6465d]/10">
                 <XCircle className="h-4 w-4 text-[#f6465d]" />
               </div>
-              <span className="text-sm text-[#f6465d]">تنبيهات حرجة</span>
+              <span className="text-sm text-[#f6465d]">Critical Alerts</span>
             </div>
             {stats?.critical && stats.critical > 0 && (
               <span className="px-2 py-0.5 rounded-full bg-[#f6465d] text-white text-[10px] font-bold animate-pulse">
@@ -249,7 +249,7 @@ export default function AdminAlertsPage() {
             )}
           </div>
           <p className="text-2xl font-bold text-[#f7f8f8]">{stats?.critical || 0}</p>
-          <p className="text-[10px] text-[#8a8f98] mt-1">تتطلب تدخل فوري</p>
+          <p className="text-[10px] text-[#8a8f98] mt-1">Requires immediate action</p>
         </div>
 
         <div className="bg-[#0c0d0e] border border-[#f7931a]/20 rounded-xl p-5">
@@ -258,11 +258,11 @@ export default function AdminAlertsPage() {
               <div className="p-2 rounded-lg bg-[#f7931a]/10">
                 <AlertTriangle className="h-4 w-4 text-[#f7931a]" />
               </div>
-              <span className="text-sm text-[#f7931a]">تحذيرات</span>
+              <span className="text-sm text-[#f7931a]">Warnings</span>
             </div>
           </div>
           <p className="text-2xl font-bold text-[#f7f8f8]">{stats?.warning || 0}</p>
-          <p className="text-[10px] text-[#8a8f98] mt-1">تحتاج مراقبة</p>
+          <p className="text-[10px] text-[#8a8f98] mt-1">Needs monitoring</p>
         </div>
 
         <div className="bg-[#0c0d0e] border border-[#0052ff]/20 rounded-xl p-5">
@@ -271,11 +271,11 @@ export default function AdminAlertsPage() {
               <div className="p-2 rounded-lg bg-[#0052ff]/10">
                 <Info className="h-4 w-4 text-[#0052ff]" />
               </div>
-              <span className="text-sm text-[#0052ff]">معلومات</span>
+              <span className="text-sm text-[#0052ff]">Info</span>
             </div>
           </div>
           <p className="text-2xl font-bold text-[#f7f8f8]">{stats?.info || 0}</p>
-          <p className="text-[10px] text-[#8a8f98] mt-1">للمتابعة فقط</p>
+          <p className="text-[10px] text-[#8a8f98] mt-1">For reference only</p>
         </div>
       </div>
 
@@ -283,7 +283,7 @@ export default function AdminAlertsPage() {
       <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <Zap className="h-4 w-4 text-[#f7931a]" />
-          <h3 className="text-sm font-semibold text-[#f7f8f8]">اتجاه التنبيهات (آخر 30 يوم)</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8]">Alert Trends (Last 30 Days)</h3>
         </div>
         <div className="h-[250px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -296,9 +296,9 @@ export default function AdminAlertsPage() {
                 labelStyle={{ color: '#8a8f98' }}
               />
               <Legend />
-              <Bar dataKey="critical" name="حرج" fill="#f6465d" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="warning" name="تحذير" fill="#f7931a" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="info" name="معلومات" fill="#0052ff" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="critical" name="Critical" fill="#f6465d" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="warning" name="Warning" fill="#f7931a" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="info" name="Info" fill="#0052ff" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -312,10 +312,10 @@ export default function AdminAlertsPage() {
             onChange={(e) => { setSeverityFilter(e.target.value); setPage(1); }}
             className="bg-[#0c0d0e] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#d0d6e0] focus:outline-none focus:border-[#0052ff]/50"
           >
-            <option value="">كل المستويات</option>
-            <option value="critical">حرج</option>
-            <option value="warning">تحذير</option>
-            <option value="info">معلومات</option>
+            <option value="">All Severity Levels</option>
+            <option value="critical">Critical</option>
+            <option value="warning">Warning</option>
+            <option value="info">Info</option>
           </select>
 
           <select
@@ -323,10 +323,10 @@ export default function AdminAlertsPage() {
             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
             className="bg-[#0c0d0e] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#d0d6e0] focus:outline-none focus:border-[#0052ff]/50"
           >
-            <option value="">كل الحالات</option>
-            <option value="active">نشط</option>
-            <option value="acknowledged">تم التعرف</option>
-            <option value="resolved">تم الحل</option>
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="resolved">Resolved</option>
           </select>
         </div>
 
@@ -337,7 +337,7 @@ export default function AdminAlertsPage() {
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0052ff] hover:bg-[#0045d1] text-white text-sm font-medium transition-colors"
             >
               <Plus className="h-4 w-4" />
-              تنبيه جديد
+              New Alert
             </button>
           )}
           <button
@@ -346,7 +346,7 @@ export default function AdminAlertsPage() {
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0ecb81]/10 text-[#0ecb81] hover:bg-[#0ecb81]/20 text-sm transition-colors disabled:opacity-50"
           >
             <CheckCircle className="h-4 w-4" />
-            حل الكل
+            Resolve All
           </button>
         </div>
       </div>
@@ -360,8 +360,8 @@ export default function AdminAlertsPage() {
         ) : alerts.length === 0 ? (
           <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-12 text-center">
             <Bell className="h-10 w-10 text-[#8a8f98] mx-auto mb-3" />
-            <p className="text-sm text-[#8a8f98]">لا توجد تنبيهات</p>
-            <p className="text-xs text-[#8a8f98] mt-1">النظام يعمل بشكل طبيعي</p>
+            <p className="text-sm text-[#8a8f98]">No alerts found</p>
+            <p className="text-xs text-[#8a8f98] mt-1">System is running normally</p>
           </div>
         ) : (
           alerts.map((alert) => {
@@ -388,22 +388,22 @@ export default function AdminAlertsPage() {
                         </span>
                       </div>
                       <span className="text-[10px] text-[#8a8f98] shrink-0">
-                        {new Date(alert.created_at).toLocaleString('ar')}
+                        {new Date(alert.created_at).toLocaleString('en')}
                       </span>
                     </div>
                     <p className="text-xs text-[#8a8f98] mt-1">{alert.message}</p>
                     <div className="flex items-center gap-3 mt-2">
                       <span className="text-[10px] text-[#8a8f98]">
-                        المصدر: <span className="text-[#d0d6e0]">{alert.source}</span>
+                        Source: <span className="text-[#d0d6e0]">{alert.source}</span>
                       </span>
                       {alert.acknowledged_at && (
                         <span className="text-[10px] text-[#f7931a]">
-                          تم التعرف: {new Date(alert.acknowledged_at).toLocaleString('ar')}
+                          Acknowledged: {new Date(alert.acknowledged_at).toLocaleString('en')}
                         </span>
                       )}
                       {alert.resolved_at && (
                         <span className="text-[10px] text-[#0ecb81]">
-                          تم الحل: {new Date(alert.resolved_at).toLocaleString('ar')}
+                          Resolved: {new Date(alert.resolved_at).toLocaleString('en')}
                         </span>
                       )}
                     </div>
@@ -418,14 +418,14 @@ export default function AdminAlertsPage() {
                           disabled={actionLoading === alert.id}
                           className="px-2.5 py-1.5 rounded-lg bg-[#f7931a]/10 text-[#f7931a] hover:bg-[#f7931a]/20 text-[10px] transition-colors disabled:opacity-50"
                         >
-                          تعرف
+                          Acknowledge
                         </button>
                         <button
                           onClick={() => handleAction('resolve', alert.id)}
                           disabled={actionLoading === alert.id}
                           className="px-2.5 py-1.5 rounded-lg bg-[#0ecb81]/10 text-[#0ecb81] hover:bg-[#0ecb81]/20 text-[10px] transition-colors disabled:opacity-50"
                         >
-                          حل
+                          Resolve
                         </button>
                       </>
                     )}
@@ -435,14 +435,14 @@ export default function AdminAlertsPage() {
                         disabled={actionLoading === alert.id}
                         className="px-2.5 py-1.5 rounded-lg bg-[#0ecb81]/10 text-[#0ecb81] hover:bg-[#0ecb81]/20 text-[10px] transition-colors disabled:opacity-50"
                       >
-                        حل
+                        Resolve
                       </button>
                     )}
                     {isSuperAdmin && (
                       <button
                         onClick={() => handleDelete(alert.id)}
                         className="p-1.5 rounded-lg hover:bg-[#f6465d]/10 text-[#8a8f98] hover:text-[#f6465d] transition-colors"
-                        title="حذف"
+                        title="Delete"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -459,7 +459,7 @@ export default function AdminAlertsPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-2">
           <span className="text-xs text-[#8a8f98]">
-            عرض {((page - 1) * 20) + 1} - {Math.min(page * 20, total)} من {total}
+            Showing {((page - 1) * 20) + 1} - {Math.min(page * 20, total)} of {total}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -467,7 +467,7 @@ export default function AdminAlertsPage() {
               disabled={page === 1}
               className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] disabled:opacity-30 transition-colors"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" />
             </button>
             <span className="text-xs text-[#f7f8f8]">{page}</span>
             <button
@@ -475,7 +475,7 @@ export default function AdminAlertsPage() {
               disabled={page === totalPages}
               className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] disabled:opacity-30 transition-colors"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>

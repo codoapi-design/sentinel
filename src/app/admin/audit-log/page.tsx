@@ -41,16 +41,16 @@ const actionColors: Record<string, string> = {
 };
 
 const actionLabels: Record<string, string> = {
-  update_user_plan: 'تغيير الباقة',
-  update_user_status: 'تغيير الحالة',
-  update_user_ban_reason: 'تحديث سبب الحظر',
-  update_user_full_name: 'تحديث الاسم',
-  ban_user: 'حظر مستخدم',
-  suspend_user: 'تعليق مستخدم',
-  activate_user: 'تفعيل مستخدم',
-  impersonate_user: 'تسجيل الدخول كمستخدم',
-  update_plan: 'تحديث الباقة',
-  settings_update: 'تحديث الإعدادات',
+  update_user_plan: 'Change Plan',
+  update_user_status: 'Change Status',
+  update_user_ban_reason: 'Update Ban Reason',
+  update_user_full_name: 'Update Name',
+  ban_user: 'Ban User',
+  suspend_user: 'Suspend User',
+  activate_user: 'Activate User',
+  impersonate_user: 'Login as User',
+  update_plan: 'Update Plan',
+  settings_update: 'Update Settings',
 };
 
 export default function AdminAuditLogPage() {
@@ -96,9 +96,9 @@ export default function AdminAuditLogPage() {
   };
 
   const exportLogs = () => {
-    const headers = ['التاريخ', 'المدير', 'الإجراء', 'النوع', 'المعرف', 'IP'];
+    const headers = ['Date', 'Admin', 'Action', 'Type', 'ID', 'IP'];
     const rows = logs.map(l => [
-      new Date(l.created_at).toLocaleString('ar'),
+      new Date(l.created_at).toLocaleString('en'),
       l.admin?.email || l.admin_id.slice(0, 12),
       l.action,
       l.target_type || '',
@@ -124,12 +124,12 @@ export default function AdminAuditLogPage() {
               onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
               className="bg-[#0c0d0e] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#d0d6e0] focus:outline-none focus:border-[#0052ff]/50 appearance-none pr-8"
             >
-              <option value="">كل الإجراءات</option>
-              <option value="update_user">تحديثات المستخدمين</option>
-              <option value="ban_user">حظر</option>
-              <option value="suspend_user">تعليق</option>
-              <option value="impersonate_user">تسجيل دخول كمستخدم</option>
-              <option value="settings_">الإعدادات</option>
+              <option value="">All Actions</option>
+              <option value="update_user">User Updates</option>
+              <option value="ban_user">Ban</option>
+              <option value="suspend_user">Suspend</option>
+              <option value="impersonate_user">Login as User</option>
+              <option value="settings_">Settings</option>
             </select>
           </div>
         </div>
@@ -139,14 +139,14 @@ export default function AdminAuditLogPage() {
           className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-[#8a8f98] hover:text-[#f7f8f8] text-sm transition-colors"
         >
           <Download className="h-4 w-4" />
-          تصدير CSV
+          Export CSV
         </button>
       </div>
 
       {/* Stats */}
       <div className="flex items-center gap-4 text-xs text-[#8a8f98]">
-        <span>إجمالي السجلات: <strong className="text-[#f7f8f8]">{total}</strong></span>
-        <span>الصفحة: <strong className="text-[#f7f8f8]">{page}/{totalPages || 1}</strong></span>
+        <span>Total Records: <strong className="text-[#f7f8f8]">{total}</strong></span>
+        <span>Page: <strong className="text-[#f7f8f8]">{page}/{totalPages || 1}</strong></span>
       </div>
 
       {/* Logs List */}
@@ -158,7 +158,7 @@ export default function AdminAuditLogPage() {
         ) : logs.length === 0 ? (
           <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-12 text-center">
             <ScrollText className="h-10 w-10 text-[#8a8f98] mx-auto mb-3" />
-            <p className="text-sm text-[#8a8f98]">لا توجد سجلات تدقيق</p>
+            <p className="text-sm text-[#8a8f98]">No audit logs found</p>
           </div>
         ) : (
           logs.map((log) => {
@@ -181,16 +181,16 @@ export default function AdminAuditLogPage() {
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm text-[#f7f8f8] font-medium">{label}</p>
                       <span className="text-[10px] text-[#8a8f98] shrink-0">
-                        {new Date(log.created_at).toLocaleString('ar')}
+                        {new Date(log.created_at).toLocaleString('en')}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 mt-1.5">
                       <span className="text-xs text-[#8a8f98]">
-                        بواسطة: <span className="text-[#d0d6e0]">{log.admin?.email || 'غير معروف'}</span>
+                        By: <span className="text-[#d0d6e0]">{log.admin?.email || 'Unknown'}</span>
                       </span>
                       {log.target_type && (
                         <span className="text-xs text-[#8a8f98]">
-                          الهدف: <span className="text-[#d0d6e0]">{log.target_type}</span>
+                          Target: <span className="text-[#d0d6e0]">{log.target_type}</span>
                         </span>
                       )}
                       {log.ip_address && (
@@ -205,7 +205,7 @@ export default function AdminAuditLogPage() {
                 {/* Expanded Details */}
                 {selectedLog?.id === log.id && log.details && (
                   <div className="mt-3 pt-3 border-t border-white/5">
-                    <p className="text-[10px] text-[#8a8f98] mb-2">تفاصيل الإجراء:</p>
+                    <p className="text-[10px] text-[#8a8f98] mb-2">Action Details:</p>
                     <pre className="text-xs text-[#d0d6e0] bg-white/[0.02] rounded-lg p-3 overflow-auto max-h-40 font-mono" dir="ltr">
                       {JSON.stringify(log.details, null, 2)}
                     </pre>
@@ -221,7 +221,7 @@ export default function AdminAuditLogPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-2">
           <span className="text-xs text-[#8a8f98]">
-            عرض {((page - 1) * 30) + 1} - {Math.min(page * 30, total)} من {total}
+            Showing {((page - 1) * 30) + 1} - {Math.min(page * 30, total)} of {total}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -229,7 +229,7 @@ export default function AdminAuditLogPage() {
               disabled={page === 1}
               className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] disabled:opacity-30 transition-colors"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" />
             </button>
             <span className="text-xs text-[#f7f8f8]">{page}</span>
             <button
@@ -237,7 +237,7 @@ export default function AdminAuditLogPage() {
               disabled={page === totalPages}
               className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] disabled:opacity-30 transition-colors"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>

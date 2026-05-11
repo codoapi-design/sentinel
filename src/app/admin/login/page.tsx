@@ -27,11 +27,11 @@ export default function AdminLoginPage() {
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
-        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        setError('Invalid email or password');
         return;
       }
 
-      // التحقق من صلاحية الأدمن
+      // Check admin privileges
       const { data: adminData, error: adminError } = await supabase
         .from('admin_users')
         .select('role, two_factor_enabled')
@@ -40,25 +40,25 @@ export default function AdminLoginPage() {
 
       if (adminError || !adminData) {
         await supabase.auth.signOut();
-        setError('ليس لديك صلاحية الوصول إلى لوحة الإدارة');
+        setError('You do not have access to the admin panel');
         return;
       }
 
-      // إذا كان 2FA مفعلاً، انتقل لخطوة التحقق
+      // If 2FA is enabled, proceed to verification step
       if (adminData.two_factor_enabled) {
         setUserId(authData.user?.id || null);
         setStep('totp');
         return;
       }
 
-      // بدون 2FA - تسجيل الدخول مباشرة
+      // Without 2FA - sign in directly
       setTimeout(() => {
         router.push('/admin');
         router.refresh();
       }, 300);
     } catch (err) {
       console.error('Admin login error:', err);
-      setError('حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.');
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -70,7 +70,7 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      // التحقق من كود TOTP
+      // Verify TOTP code
       const res = await fetch('/api/admin/verify-2fa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -84,23 +84,23 @@ export default function AdminLoginPage() {
         }, 300);
       } else {
         const data = await res.json();
-        setError(data.error || 'رمز التحقق غير صحيح');
+        setError(data.error || 'Invalid verification code');
       }
     } catch (err) {
       console.error('2FA verification error:', err);
-      setError('حدث خطأ في التحقق. يرجى المحاولة مرة أخرى.');
+      setError('An error occurred during verification. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#08090a] flex flex-col" dir="rtl">
+    <div className="min-h-screen bg-[#08090a] flex flex-col" dir="ltr">
       {/* Top Bar */}
       <nav className="flex items-center justify-between px-6 h-16">
         <Link href="/" className="flex items-center gap-2 text-[#8a8f98] hover:text-[#f7f8f8] transition-colors">
           <ArrowLeft className="h-4 w-4" />
-          <span className="text-sm">العودة للموقع</span>
+          <span className="text-sm">Back to Site</span>
         </Link>
       </nav>
 
@@ -117,10 +117,10 @@ export default function AdminLoginPage() {
               )}
             </div>
             <h1 className="text-xl font-bold text-[#f7f8f8] mb-1">
-              {step === 'totp' ? 'التحقق بخطوتين' : 'لوحة الإدارة'}
+              {step === 'totp' ? 'Two-Factor Authentication' : 'Admin Panel'}
             </h1>
             <p className="text-sm text-[#8a8f98]">
-              {step === 'totp' ? 'أدخل رمز التحقق من تطبيق المصادقة' : 'تسجيل دخول المديرين فقط'}
+              {step === 'totp' ? 'Enter the verification code from your authenticator app' : 'Admin access only'}
             </p>
           </div>
 
@@ -135,15 +135,15 @@ export default function AdminLoginPage() {
           {step === 'credentials' && (
             <form onSubmit={handleCredentialsSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs text-[#8a8f98]">البريد الإلكتروني</label>
+                <label className="text-xs text-[#8a8f98]">Email Address</label>
                 <div className="relative">
-                  <Mail className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="admin@sentinel.app"
-                    className="w-full bg-[#191a1b] border border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] h-11 pr-10 pl-4 rounded-xl text-sm focus:outline-none focus:border-[#f7931a]/50"
+                    className="w-full bg-[#191a1b] border border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] h-11 pl-10 pr-4 rounded-xl text-sm focus:outline-none focus:border-[#f7931a]/50"
                     required
                     autoFocus
                   />
@@ -151,21 +151,21 @@ export default function AdminLoginPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs text-[#8a8f98]">كلمة المرور</label>
+                <label className="text-xs text-[#8a8f98]">Password</label>
                 <div className="relative">
-                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="أدخل كلمة المرور"
-                    className="w-full bg-[#191a1b] border border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] h-11 pr-10 pl-10 rounded-xl text-sm focus:outline-none focus:border-[#f7931a]/50"
+                    placeholder="Enter your password"
+                    className="w-full bg-[#191a1b] border border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] h-11 pl-10 pr-10 rounded-xl text-sm focus:outline-none focus:border-[#f7931a]/50"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8f98] hover:text-[#d0d6e0]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a8f98] hover:text-[#d0d6e0]"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -180,10 +180,10 @@ export default function AdminLoginPage() {
                 {loading ? (
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>جاري التحقق...</span>
+                    <span>Verifying...</span>
                   </div>
                 ) : (
-                  'تسجيل الدخول'
+                  'Sign In'
                 )}
               </button>
             </form>
@@ -193,9 +193,9 @@ export default function AdminLoginPage() {
           {step === 'totp' && (
             <form onSubmit={handleTotpSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs text-[#8a8f98]">رمز التحقق (6 أرقام)</label>
+                <label className="text-xs text-[#8a8f98]">Verification Code (6 digits)</label>
                 <div className="relative">
-                  <KeyRound className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
                   <input
                     type="text"
                     value={totpCode}
@@ -204,7 +204,7 @@ export default function AdminLoginPage() {
                       setTotpCode(val);
                     }}
                     placeholder="000000"
-                    className="w-full bg-[#191a1b] border border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] h-11 pr-10 pl-4 rounded-xl text-sm tracking-[0.5em] text-center focus:outline-none focus:border-[#f7931a]/50"
+                    className="w-full bg-[#191a1b] border border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] h-11 pl-10 pr-4 rounded-xl text-sm tracking-[0.5em] text-center focus:outline-none focus:border-[#f7931a]/50"
                     required
                     autoFocus
                     maxLength={6}
@@ -221,10 +221,10 @@ export default function AdminLoginPage() {
                 {loading ? (
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>جاري التحقق...</span>
+                    <span>Verifying...</span>
                   </div>
                 ) : (
-                  'تحقق'
+                  'Verify'
                 )}
               </button>
 
@@ -233,13 +233,13 @@ export default function AdminLoginPage() {
                 onClick={() => { setStep('credentials'); setTotpCode(''); setError(null); }}
                 className="w-full text-xs text-[#8a8f98] hover:text-[#f7f8f8] transition-colors py-2"
               >
-                العودة لتسجيل الدخول
+                Back to Sign In
               </button>
             </form>
           )}
 
           <p className="text-center text-[10px] text-[#8a8f98] mt-6">
-            هذه الصفحة مخصصة لمديري النظام فقط
+            This page is restricted to system administrators only
           </p>
         </div>
       </div>

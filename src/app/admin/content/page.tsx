@@ -154,7 +154,7 @@ export default function AdminContentPage() {
           <div className="bg-[#0c0d0e] border border-white/10 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
               <h3 className="text-sm font-semibold text-[#f7f8f8]">
-                {isCreating ? 'إنشاء صفحة جديدة' : `تعديل: ${editingPage?.title}`}
+                {isCreating ? 'Create New Page' : `Edit: ${editingPage?.title}`}
               </h3>
               <button onClick={cancelEdit} className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98]">
                 <X className="h-4 w-4" />
@@ -164,7 +164,7 @@ export default function AdminContentPage() {
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">العنوان</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Title</label>
                   <input
                     type="text"
                     value={formData.title}
@@ -176,11 +176,11 @@ export default function AdminContentPage() {
                       });
                     }}
                     className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50"
-                    placeholder="عنوان الصفحة"
+                    placeholder="Page title"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">الرابط (Slug)</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Slug</label>
                   <input
                     type="text"
                     value={formData.slug}
@@ -193,25 +193,25 @@ export default function AdminContentPage() {
               </div>
 
               <div>
-                <label className="text-xs text-[#8a8f98] mb-1.5 block">وصف SEO</label>
+                <label className="text-xs text-[#8a8f98] mb-1.5 block">SEO Description</label>
                 <input
                   type="text"
                   value={formData.meta_description}
                   onChange={(e) => setFormData({ ...formData, meta_description: e.target.value })}
                   className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50"
-                  placeholder="وصف مختصر للصفحة لمحركات البحث"
+                  placeholder="Brief description for search engines"
                   maxLength={160}
                 />
                 <p className="text-[10px] text-[#8a8f98] mt-1">{formData.meta_description.length}/160</p>
               </div>
 
               <div>
-                <label className="text-xs text-[#8a8f98] mb-1.5 block">المحتوى</label>
+                <label className="text-xs text-[#8a8f98] mb-1.5 block">Content</label>
                 <textarea
                   value={formData.content}
                   onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                   className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50 min-h-[300px] font-mono"
-                  placeholder="اكتب محتوى الصفحة هنا... (يدعم HTML)"
+                  placeholder="Write page content here... (supports HTML)"
                   dir="ltr"
                 />
               </div>
@@ -229,8 +229,8 @@ export default function AdminContentPage() {
                   </div>
                 </div>
                 <div>
-                  <p className="text-sm text-[#f7f8f8]">نشر الصفحة</p>
-                  <p className="text-[10px] text-[#8a8f98]">عند التفعيل ستكون الصفحة متاحة للجميع</p>
+                  <p className="text-sm text-[#f7f8f8]">Publish Page</p>
+                  <p className="text-[10px] text-[#8a8f98]">When enabled, the page will be accessible to everyone</p>
                 </div>
               </label>
             </div>
@@ -240,7 +240,7 @@ export default function AdminContentPage() {
                 onClick={cancelEdit}
                 className="px-4 py-2 rounded-lg bg-white/5 text-[#8a8f98] hover:text-[#f7f8f8] text-sm transition-colors"
               >
-                إلغاء
+                Cancel
               </button>
               <button
                 onClick={handleSave}
@@ -252,7 +252,7 @@ export default function AdminContentPage() {
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
-                {isCreating ? 'إنشاء' : 'حفظ'}
+                {isCreating ? 'Create' : 'Save'}
               </button>
             </div>
           </div>
@@ -263,13 +263,13 @@ export default function AdminContentPage() {
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
             <input
               type="text"
-              placeholder="بحث في الصفحات..."
+              placeholder="Search pages..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="bg-[#0c0d0e] border border-white/10 rounded-lg pr-10 pl-4 py-2 text-sm text-[#d0d6e0] placeholder-[#8a8f98] w-[260px] focus:outline-none focus:border-[#0052ff]/50"
+              className="bg-[#0c0d0e] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-[#d0d6e0] placeholder-[#8a8f98] w-[260px] focus:outline-none focus:border-[#0052ff]/50"
             />
           </div>
         </div>
@@ -280,7 +280,7 @@ export default function AdminContentPage() {
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0052ff] hover:bg-[#0045d1] text-white text-sm font-medium transition-colors"
           >
             <Plus className="h-4 w-4" />
-            صفحة جديدة
+            New Page
           </button>
         )}
       </div>
@@ -293,8 +293,8 @@ export default function AdminContentPage() {
       ) : filteredPages.length === 0 ? (
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-12 text-center">
           <FileText className="h-10 w-10 text-[#8a8f98] mx-auto mb-3" />
-          <p className="text-sm text-[#8a8f98]">لا توجد صفحات محتوى</p>
-          <p className="text-xs text-[#8a8f98] mt-1">أنشئ صفحة جديدة مثل: الشروط، الخصوصية، الأسئلة الشائعة</p>
+          <p className="text-sm text-[#8a8f98]">No content pages found</p>
+          <p className="text-xs text-[#8a8f98] mt-1">Create a new page like: Terms, Privacy, FAQ</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -309,18 +309,18 @@ export default function AdminContentPage() {
                     <p className="text-sm text-[#f7f8f8] font-medium">{page.title}</p>
                     {page.is_published ? (
                       <span className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-[#0ecb81]/10 text-[#0ecb81]">
-                        <Globe className="h-2.5 w-2.5" /> منشور
+                        <Globe className="h-2.5 w-2.5" /> Published
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-[#8a8f98]/10 text-[#8a8f98]">
-                        <Lock className="h-2.5 w-2.5" /> مسودة
+                        <Lock className="h-2.5 w-2.5" /> Draft
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 mt-1.5">
                     <span className="text-[10px] text-[#8a8f98] font-mono" dir="ltr">/{page.slug}</span>
                     <span className="text-[10px] text-[#8a8f98]">
-                      آخر تعديل: {new Date(page.updated_at).toLocaleDateString('ar')}
+                      Last modified: {new Date(page.updated_at).toLocaleDateString('en')}
                     </span>
                   </div>
                   {page.meta_description && (
@@ -332,14 +332,14 @@ export default function AdminContentPage() {
                   <button
                     onClick={() => togglePublish(page)}
                     className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] hover:text-[#f7f8f8] transition-colors"
-                    title={page.is_published ? 'إلغاء النشر' : 'نشر'}
+                    title={page.is_published ? 'Unpublish' : 'Publish'}
                   >
                     {page.is_published ? <Lock className="h-3.5 w-3.5" /> : <Globe className="h-3.5 w-3.5" />}
                   </button>
                   <button
                     onClick={() => startEdit(page)}
                     className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] hover:text-[#0052ff] transition-colors"
-                    title="تعديل"
+                    title="Edit"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
                   </button>
@@ -348,7 +348,7 @@ export default function AdminContentPage() {
                       href={`/${page.slug}`}
                       target="_blank"
                       className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98] hover:text-[#0ecb81] transition-colors"
-                      title="عرض"
+                      title="View"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
@@ -356,12 +356,12 @@ export default function AdminContentPage() {
                   {isSuperAdmin && (
                     <button
                       onClick={() => {
-                        if (confirm('هل أنت متأكد من حذف هذه الصفحة؟')) {
+                        if (confirm('Are you sure you want to delete this page?')) {
                           fetch(`/api/admin/content?id=${page.id}`, { method: 'DELETE' }).then(() => fetchContent());
                         }
                       }}
                       className="p-1.5 rounded-lg hover:bg-[#f6465d]/10 text-[#8a8f98] hover:text-[#f6465d] transition-colors"
-                      title="حذف"
+                      title="Delete"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -376,13 +376,13 @@ export default function AdminContentPage() {
       {/* Quick Create Templates */}
       {pages.length === 0 && !loading && (
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-[#f7f8f8] mb-3">قوالب سريعة</h3>
+          <h3 className="text-sm font-semibold text-[#f7f8f8] mb-3">Quick Templates</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { title: 'شروط الاستخدام', slug: 'terms' },
-              { title: 'سياسة الخصوصية', slug: 'privacy' },
-              { title: 'الأسئلة الشائعة', slug: 'faq' },
-              { title: 'عن المنصة', slug: 'about' },
+              { title: 'Terms of Service', slug: 'terms' },
+              { title: 'Privacy Policy', slug: 'privacy' },
+              { title: 'FAQ', slug: 'faq' },
+              { title: 'About', slug: 'about' },
             ].map((template) => (
               <button
                 key={template.slug}
@@ -391,7 +391,7 @@ export default function AdminContentPage() {
                   setFormData({
                     title: template.title,
                     slug: template.slug,
-                    content: `<h1>${template.title}</h1>\n<p>محتوى صفحة ${template.title} سيتم إضافته هنا...</p>`,
+                    content: `<h1>${template.title}</h1>\n<p>${template.title} content will be added here...</p>`,
                     meta_description: `${template.title} - Sentinel`,
                     is_published: false,
                   });

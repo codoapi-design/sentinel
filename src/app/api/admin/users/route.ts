@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    // بناء الاستعلام
+    // Build the query
     let query = supabase
       .from('user_profiles')
       .select('*', { count: 'exact' });

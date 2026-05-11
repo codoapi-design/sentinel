@@ -6,20 +6,20 @@ import type { Database } from './lib/supabase/types';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // السماح بالمسارات العامة
+  // Allow public paths
   const publicPaths = ['/', '/login', '/signup', '/demo', '/auth/callback'];
   const isPublicPath = publicPaths.some(path => pathname === path);
   const isApiPath = pathname.startsWith('/api/');
   const isStaticAsset = pathname.startsWith('/_next/') || pathname.includes('.');
 
-  // تحديث الجلسة عن طريق الكوكيز (هام جداً لتسجيل الدخول)
+  // Update session via cookies (essential for login)
   const supabaseResponse = await updateSession(request);
 
   if (isPublicPath || isApiPath || isStaticAsset) {
     return supabaseResponse;
   }
 
-  // إنشاء عميل Supabase للقراءة من الكوكيز
+  // Create Supabase client for reading from cookies
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
@@ -27,11 +27,11 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // حماية مسارات الأدمن
+  // Protect admin paths
   const isAdminPath = pathname.startsWith('/admin');
 
   if (isAdminPath) {
-    // السماح بصفحة تسجيل دخول الأدمن
+    // Allow admin login page
     if (pathname === '/admin/login') {
       return supabaseResponse;
     }
@@ -61,7 +61,7 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(loginUrl);
       }
 
-      // التحقق من صلاحية الأدمن
+      // Verify admin permissions
       const { data: adminData, error } = await supabase
         .from('admin_users')
         .select('role')
@@ -73,13 +73,13 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(loginUrl);
       }
 
-      // إضافة معلومات الأدمن للرأس
+      // Add admin info to headers
       const response = NextResponse.next({
         request,
       });
       response.headers.set('x-admin-role', adminData.role);
       response.headers.set('x-admin-id', user.id);
-      // نسخ الكوكيز من supabaseResponse
+      // Copy cookies from supabaseResponse
       supabaseResponse.cookies.getAll().forEach(cookie => {
         response.cookies.set(cookie.name, cookie.value);
       });
@@ -90,7 +90,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // حماية لوحة المستخدم العادية
+  // Protect user dashboard paths
   const isUserPath = pathname.startsWith('/dashboard');
   if (isUserPath) {
     try {
@@ -117,7 +117,7 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(loginUrl);
       }
 
-      // المستخدم مسجل الدخول - السماح بالوصول
+      // User is logged in - allow access
       return supabaseResponse;
     } catch {
       const loginUrl = new URL('/login', request.url);

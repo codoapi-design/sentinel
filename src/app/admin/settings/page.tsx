@@ -28,7 +28,7 @@ export default function AdminSettingsPage() {
   // Settings state
   const [settings, setSettings] = useState({
     siteName: 'Sentinel',
-    siteDescription: 'منصة مراقبة المحافظ الرقمية',
+    siteDescription: 'Digital Wallet Monitoring Platform',
     supportEmail: 'support@sentinel.app',
     maintenanceMode: false,
     registrationEnabled: true,
@@ -71,13 +71,13 @@ export default function AdminSettingsPage() {
         body: JSON.stringify({ action: 'update', data: settings }),
       });
       if (res.ok) {
-        setSaveMessage('تم حفظ الإعدادات بنجاح');
+        setSaveMessage('Settings saved successfully');
         setTimeout(() => setSaveMessage(null), 3000);
       } else {
-        setSaveMessage('حدث خطأ أثناء حفظ الإعدادات');
+        setSaveMessage('An error occurred while saving settings');
       }
     } catch {
-      setSaveMessage('حدث خطأ في الاتصال');
+      setSaveMessage('Connection error');
     } finally {
       setSaving(false);
     }
@@ -86,12 +86,12 @@ export default function AdminSettingsPage() {
   const isSuperAdmin = admin?.role === 'super_admin';
 
   const sections = [
-    { id: 'general', label: 'عام', icon: Globe },
-    { id: 'security', label: 'الأمان', icon: Shield },
-    { id: 'ai', label: 'الذكاء الاصطناعي', icon: Bot },
-    { id: 'limits', label: 'الحدود والقيود', icon: Database },
-    { id: 'notifications', label: 'الإشعارات', icon: Bell },
-    { id: 'system', label: 'معلومات النظام', icon: Server },
+    { id: 'general', label: 'General', icon: Globe },
+    { id: 'security', label: 'Security', icon: Shield },
+    { id: 'ai', label: 'AI', icon: Bot },
+    { id: 'limits', label: 'Limits & Restrictions', icon: Database },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'system', label: 'System Info', icon: Server },
   ];
 
   if (loading) {
@@ -108,9 +108,9 @@ export default function AdminSettingsPage() {
       <div className="flex items-center justify-between bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
         <div className="flex items-center gap-3">
           <Settings className="h-4 w-4 text-[#8a8f98]" />
-          <span className="text-sm text-[#f7f8f8]">إعدادات النظام</span>
+          <span className="text-sm text-[#f7f8f8]">System Settings</span>
           {saveMessage && (
-            <span className={`text-xs ${saveMessage.includes('نجاح') ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+            <span className={`text-xs ${saveMessage.includes('successfully') ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
               {saveMessage}
             </span>
           )}
@@ -126,7 +126,7 @@ export default function AdminSettingsPage() {
             ) : (
               <Save className="h-4 w-4" />
             )}
-            حفظ الإعدادات
+            Save Settings
           </button>
         )}
       </div>
@@ -158,10 +158,10 @@ export default function AdminSettingsPage() {
           {activeSection === 'general' && (
             <div className="space-y-4">
               <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5 space-y-4">
-                <h3 className="text-sm font-semibold text-[#f7f8f8]">الإعدادات العامة</h3>
+                <h3 className="text-sm font-semibold text-[#f7f8f8]">General Settings</h3>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs text-[#8a8f98] mb-1.5 block">اسم الموقع</label>
+                    <label className="text-xs text-[#8a8f98] mb-1.5 block">Site Name</label>
                     <input
                       type="text"
                       value={settings.siteName}
@@ -171,7 +171,7 @@ export default function AdminSettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-[#8a8f98] mb-1.5 block">وصف الموقع</label>
+                    <label className="text-xs text-[#8a8f98] mb-1.5 block">Site Description</label>
                     <input
                       type="text"
                       value={settings.siteDescription}
@@ -181,15 +181,15 @@ export default function AdminSettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-[#8a8f98] mb-1.5 block">بريد الدعم</label>
+                    <label className="text-xs text-[#8a8f98] mb-1.5 block">Support Email</label>
                     <div className="relative">
-                      <Mail className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a8f98]" />
                       <input
                         type="email"
                         value={settings.supportEmail}
                         onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })}
                         disabled={!isSuperAdmin}
-                        className="w-full bg-[#191a1b] border border-white/10 rounded-lg pr-10 pl-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50 disabled:opacity-50"
+                        className="w-full bg-[#191a1b] border border-white/10 rounded-lg pl-10 pr-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50 disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -197,12 +197,12 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5 space-y-4">
-                <h3 className="text-sm font-semibold text-[#f7f8f8]">الصيانة والتسجيل</h3>
+                <h3 className="text-sm font-semibold text-[#f7f8f8]">Maintenance & Registration</h3>
                 <div className="space-y-3">
                   <label className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg cursor-pointer">
                     <div>
-                      <p className="text-sm text-[#f7f8f8]">وضع الصيانة</p>
-                      <p className="text-[10px] text-[#8a8f98]">تعطيل الوصول للمستخدمين العاديين</p>
+                      <p className="text-sm text-[#f7f8f8]">Maintenance Mode</p>
+                      <p className="text-[10px] text-[#8a8f98]">Disable access for regular users</p>
                     </div>
                     <div className="relative">
                       <input
@@ -219,8 +219,8 @@ export default function AdminSettingsPage() {
                   </label>
                   <label className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg cursor-pointer">
                     <div>
-                      <p className="text-sm text-[#f7f8f8]">التسجيل الجديد</p>
-                      <p className="text-[10px] text-[#8a8f98]">السماح بتسجيل حسابات جديدة</p>
+                      <p className="text-sm text-[#f7f8f8]">New Registration</p>
+                      <p className="text-[10px] text-[#8a8f98]">Allow new account registration</p>
                     </div>
                     <div className="relative">
                       <input
@@ -243,12 +243,12 @@ export default function AdminSettingsPage() {
           {/* Security */}
           {activeSection === 'security' && (
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-[#f7f8f8]">إعدادات الأمان</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8]">Security Settings</h3>
               <div className="space-y-3">
                 <label className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg cursor-pointer">
                   <div>
-                    <p className="text-sm text-[#f7f8f8]">تفعيل البريد الإلكتروني</p>
-                    <p className="text-[10px] text-[#8a8f98]">يتطلب تأكيد البريد قبل استخدام المنصة</p>
+                    <p className="text-sm text-[#f7f8f8]">Email Verification</p>
+                    <p className="text-[10px] text-[#8a8f98]">Require email confirmation before using the platform</p>
                   </div>
                   <div className="relative">
                     <input
@@ -265,7 +265,7 @@ export default function AdminSettingsPage() {
                 </label>
 
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">نافرة تحديد المعدل (دقيقة)</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Rate Limit Window (minutes)</label>
                   <input
                     type="number"
                     value={settings.rateLimitWindow}
@@ -276,7 +276,7 @@ export default function AdminSettingsPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">الحد الأقصى للطلبات في النافرة</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Max Requests per Window</label>
                   <input
                     type="number"
                     value={settings.rateLimitMaxRequests}
@@ -289,7 +289,7 @@ export default function AdminSettingsPage() {
 
               {/* Admin List */}
               <div className="pt-4 border-t border-white/5">
-                <h4 className="text-xs font-semibold text-[#8a8f98] mb-3">المديرون ({stats?.adminCount || 0})</h4>
+                <h4 className="text-xs font-semibold text-[#8a8f98] mb-3">Admins ({stats?.adminCount || 0})</h4>
                 <div className="bg-white/[0.02] rounded-lg p-3">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-[#f7931a]/20 flex items-center justify-center text-xs text-[#f7931a] font-bold">
@@ -297,7 +297,7 @@ export default function AdminSettingsPage() {
                     </div>
                     <div>
                       <p className="text-xs text-[#f7f8f8]">Super Admin</p>
-                      <p className="text-[10px] text-[#f7931a]">مدير أعلى</p>
+                      <p className="text-[10px] text-[#f7931a]">Super Admin</p>
                     </div>
                   </div>
                 </div>
@@ -308,10 +308,10 @@ export default function AdminSettingsPage() {
           {/* AI Settings */}
           {activeSection === 'ai' && (
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-[#f7f8f8]">إعدادات الذكاء الاصطناعي</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8]">AI Settings</h3>
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">النموذج</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Model</label>
                   <select
                     value={settings.aiModel}
                     onChange={(e) => setSettings({ ...settings, aiModel: e.target.value })}
@@ -325,7 +325,7 @@ export default function AdminSettingsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">الحد اليومي لكل مستخدم</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Daily Limit per User</label>
                   <input
                     type="number"
                     value={settings.aiDailyLimit}
@@ -335,7 +335,7 @@ export default function AdminSettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">الحد الأقصى للـ Tokens</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Max Tokens</label>
                   <input
                     type="number"
                     value={settings.aiMaxTokens}
@@ -351,10 +351,10 @@ export default function AdminSettingsPage() {
           {/* Limits */}
           {activeSection === 'limits' && (
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-[#f7f8f8]">حدود المستخدمين</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8]">User Limits</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">الحد الأقصى للمحافظ لكل مستخدم</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Max Wallets per User</label>
                   <input
                     type="number"
                     value={settings.maxWalletsPerUser}
@@ -364,7 +364,7 @@ export default function AdminSettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">الحد الأقصى لمفاتيح API لكل مستخدم</label>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Max API Keys per User</label>
                   <input
                     type="number"
                     value={settings.maxApiKeysPerUser}
@@ -377,30 +377,30 @@ export default function AdminSettingsPage() {
 
               {/* Current Plan Limits */}
               <div className="pt-4 border-t border-white/5">
-                <h4 className="text-xs font-semibold text-[#8a8f98] mb-3">حدود الباقات</h4>
+                <h4 className="text-xs font-semibold text-[#8a8f98] mb-3">Plan Limits</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="bg-white/[0.02] rounded-lg p-3">
                     <p className="text-xs text-[#8a8f98] mb-1">Starter</p>
                     <div className="text-[10px] text-[#d0d6e0] space-y-1">
-                      <p>3 محافظ</p>
-                      <p>1 مفتاح API</p>
-                      <p>10 محادثات AI/يوم</p>
+                      <p>3 wallets</p>
+                      <p>1 API key</p>
+                      <p>10 AI chats/day</p>
                     </div>
                   </div>
                   <div className="bg-[#0ecb81]/5 rounded-lg p-3">
                     <p className="text-xs text-[#0ecb81] mb-1">Pro</p>
                     <div className="text-[10px] text-[#d0d6e0] space-y-1">
-                      <p>10 محافظ</p>
-                      <p>3 مفاتيح API</p>
-                      <p>50 محادثة AI/يوم</p>
+                      <p>10 wallets</p>
+                      <p>3 API keys</p>
+                      <p>50 AI chats/day</p>
                     </div>
                   </div>
                   <div className="bg-[#f7931a]/5 rounded-lg p-3">
                     <p className="text-xs text-[#f7931a] mb-1">Enterprise</p>
                     <div className="text-[10px] text-[#d0d6e0] space-y-1">
-                      <p>غير محدود محافظ</p>
-                      <p>غير محدود API</p>
-                      <p>غير محدود AI</p>
+                      <p>Unlimited wallets</p>
+                      <p>Unlimited API</p>
+                      <p>Unlimited AI</p>
                     </div>
                   </div>
                 </div>
@@ -411,12 +411,12 @@ export default function AdminSettingsPage() {
           {/* Notifications */}
           {activeSection === 'notifications' && (
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-[#f7f8f8]">إعدادات الإشعارات</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8]">Notification Settings</h3>
               <div className="space-y-3">
                 <label className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg cursor-pointer">
                   <div>
-                    <p className="text-sm text-[#f7f8f8]">بوت تيليجرام</p>
-                    <p className="text-[10px] text-[#8a8f98]">إرسال التنبيهات عبر بوت تيليجرام</p>
+                    <p className="text-sm text-[#f7f8f8]">Telegram Bot</p>
+                    <p className="text-[10px] text-[#8a8f98]">Send alerts via Telegram bot</p>
                   </div>
                   <div className="relative">
                     <input
@@ -434,8 +434,8 @@ export default function AdminSettingsPage() {
 
                 <label className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg cursor-pointer">
                   <div>
-                    <p className="text-sm text-[#f7f8f8]">إشعارات البريد</p>
-                    <p className="text-[10px] text-[#8a8f98]">إرسال التنبيهات عبر البريد الإلكتروني</p>
+                    <p className="text-sm text-[#f7f8f8]">Email Notifications</p>
+                    <p className="text-[10px] text-[#8a8f98]">Send alerts via email</p>
                   </div>
                   <div className="relative">
                     <input
@@ -458,15 +458,15 @@ export default function AdminSettingsPage() {
           {activeSection === 'system' && (
             <div className="space-y-4">
               <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-                <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">معلومات النظام</h3>
+                <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">System Information</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {[
-                    { label: 'الإصدار', value: '0.2.0' },
-                    { label: 'الإطار', value: 'Next.js 16' },
-                    { label: 'قاعدة البيانات', value: 'Supabase' },
-                    { label: 'الاستضافة', value: 'Vercel' },
-                    { label: 'المديرون', value: String(stats?.adminCount || 0) },
-                    { label: 'سجلات التدقيق', value: String(stats?.auditLogCount || 0) },
+                    { label: 'Version', value: '0.2.0' },
+                    { label: 'Framework', value: 'Next.js 16' },
+                    { label: 'Database', value: 'Supabase' },
+                    { label: 'Hosting', value: 'Vercel' },
+                    { label: 'Admins', value: String(stats?.adminCount || 0) },
+                    { label: 'Audit Logs', value: String(stats?.auditLogCount || 0) },
                   ].map((item) => (
                     <div key={item.label} className="bg-white/[0.02] rounded-lg p-3">
                       <p className="text-[10px] text-[#8a8f98]">{item.label}</p>
@@ -478,7 +478,7 @@ export default function AdminSettingsPage() {
 
               {/* System Health */}
               <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-                <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">حالة الخدمات</h3>
+                <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Service Status</h3>
                 <div className="space-y-2">
                   {[
                     { name: 'Supabase (Auth + DB)', status: 'connected' },
@@ -492,7 +492,7 @@ export default function AdminSettingsPage() {
                         <div className="w-2 h-2 rounded-full bg-[#0ecb81]" />
                         <span className="text-xs text-[#f7f8f8]">{service.name}</span>
                       </div>
-                      <span className="text-[10px] text-[#0ecb81]">متصل</span>
+                      <span className="text-[10px] text-[#0ecb81]">Connected</span>
                     </div>
                   ))}
                 </div>
@@ -500,23 +500,23 @@ export default function AdminSettingsPage() {
 
               {/* Stats Summary */}
               <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-                <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">إحصائيات النظام</h3>
+                <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">System Statistics</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="bg-white/[0.02] rounded-lg p-3 text-center">
                     <p className="text-lg font-bold text-[#f7f8f8]">{stats?.totalUsers || 0}</p>
-                    <p className="text-[10px] text-[#8a8f98]">إجمالي المستخدمين</p>
+                    <p className="text-[10px] text-[#8a8f98]">Total Users</p>
                   </div>
                   <div className="bg-white/[0.02] rounded-lg p-3 text-center">
                     <p className="text-lg font-bold text-[#0ecb81]">{stats?.activeUsers || 0}</p>
-                    <p className="text-[10px] text-[#8a8f98]">مستخدمين نشطين</p>
+                    <p className="text-[10px] text-[#8a8f98]">Active Users</p>
                   </div>
                   <div className="bg-white/[0.02] rounded-lg p-3 text-center">
                     <p className="text-lg font-bold text-[#f7931a]">{stats?.totalWallets || 0}</p>
-                    <p className="text-[10px] text-[#8a8f98]">محافظ متصلة</p>
+                    <p className="text-[10px] text-[#8a8f98]">Connected Wallets</p>
                   </div>
                   <div className="bg-white/[0.02] rounded-lg p-3 text-center">
                     <p className="text-lg font-bold text-[#627eea]">{stats?.totalTransactions || 0}</p>
-                    <p className="text-[10px] text-[#8a8f98]">إجمالي المعاملات</p>
+                    <p className="text-[10px] text-[#8a8f98]">Total Transactions</p>
                   </div>
                 </div>
               </div>

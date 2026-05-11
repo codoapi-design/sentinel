@@ -80,11 +80,11 @@ export default function AdminAnalyticsPage() {
   };
 
   const tabs = [
-    { id: 'users' as const, label: 'المستخدمين', icon: Users },
-    { id: 'revenue' as const, label: 'الإيرادات', icon: CreditCard },
-    { id: 'wallets' as const, label: 'المحافظ', icon: Wallet },
-    { id: 'transactions' as const, label: 'المعاملات', icon: Activity },
-    { id: 'ai' as const, label: 'الذكاء الاصطناعي', icon: Bot },
+    { id: 'users' as const, label: 'Users', icon: Users },
+    { id: 'revenue' as const, label: 'Revenue', icon: CreditCard },
+    { id: 'wallets' as const, label: 'Wallets', icon: Wallet },
+    { id: 'transactions' as const, label: 'Transactions', icon: Activity },
+    { id: 'ai' as const, label: 'AI', icon: Bot },
   ];
 
   if (loading && !data) {
@@ -101,7 +101,7 @@ export default function AdminAnalyticsPage() {
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-5 w-5 text-[#0052ff]" />
-          <h2 className="text-lg font-bold text-[#f7f8f8]">تحليلات المنصة</h2>
+          <h2 className="text-lg font-bold text-[#f7f8f8]">Platform Analytics</h2>
         </div>
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-[#8a8f98]" />
@@ -114,7 +114,7 @@ export default function AdminAnalyticsPage() {
                   timeRange === range ? 'bg-[#0052ff] text-white' : 'text-[#8a8f98] hover:text-[#f7f8f8]'
                 }`}
               >
-                {range === '7d' ? '7 أيام' : range === '30d' ? '30 يوم' : range === '90d' ? '90 يوم' : 'سنة'}
+                {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : range === '90d' ? '90 Days' : '1 Year'}
               </button>
             ))}
           </div>
@@ -130,38 +130,38 @@ export default function AdminAnalyticsPage() {
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#8a8f98] mb-1">إجمالي المستخدمين</p>
+          <p className="text-[10px] text-[#8a8f98] mb-1">Total Users</p>
           <p className="text-lg font-bold text-[#f7f8f8]">{formatNumber(data?.users.total || 0)}</p>
           {data?.users.new && data.users.new > 0 && (
             <span className="flex items-center gap-0.5 text-[9px] text-[#0ecb81]">
-              <ArrowUpRight className="h-2.5 w-2.5" />+{data.users.new} جديد
+              <ArrowUpRight className="h-2.5 w-2.5" />+{data.users.new} new
             </span>
           )}
         </div>
         <div className="bg-[#0c0d0e] border border-[#0ecb81]/10 rounded-xl p-3">
-          <p className="text-[10px] text-[#0ecb81] mb-1">الإيراد الشهري</p>
+          <p className="text-[10px] text-[#0ecb81] mb-1">Monthly Revenue</p>
           <p className="text-lg font-bold text-[#0ecb81]">${formatNumber(data?.revenue.mrr || 0)}</p>
           <span className="text-[9px] text-[#8a8f98]">ARR: ${formatNumber(data?.revenue.arr || 0)}</span>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#8a8f98] mb-1">المحافظ المتصلة</p>
+          <p className="text-[10px] text-[#8a8f98] mb-1">Connected Wallets</p>
           <p className="text-lg font-bold text-[#f7f8f8]">{formatNumber(data?.wallets.total || 0)}</p>
-          <span className="text-[9px] text-[#8a8f98]">عبر {data?.wallets.networks.length || 0} شبكات</span>
+          <span className="text-[9px] text-[#8a8f98]">Across {data?.wallets.networks.length || 0} networks</span>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#8a8f98] mb-1">المعاملات</p>
+          <p className="text-[10px] text-[#8a8f98] mb-1">Transactions</p>
           <p className="text-lg font-bold text-[#f7f8f8]">{formatNumber(data?.transactions.total || 0)}</p>
-          <span className="text-[9px] text-[#8a8f98]">إجمالي منذ البداية</span>
+          <span className="text-[9px] text-[#8a8f98]">All time total</span>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#627eea] mb-1">محادثات AI</p>
+          <p className="text-[10px] text-[#627eea] mb-1">AI Chats</p>
           <p className="text-lg font-bold text-[#f7f8f8]">{formatNumber(data?.ai.totalChats || 0)}</p>
-          <span className="text-[9px] text-[#8a8f98]">{formatNumber(data?.ai.totalAnalyses || 0)} تحليل</span>
+          <span className="text-[9px] text-[#8a8f98]">{formatNumber(data?.ai.totalAnalyses || 0)} analyses</span>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#f7931a] mb-1">تكلفة AI</p>
+          <p className="text-[10px] text-[#f7931a] mb-1">AI Cost</p>
           <p className="text-lg font-bold text-[#f7f8f8]">${data?.ai.estimatedCost || '0.00'}</p>
-          <span className="text-[9px] text-[#8a8f98]">تقديرية</span>
+          <span className="text-[9px] text-[#8a8f98]">Estimated</span>
         </div>
       </div>
 
@@ -188,7 +188,7 @@ export default function AdminAnalyticsPage() {
         <div className="space-y-4">
           {/* User Growth Chart */}
           <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">نمو المستخدمين</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">User Growth</h3>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data?.users.growth || []}>
@@ -200,8 +200,8 @@ export default function AdminAnalyticsPage() {
                     labelStyle={{ color: '#8a8f98' }}
                   />
                   <Legend />
-                  <Area type="monotone" dataKey="cumulative" stroke="#0052ff" fill="#0052ff20" strokeWidth={2} name="إجمالي المستخدمين" />
-                  <Area type="monotone" dataKey="new" stroke="#0ecb81" fill="#0ecb8120" strokeWidth={2} name="مستخدمين جدد" />
+                  <Area type="monotone" dataKey="cumulative" stroke="#0052ff" fill="#0052ff20" strokeWidth={2} name="Total Users" />
+                  <Area type="monotone" dataKey="new" stroke="#0ecb81" fill="#0ecb8120" strokeWidth={2} name="New Users" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -210,19 +210,19 @@ export default function AdminAnalyticsPage() {
           {/* Engagement Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-              <p className="text-xs text-[#8a8f98] mb-2">متوسط المحافظ/مستخدم</p>
+              <p className="text-xs text-[#8a8f98] mb-2">Avg Wallets/User</p>
               <p className="text-2xl font-bold text-[#f7f8f8]">{data?.users.engagement.avgWalletsPerUser || '0'}</p>
             </div>
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-              <p className="text-xs text-[#8a8f98] mb-2">متوسط المعاملات/مستخدم</p>
+              <p className="text-xs text-[#8a8f98] mb-2">Avg Transactions/User</p>
               <p className="text-2xl font-bold text-[#f7f8f8]">{data?.users.engagement.avgTxPerUser || '0'}</p>
             </div>
             <div className="bg-[#0c0d0e] border border-[#0ecb81]/10 rounded-xl p-4">
-              <p className="text-xs text-[#8a8f98] mb-2">نسبة المدفوعين</p>
+              <p className="text-xs text-[#8a8f98] mb-2">Paid User Ratio</p>
               <p className="text-2xl font-bold text-[#0ecb81]">{data?.users.engagement.paidUserPercentage || 0}%</p>
             </div>
             <div className="bg-[#0c0d0e] border border-[#0052ff]/10 rounded-xl p-4">
-              <p className="text-xs text-[#8a8f98] mb-2">نسبة النشاط</p>
+              <p className="text-xs text-[#8a8f98] mb-2">Activity Rate</p>
               <p className="text-2xl font-bold text-[#0052ff]">{data?.users.engagement.activeUserPercentage || 0}%</p>
             </div>
           </div>
@@ -234,7 +234,7 @@ export default function AdminAnalyticsPage() {
           {/* Revenue by Plan */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">الإيرادات حسب الباقة</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Revenue by Plan</h3>
               <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -248,7 +248,7 @@ export default function AdminAnalyticsPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={{ backgroundColor: '#191a1b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
-                      formatter={(value: number) => [`$${value}`, 'الإيراد']}
+                      formatter={(value: number) => [`$${value}`, 'Revenue']}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -261,8 +261,8 @@ export default function AdminAnalyticsPage() {
                       <span className="text-[#8a8f98]">{item.plan}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-[#f7f8f8] font-medium">${item.revenue}/شهر</span>
-                      <span className="text-[9px] text-[#8a8f98]">({item.users} مستخدم)</span>
+                      <span className="text-[#f7f8f8] font-medium">${item.revenue}/month</span>
+                      <span className="text-[9px] text-[#8a8f98]">({item.users} users)</span>
                     </div>
                   </div>
                 ))}
@@ -270,20 +270,20 @@ export default function AdminAnalyticsPage() {
             </div>
 
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">ملخص الإيرادات</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Revenue Summary</h3>
               <div className="space-y-4">
                 <div className="bg-[#0ecb81]/5 rounded-xl p-5">
-                  <p className="text-xs text-[#0ecb81] mb-1">الإيراد المتكرر الشهري (MRR)</p>
+                  <p className="text-xs text-[#0ecb81] mb-1">Monthly Recurring Revenue (MRR)</p>
                   <p className="text-3xl font-bold text-[#0ecb81]">${(data?.revenue.mrr || 0).toLocaleString()}</p>
                   <p className="text-[10px] text-[#8a8f98] mt-1">Pro x$29 + Enterprise x$99</p>
                 </div>
                 <div className="bg-[#0052ff]/5 rounded-xl p-5">
-                  <p className="text-xs text-[#0052ff] mb-1">الإيراد السنوي المتوقع (ARR)</p>
+                  <p className="text-xs text-[#0052ff] mb-1">Annual Recurring Revenue (ARR)</p>
                   <p className="text-3xl font-bold text-[#0052ff]">${(data?.revenue.arr || 0).toLocaleString()}</p>
                   <p className="text-[10px] text-[#8a8f98] mt-1">MRR x 12</p>
                 </div>
                 <div className="bg-white/[0.02] rounded-xl p-4">
-                  <p className="text-xs text-[#8a8f98] mb-2">ARPU (متوسط الإيراد لكل مستخدم)</p>
+                  <p className="text-xs text-[#8a8f98] mb-2">ARPU (Average Revenue Per User)</p>
                   <p className="text-xl font-bold text-[#f7f8f8]">
                     ${(data?.users.total ? ((data.revenue.mrr) / data.users.total).toFixed(2) : '0.00')}
                   </p>
@@ -299,7 +299,7 @@ export default function AdminAnalyticsPage() {
           {/* Wallet Network Distribution */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">توزيع الشبكات</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Network Distribution</h3>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data?.wallets.networks || []} layout="vertical">
@@ -309,21 +309,21 @@ export default function AdminAnalyticsPage() {
                     <Tooltip
                       contentStyle={{ backgroundColor: '#191a1b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
                     />
-                    <Bar dataKey="count" fill="#0052ff" radius={[0, 4, 4, 0]} name="عدد المحافظ" />
+                    <Bar dataKey="count" fill="#0052ff" radius={[0, 4, 4, 0]} name="Wallet Count" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">إحصائيات المحافظ</h3>
+              <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Wallet Statistics</h3>
               <div className="space-y-3">
                 <div className="bg-white/[0.02] rounded-xl p-4">
-                  <p className="text-xs text-[#8a8f98] mb-1">إجمالي المحافظ</p>
+                  <p className="text-xs text-[#8a8f98] mb-1">Total Wallets</p>
                   <p className="text-2xl font-bold text-[#f7f8f8]">{(data?.wallets.total || 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-white/[0.02] rounded-xl p-4">
-                  <p className="text-xs text-[#8a8f98] mb-1">عدد الشبكات النشطة</p>
+                  <p className="text-xs text-[#8a8f98] mb-1">Active Networks</p>
                   <p className="text-2xl font-bold text-[#f7f8f8]">{data?.wallets.networks.length || 0}</p>
                 </div>
                 {(data?.wallets.networks || []).map((network) => (
@@ -349,7 +349,7 @@ export default function AdminAnalyticsPage() {
       {activeTab === 'transactions' && (
         <div className="space-y-4">
           <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">حجم المعاملات</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Transaction Volume</h3>
             <div className="h-[350px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data?.transactions.growth || []}>
@@ -361,8 +361,8 @@ export default function AdminAnalyticsPage() {
                     labelStyle={{ color: '#8a8f98' }}
                   />
                   <Legend />
-                  <Bar dataKey="sent" name="مرسلة" fill="#f6465d" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="received" name="مستلمة" fill="#0ecb81" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="sent" name="Sent" fill="#f6465d" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="received" name="Received" fill="#0ecb81" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -370,11 +370,11 @@ export default function AdminAnalyticsPage() {
           <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div className="bg-white/[0.02] rounded-lg p-3">
-                <p className="text-xs text-[#8a8f98] mb-1">إجمالي المعاملات</p>
+                <p className="text-xs text-[#8a8f98] mb-1">Total Transactions</p>
                 <p className="text-xl font-bold text-[#f7f8f8]">{(data?.transactions.total || 0).toLocaleString()}</p>
               </div>
               <div className="bg-white/[0.02] rounded-lg p-3">
-                <p className="text-xs text-[#8a8f98] mb-1">متوسط/يوم</p>
+                <p className="text-xs text-[#8a8f98] mb-1">Average/Day</p>
                 <p className="text-xl font-bold text-[#f7f8f8]">
                   {data?.transactions.growth.length
                     ? Math.round(data.transactions.total / Math.max(data.transactions.growth.length, 1))
@@ -382,7 +382,7 @@ export default function AdminAnalyticsPage() {
                 </p>
               </div>
               <div className="bg-white/[0.02] rounded-lg p-3">
-                <p className="text-xs text-[#8a8f98] mb-1">أيام نشطة</p>
+                <p className="text-xs text-[#8a8f98] mb-1">Active Days</p>
                 <p className="text-xl font-bold text-[#f7f8f8]">{data?.transactions.growth.length || 0}</p>
               </div>
             </div>
@@ -394,7 +394,7 @@ export default function AdminAnalyticsPage() {
         <div className="space-y-4">
           {/* AI Usage Chart */}
           <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">استخدام الذكاء الاصطناعي</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">AI Usage</h3>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data?.ai.growth || []}>
@@ -406,8 +406,8 @@ export default function AdminAnalyticsPage() {
                     labelStyle={{ color: '#8a8f98' }}
                   />
                   <Legend />
-                  <Area type="monotone" dataKey="chats" stroke="#627eea" fill="#627eea20" strokeWidth={2} name="محادثات" />
-                  <Area type="monotone" dataKey="analyses" stroke="#0ecb81" fill="#0ecb8120" strokeWidth={2} name="تحليلات" />
+                  <Area type="monotone" dataKey="chats" stroke="#627eea" fill="#627eea20" strokeWidth={2} name="Chats" />
+                  <Area type="monotone" dataKey="analyses" stroke="#0ecb81" fill="#0ecb8120" strokeWidth={2} name="Analyses" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -416,11 +416,11 @@ export default function AdminAnalyticsPage() {
           {/* AI Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-[#8a8f98] mb-1">المحادثات</p>
+              <p className="text-[10px] text-[#8a8f98] mb-1">Chats</p>
               <p className="text-xl font-bold text-[#627eea]">{formatNumber(data?.ai.totalChats || 0)}</p>
             </div>
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-[#8a8f98] mb-1">التحليلات</p>
+              <p className="text-[10px] text-[#8a8f98] mb-1">Analyses</p>
               <p className="text-xl font-bold text-[#0ecb81]">{formatNumber(data?.ai.totalAnalyses || 0)}</p>
             </div>
             <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
@@ -432,25 +432,25 @@ export default function AdminAnalyticsPage() {
               <p className="text-xl font-bold text-[#f7f8f8]">{formatNumber(data?.ai.totalOutputTokens || 0)}</p>
             </div>
             <div className="bg-[#0c0d0e] border border-[#f7931a]/10 rounded-xl p-4">
-              <p className="text-[10px] text-[#f7931a] mb-1">التكلفة التقديرية</p>
+              <p className="text-[10px] text-[#f7931a] mb-1">Estimated Cost</p>
               <p className="text-xl font-bold text-[#f7931a]">${data?.ai.estimatedCost || '0.00'}</p>
             </div>
           </div>
 
           {/* Model Info */}
           <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">معلومات النموذج والتكلفة</h3>
+            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Model & Cost Information</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white/[0.02] rounded-lg p-4">
-                <p className="text-xs text-[#8a8f98] mb-1">النموذج</p>
+                <p className="text-xs text-[#8a8f98] mb-1">Model</p>
                 <p className="text-sm text-[#627eea] font-mono">openai/o4-mini</p>
               </div>
               <div className="bg-white/[0.02] rounded-lg p-4">
-                <p className="text-xs text-[#8a8f98] mb-1">سعر Input</p>
+                <p className="text-xs text-[#8a8f98] mb-1">Input Price</p>
                 <p className="text-sm text-[#f7f8f8]">$3.00 / 1M tokens</p>
               </div>
               <div className="bg-white/[0.02] rounded-lg p-4">
-                <p className="text-xs text-[#8a8f98] mb-1">سعر Output</p>
+                <p className="text-xs text-[#8a8f98] mb-1">Output Price</p>
                 <p className="text-sm text-[#f7f8f8]">$15.00 / 1M tokens</p>
               </div>
             </div>
