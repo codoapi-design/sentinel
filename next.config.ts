@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   typescript: {
+    // Temporarily ignore build errors to allow Vercel deployment
+    // TODO: Fix TypeScript errors incrementally
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
