@@ -1,0 +1,109 @@
+/**
+ * Zerion API Service for Sentinel
+ * Provides wallet portfolio, DeFi positions, and transaction data
+ */
+
+const ZERION_BASE_URL = 'https://api.zerion.io/v1';
+
+interface ZerionPortfolio {
+  id: string;
+  type: string;
+  attributes: {
+    position_type: string;
+    fungible_info?: {
+      name: string;
+      symbol: string;
+      icon?: { url: string };
+    };
+    quantity: { float?: number; integer?: string };
+    value?: number;
+    price?: number;
+    changes?: {
+      '1d'?: { percent?: number };
+      '1h'?: { percent?: number };
+    };
+    protocol?: { name: string; icon?: { url: string } };
+    chain: string;
+  };
+  relationships?: Record<string, unknown>;
+}
+
+interface ZerionTransaction {
+  id: string;
+  type: string;
+  attributes: {
+    operation_type: string;
+    status: string;
+    hash: string;
+    block_number: number | null;
+    timestamp: string;
+    from_address: string;
+    to_address: string;
+    value: string;
+    fee: { value: string; symbol: string } | null;
+    changes: Array<{
+      direction: string;
+      fungible_info?: { name: string; symbol: string; icon?: { url: string } };
+      quantity: { float?: number; integer?: string };
+      value?: number;
+      price?: number;
+    }>;
+    chain: string;
+  };
+}
+
+export class ZerionService {
+  private apiKey: string;
+
+  constructor(apiKey?: string) {
+    this.apiKey = apiKey || process.env.ZERION_API_KEY || '';
+  }
+
+  private getHeaders(): Record<string, string> {
+    return {
+      'Authorization': `Basic ${Buffer.from(this.apiKey + ':').toString('base64')}`,
+      'Accept': 'application/json',
+    };
+  }
+
+  async getPortfolio(address: string, currency = 'usd'): Promise<ZerionPortfolio[]> {
+    try {
+      const url = `${ZERION_BASE_URL}/wallets/${address}/positions?currency=${currency}&filter[positions]=only_with_fungible`;
+      const response = await fetch(url, { headers: this.getHeaders() });
+      if (!response.ok) throw new Error(`Zerion API error: ${response.status}`);
+      const data = await response.json();
+      return data.data || [];
+    } catch (error) {
+      console.error('[Zerion] getPortfolio error:', error);
+      return [];
+    }
+  }
+
+  async getTransactions(address: string, currency = 'usd', page = 1, pageSize = 50): Promise<ZerionTransaction[]> {
+    try {
+      const url = `${ZERION_BASE_URL}/wallets/${address}/transactions?currency=${currency}&page[number]=${page}&page[size]=${pageSize}`;
+      const response = await fetch(url, { headers: this.getHeaders() });
+      if (!response.ok) throw new Error(`Zerion API error: ${response.status}`);
+      const data = await response.json();
+      return data.data || [];
+    } catch (error) {
+      console.error('[Zerion] getTransactions error:', error);
+      return [];
+    }
+  }
+
+  async getPortfolioSummary(address: string) {
+    const positions = await this.getPortfolio(address);
+
+    const totalValue = positions.reduce((sum, p) => sum + (p.attributes.value || 0), 0);
+    const tokens = positions.filter(p => p.attributes.position_type === 'wallet');
+    const defiPositions = positions.filter(p => p.attributes.position_type !== 'wallet');
+
+    return {
+      totalValue,
+      tokenCount: tokens.length,
+      defiPositionCount: defiPositions.length,
+      positions: positions.slice(0, 100),
+    };
+  }
+}

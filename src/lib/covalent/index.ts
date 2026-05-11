@@ -1,0 +1,1 @@
+export { CovalentService } from './service';

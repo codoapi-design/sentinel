@@ -1,0 +1,157 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  wallets   Wallet[]
+  clients   Client[]
+  settings  Settings?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Wallet {
+  id           String        @id @default(cuid())
+  address      String        @unique
+  label        String?
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([address])
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  notes     String   @default("")
+  color     String   @default("#8a8f98")
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, address])
+  @@index([userId])
+  @@index([address])
+}
+
+model Transaction {
+  id             String   @id @default(cuid())
+  txHash         String
+  walletId       String
+  wallet         Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  // Blockchain data
+  blockNumber    Int
+  timestamp      Int
+  date           String
+
+  // Addresses
+  fromAddr       String
+  toAddr         String
+
+  // Values
+  valueWei       String   @default("0")
+  valueEth       Float    @default(0)
+  gasUsed        Int      @default(0)
+  gasPriceWei    String   @default("0")
+  gasFeeEth      Float    @default(0)
+
+  // Status
+  status         Boolean  @default(true)
+
+  // Classification
+  type           String   @default("income")  // income, expense, trade, defi, staking, gas
+  typeAr         String   @default("")
+  direction      String   @default("in")      // in, out, self, mixed
+
+  // Method & Protocol
+  methodId       String?
+  methodName     String?
+  protocol       String?
+  protocolAr     String?
+
+  // Network
+  network        String   @default("ethereum")
+  networkAr      String   @default("إيثريوم")
+
+  // Token info (for ERC-20 transfers)
+  tokenSymbol    String?
+  tokenName      String?
+  tokenAddress   String?
+  tokenValue     Float    @default(0)
+  tokenDecimals  Int      @default(18)
+
+  // Counterparty (derived from from/to for simple transfers, or from protocol)
+  counterparty       String?
+  counterpartyLabel  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([txHash, walletId, network])
+  @@index([walletId])
+  @@index([type])
+  @@index([network])
+  @@index([date])
+  @@index([timestamp])
+  @@index([counterparty])
+}
+
+model Settings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Email notifications
+  emailEnabled          Boolean  @default(false)
+  email                 String?
+  emailVerified         Boolean  @default(false)
+
+  // Telegram notifications
+  telegramEnabled       Boolean  @default(false)
+  telegramChatId        String?
+
+  // Alert thresholds
+  inboundAboveEnabled   Boolean  @default(false)
+  inboundAboveAmount    Float    @default(1000)
+  outboundAboveEnabled  Boolean  @default(false)
+  outboundAboveAmount   Float    @default(500)
+  portfolioReachesEnabled Boolean @default(false)
+  portfolioReachesAmount Float   @default(80000)
+  assetRisesEnabled     Boolean  @default(false)
+  assetRisesPercentage  Float    @default(5)
+  assetRisesAsset       String   @default("ETH")
+  assetDropsEnabled     Boolean  @default(false)
+  assetDropsPercentage  Float    @default(5)
+  assetDropsAsset       String   @default("ETH")
+  gasExceedsEnabled     Boolean  @default(false)
+  gasExceedsAmount      Float    @default(50)
+
+  // Reports
+  dailySummaryEnabled   Boolean  @default(false)
+  dailySummaryTime      String   @default("09:00")
+  weeklyReportEnabled   Boolean  @default(false)
+  weeklyReportDay       String   @default("الاثنين")
+  monthlyReportEnabled  Boolean  @default(false)
+  monthlyReportDay      Int      @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

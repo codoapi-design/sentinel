@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.coinbase.com/developer-platform/products/paymaster",
+    "name": "Paymaster",
+    "snippet": "Sponsor gas · Batch transactions · Secure infrastructure · Get started free.",
+    "host_name": "www.coinbase.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.openfort.io/blog/best-ethereum-wallets-for-developers",
+    "name": "Best Ethereum Wallets for Developers in 2026",
+    "snippet": "Apr 15, 2026 — Thirdweb is an all-in-one EVM developer platform . It bundles embedded wallets, ERC - 4337 smart accounts, gas sponsorship , contract deployment ...",
+    "host_name": "www.openfort.io",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.cdp.coinbase.com/server-wallets/v2/evm-features/gas-sponsorship",
+    "name": "Gas Sponsorship - Coinbase Developer Documentation",
+    "snippet": "Smart Accounts unlock the ability for developers to sponsor gas on their users' transactions. With the CDP SDK, it's simple to integrate any paymaster URL and ...",
+    "host_name": "docs.cdp.coinbase.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.cobo.com/post/account-abstraction-wallet",
+    "name": "Account Abstraction Wallet: Complete Guide to Smart",
+    "snippet": "Mar 13, 2026 — Learn how account abstraction wallets enable gas sponsorship , social recovery, and batch transactions. Complete guide to ERC - 4337 smart ...",
+    "host_name": "www.cobo.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://medium.com/@heimlabs/a-developers-deep-dive-into-base-accounts-the-complete-guideintroduction-d4c839ca1688",
+    "name": "A Developer's Deep Dive into Base Accounts",
+    "snippet": "Built on ERC - 4337 , they're a programmable, multi- chain account layer that unlocks passkeys, social recovery, sponsored gas , batching, and more.",
+    "host_name": "medium.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.7blocklabs.com/blog/gas-sponsorship-meets-chain-abstraction-funding-exec-across-networks",
+    "name": "Gas Sponsorship and Chain Abstraction: Funding Exec",
+    "snippet": "Circle Paymaster now lets users pay for gas using USDC, with fees waived until June 30, 2025 , and only 10% fees after that. It's got support across platforms ...",
+    "host_name": "www.7blocklabs.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.base.org/base-account/improve-ux/sponsor-gas/paymasters",
+    "name": "Sponsor Gas - Base Documentation",
+    "snippet": "We'll use Coinbase Developer Platform as a Paymaster service provider, currently offering up to $15k in gas credits as part of the Base Gasless Campaign. ERC - ...",
+    "host_name": "docs.base.org",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.cdp.coinbase.com/embedded-wallets/evm-features/smart-accounts",
+    "name": "Smart Accounts - Coinbase Developer Documentation",
+    "snippet": "Gas sponsorship : useCdpPaymaster only works on Base networks. For other chains , provide your own ERC -7677-compatible paymaster via the paymasterUrl parameter.",
+    "host_name": "docs.cdp.coinbase.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.alchemy.com/dapps/list-of/erc-4337-paymasters-on-base",
+    "name": "List of 4 ERC-4337 Paymasters on Base (2025)",
+    "snippet": "Discover 4 ERC - 4337 Paymasters on Base with Alchemy's Dapp Store. Also explore related collections including Smart Contract Accounts, Account Abstraction ...",
+    "host_name": "www.alchemy.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.erc4337.io/paymasters/types.html",
+    "name": "Types of Paymasters",
+    "snippet": "Explore different Paymaster patterns in ERC - 4337 , from whitelists to token gas payments. ... Use case: Controlled sponsorship via API , rate limits , user-specific ...",
+    "host_name": "docs.erc4337.io",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]
