@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   Bell, Mail, MessageSquare, Send, Edit3, Eye, Save, X,
-  ToggleLeft, ToggleRight, Search, FileText,
+  ToggleLeft, ToggleRight, Search, FileText, Zap,
 } from 'lucide-react';
 import { useAdminStore } from '@/stores/admin-store';
 
@@ -137,6 +137,8 @@ export default function AdminNotificationsPage() {
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<NotificationTemplate | null>(null);
+  const [testSending, setTestSending] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   const fetchTemplates = async () => {
     setLoading(true);
@@ -200,6 +202,29 @@ export default function AdminNotificationsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: template.id, is_active: !template.is_active }),
     });
+  };
+
+  const handleTestSend = async (template: NotificationTemplate) => {
+    setTestSending(template.id);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'test_send', templateId: template.id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTestResult(data.message || 'تم الإرسال بنجاح');
+      } else {
+        setTestResult('فشل الإرسال: ' + (data.error || 'خطأ غير معروف'));
+      }
+    } catch {
+      setTestResult('فشل الإرسال');
+    } finally {
+      setTestSending(null);
+      setTimeout(() => setTestResult(null), 5000);
+    }
   };
 
   const filteredTemplates = templates.filter(t => {
@@ -379,6 +404,15 @@ export default function AdminNotificationsPage() {
         </div>
       </div>
 
+      {/* Test Result Banner */}
+      {testResult && (
+        <div className={`rounded-xl p-3 text-xs ${
+          testResult.includes('فشل') ? 'bg-[#f6465d]/10 text-[#f6465d] border border-[#f6465d]/20' : 'bg-[#0ecb81]/10 text-[#0ecb81] border border-[#0ecb81]/20'
+        }`}>
+          {testResult}
+        </div>
+      )}
+
       {/* Templates List */}
       {loading ? (
         <div className="flex items-center justify-center h-64">
@@ -439,6 +473,15 @@ export default function AdminNotificationsPage() {
                       title="معاينة"
                     >
                       <Eye className="h-3.5 w-3.5" />
+                    </button>
+
+                    <button
+                      onClick={() => handleTestSend(template)}
+                      disabled={testSending === template.id}
+                      className="p-1.5 rounded-lg hover:bg-[#627eea]/10 text-[#8a8f98] hover:text-[#627eea] transition-colors disabled:opacity-50"
+                      title="إرسال تجريبي"
+                    >
+                      <Zap className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>

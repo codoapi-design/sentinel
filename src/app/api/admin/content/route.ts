@@ -140,3 +140,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const supabase = createServerClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const adminCheck = await isAdmin(session.user.id);
+    if (!adminCheck) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Content ID is required' }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from('content_pages')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    await logAdminAction({
+      adminId: session.user.id,
+      action: 'delete_content',
+      targetType: 'content',
+      targetId: id,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Admin content delete error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

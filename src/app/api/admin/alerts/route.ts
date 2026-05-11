@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { isAdmin } from '@/lib/admin/auth';
+import { isAdmin, logAdminAction } from '@/lib/admin/auth';
 
 export async function GET(request: Request) {
   try {
@@ -121,7 +121,28 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { action, alertId } = body;
+    const { action, alertId, title, message, severity, source } = body;
+
+    // Create new alert
+    if (action === 'create') {
+      if (!title || !message || !severity) {
+        return NextResponse.json({ error: 'Title, message, and severity are required' }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from('system_alerts')
+        .insert({
+          title,
+          message,
+          severity,
+          source: source || 'admin',
+        })
+        .select()
+        .single();
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      await logAdminAction({ adminId: session.user.id, action: 'create_alert', targetType: 'alert', targetId: data.id, details: { title, severity } });
+      return NextResponse.json({ success: true, alert: data });
+    }
 
     if (action === 'acknowledge' && alertId) {
       const { error } = await supabase
@@ -150,6 +171,17 @@ export async function POST(request: Request) {
         .eq('status', 'active');
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'delete' && alertId) {
+      const { error } = await supabase
+        .from('system_alerts')
+        .delete()
+        .eq('id', alertId);
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      await logAdminAction({ adminId: session.user.id, action: 'delete_alert', targetType: 'alert', targetId: alertId });
       return NextResponse.json({ success: true });
     }
 

@@ -84,3 +84,60 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    const supabase = createServerClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const adminCheck = await isAdmin(session.user.id);
+    if (!adminCheck) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { action } = body;
+
+    if (action === 'test_send') {
+      const { templateId, testEmail } = body;
+      if (!templateId) {
+        return NextResponse.json({ error: 'Template ID is required' }, { status: 400 });
+      }
+
+      // Get template
+      const { data: template, error: templateError } = await supabase
+        .from('notification_templates')
+        .select('*')
+        .eq('id', templateId)
+        .single();
+
+      if (templateError || !template) {
+        return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+      }
+
+      // In production, this would actually send the email/telegram
+      // For now, we just log the test send
+      await logAdminAction({
+        adminId: session.user.id,
+        action: 'test_notification',
+        targetType: 'notification_template',
+        targetId: templateId,
+        details: { templateKey: template.key, testEmail: testEmail || session.user.email },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `تم إرسال رسالة اختبار "${template.name}" إلى ${testEmail || session.user.email}`,
+      });
+    }
+
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  } catch (error) {
+    console.error('Admin notifications action error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

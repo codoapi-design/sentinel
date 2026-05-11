@@ -22,14 +22,18 @@ import {
   FileText,
   MessageSquare,
   Key,
+  TrendingUp,
+  Activity,
 } from 'lucide-react';
 
 const navItems = [
   { id: 'dashboard', label: 'لوحة المعلومات', icon: LayoutDashboard, href: '/admin' },
+  { id: 'analytics', label: 'التحليلات', icon: TrendingUp, href: '/admin/analytics' },
   { id: 'users', label: 'المستخدمين', icon: Users, href: '/admin/users' },
   { id: 'subscriptions', label: 'الاشتراكات', icon: CreditCard, href: '/admin/subscriptions' },
   { id: 'ai-usage', label: 'استخدام الذكاء', icon: Bot, href: '/admin/ai-usage' },
   { id: 'api-monitoring', label: 'مراقبة API', icon: Key, href: '/admin/api-monitoring' },
+  { id: 'system-health', label: 'صحة النظام', icon: Activity, href: '/admin/system-health' },
   { id: 'alerts', label: 'التنبيهات', icon: AlertTriangle, href: '/admin/alerts' },
   { id: 'audit-log', label: 'سجل التدقيق', icon: ScrollText, href: '/admin/audit-log' },
   { id: 'content', label: 'المحتوى', icon: FileText, href: '/admin/content' },

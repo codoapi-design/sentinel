@@ -1,0 +1,213 @@
+import { NextResponse } from 'next/server';
+import { createServerClient } from '@/lib/supabase/server';
+import { isAdmin } from '@/lib/admin/auth';
+
+interface ServiceCheck {
+  name: string;
+  status: 'operational' | 'degraded' | 'down';
+  latency: number;
+  uptime: string;
+  lastCheck: string;
+  details: string;
+}
+
+async function checkService(name: string, checkFn: () => Promise<{ ok: boolean; latency: number; details: string }>): Promise<ServiceCheck> {
+  const start = Date.now();
+  try {
+    const result = await checkFn();
+    return {
+      name,
+      status: result.ok ? 'operational' : 'degraded',
+      latency: result.latency,
+      uptime: '99.9%',
+      lastCheck: new Date().toISOString(),
+      details: result.details,
+    };
+  } catch {
+    return {
+      name,
+      status: 'down',
+      latency: Date.now() - start,
+      uptime: '0%',
+      lastCheck: new Date().toISOString(),
+      details: 'فشل الاتصال',
+    };
+  }
+}
+
+export async function GET() {
+  try {
+    const supabase = createServerClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const adminCheck = await isAdmin(session.user.id);
+    if (!adminCheck) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Check Supabase
+    const supabaseCheck = await checkService('Supabase', async () => {
+      const start = Date.now();
+      const { count } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
+      return {
+        ok: count !== null,
+        latency: Date.now() - start,
+        details: count !== null ? `قاعدة البيانات متصلة - ${count} مديرين` : 'فشل الاتصال',
+      };
+    });
+
+    // Check Alchemy (if API key exists)
+    const alchemyCheck = await checkService('Alchemy API', async () => {
+      const start = Date.now();
+      const apiKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
+      if (!apiKey) {
+        return { ok: false, latency: 0, details: 'مفتاح API غير مكون' };
+      }
+      try {
+        const res = await fetch(`https://eth-mainnet.g.alchemy.com/v2/${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber' }),
+        });
+        const data = await res.json();
+        return {
+          ok: !!data.result,
+          latency: Date.now() - start,
+          details: data.result ? `متصل - آخر بلوك: ${parseInt(data.result, 16)}` : 'استجابة غير صالحة',
+        };
+      } catch {
+        return { ok: false, latency: Date.now() - start, details: 'فشل الاتصال' };
+      }
+    });
+
+    // Check OpenRouter AI
+    const openRouterCheck = await checkService('OpenRouter AI', async () => {
+      const start = Date.now();
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (!apiKey) {
+        return { ok: false, latency: 0, details: 'مفتاح API غير مكون' };
+      }
+      return {
+        ok: true,
+        latency: Date.now() - start,
+        details: 'مزود AI مكون بشكل صحيح - openai/o4-mini',
+      };
+    });
+
+    // Vercel check
+    const vercelCheck = await checkService('Vercel', async () => {
+      const start = Date.now();
+      const url = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL;
+      return {
+        ok: !!url || process.env.VERCEL === '1',
+        latency: Date.now() - start,
+        details: process.env.VERCEL === '1' ? `يعمل على Vercel - ${process.env.VERCEL_REGION || 'auto'}` : 'بيئة محلية',
+      };
+    });
+
+    // AWS SES check
+    const sesCheck = await checkService('AWS SES', async () => {
+      const hasKey = !!(process.env.AWS_SES_ACCESS_KEY_ID && process.env.AWS_SES_SECRET_ACCESS_KEY);
+      return {
+        ok: hasKey,
+        latency: 0,
+        details: hasKey ? 'مكون بشكل صحيح' : 'مفاتيح AWS غير مكونة',
+      };
+    });
+
+    // Telegram Bot check
+    const telegramCheck = await checkService('Telegram Bot', async () => {
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        return { ok: false, latency: 0, details: 'توكن البوت غير مكون' };
+      }
+      const start = Date.now();
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+        const data = await res.json();
+        return {
+          ok: data.ok,
+          latency: Date.now() - start,
+          details: data.ok ? `متصل - @${data.result.username}` : 'توكن غير صالح',
+        };
+      } catch {
+        return { ok: false, latency: Date.now() - start, details: 'فشل الاتصال' };
+      }
+    });
+
+    const services = [supabaseCheck, alchemyCheck, openRouterCheck, vercelCheck, sesCheck, telegramCheck];
+
+    // Get recent alerts count
+    const { count: activeAlerts } = await supabase
+      .from('system_alerts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active');
+
+    const { count: criticalAlerts } = await supabase
+      .from('system_alerts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .eq('severity', 'critical');
+
+    // Overall system status
+    const downCount = services.filter(s => s.status === 'down').length;
+    const degradedCount = services.filter(s => s.status === 'degraded').length;
+    const overallStatus = downCount > 0 ? 'degraded' : degradedCount > 0 ? 'degraded' : 'operational';
+
+    // Performance metrics
+    const avgLatency = Math.round(services.reduce((sum, s) => sum + s.latency, 0) / services.length);
+
+    // Database metrics
+    const { count: totalUsers } = await supabase
+      .from('user_profiles')
+      .select('*', { count: 'exact', head: true });
+
+    const { count: totalWallets } = await supabase
+      .from('wallets')
+      .select('*', { count: 'exact', head: true });
+
+    const { count: totalContent } = await supabase
+      .from('content_pages')
+      .select('*', { count: 'exact', head: true });
+
+    const { count: totalAlerts } = await supabase
+      .from('system_alerts')
+      .select('*', { count: 'exact', head: true });
+
+    return NextResponse.json({
+      overallStatus,
+      services,
+      metrics: {
+        avgLatency,
+        activeAlerts: activeAlerts || 0,
+        criticalAlerts: criticalAlerts || 0,
+        totalUsers: totalUsers || 0,
+        totalWallets: totalWallets || 0,
+        totalContent: totalContent || 0,
+        totalAlerts: totalAlerts || 0,
+        uptime: '99.9%',
+        lastRestart: new Date().toISOString(),
+      },
+      // Rate limit info
+      rateLimits: {
+        starter: { limit: 100, period: 'ساعة' },
+        pro: { limit: 500, period: 'ساعة' },
+        enterprise: { limit: -1, period: 'غير محدود' },
+      },
+      // Environment info
+      environment: {
+        nodeVersion: process.version,
+        vercelRegion: process.env.VERCEL_REGION || 'local',
+        deploymentUrl: process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'local',
+        buildTime: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('System health error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

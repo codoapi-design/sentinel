@@ -4,11 +4,12 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   AlertTriangle, AlertCircle, Info, CheckCircle, XCircle,
   Bell, ChevronLeft, ChevronRight, Filter, Download,
-  Clock, User, Zap,
+  Clock, User, Zap, Plus, X, Trash2,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
+import { useAdminStore } from '@/stores/admin-store';
 
 interface Alert {
   id: string;
@@ -31,6 +32,7 @@ interface AlertStats {
 }
 
 export default function AdminAlertsPage() {
+  const { admin } = useAdminStore();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -41,6 +43,9 @@ export default function AdminAlertsPage() {
   const [stats, setStats] = useState<AlertStats | null>(null);
   const [alertChart, setAlertChart] = useState<Array<Record<string, unknown>>>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newAlert, setNewAlert] = useState({ title: '', message: '', severity: 'info' as 'critical' | 'warning' | 'info', source: 'admin' });
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -89,6 +94,43 @@ export default function AdminAlertsPage() {
     }
   };
 
+  const handleCreate = async () => {
+    if (!newAlert.title || !newAlert.message) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/admin/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', ...newAlert }),
+      });
+      if (res.ok) {
+        setShowCreateModal(false);
+        setNewAlert({ title: '', message: '', severity: 'info', source: 'admin' });
+        await fetchAlerts();
+      }
+    } catch (error) {
+      console.error('Failed to create alert:', error);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = async (alertId: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا التنبيه؟')) return;
+    try {
+      const res = await fetch('/api/admin/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', alertId }),
+      });
+      if (res.ok) {
+        await fetchAlerts();
+      }
+    } catch (error) {
+      console.error('Failed to delete alert:', error);
+    }
+  };
+
   const severityConfig = {
     critical: { icon: XCircle, color: '#f6465d', bg: 'bg-[#f6465d]/10', border: 'border-[#f6465d]/20', label: 'حرج' },
     warning: { icon: AlertTriangle, color: '#f7931a', bg: 'bg-[#f7931a]/10', border: 'border-[#f7931a]/20', label: 'تحذير' },
@@ -108,9 +150,88 @@ export default function AdminAlertsPage() {
   };
 
   const totalActive = stats ? stats.critical + stats.warning + stats.info : 0;
+  const isSuperAdmin = admin?.role === 'super_admin';
 
   return (
     <div className="space-y-6">
+      {/* Create Alert Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-[#0c0d0e] border border-white/10 rounded-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+              <h3 className="text-sm font-semibold text-[#f7f8f8]">إنشاء تنبيه جديد</h3>
+              <button onClick={() => setShowCreateModal(false)} className="p-1.5 rounded-lg hover:bg-white/5 text-[#8a8f98]">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs text-[#8a8f98] mb-1.5 block">عنوان التنبيه</label>
+                <input
+                  type="text"
+                  value={newAlert.title}
+                  onChange={(e) => setNewAlert({ ...newAlert, title: e.target.value })}
+                  className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50"
+                  placeholder="مثال: مشكلة في الاتصال بقاعدة البيانات"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#8a8f98] mb-1.5 block">التفاصيل</label>
+                <textarea
+                  value={newAlert.message}
+                  onChange={(e) => setNewAlert({ ...newAlert, message: e.target.value })}
+                  className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50 min-h-[100px]"
+                  placeholder="وصف المشكلة أو التنبيه..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">مستوى الخطورة</label>
+                  <select
+                    value={newAlert.severity}
+                    onChange={(e) => setNewAlert({ ...newAlert, severity: e.target.value as 'critical' | 'warning' | 'info' })}
+                    className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50"
+                  >
+                    <option value="info">معلومات</option>
+                    <option value="warning">تحذير</option>
+                    <option value="critical">حرج</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-[#8a8f98] mb-1.5 block">المصدر</label>
+                  <select
+                    value={newAlert.source}
+                    onChange={(e) => setNewAlert({ ...newAlert, source: e.target.value })}
+                    className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50"
+                  >
+                    <option value="admin">مدير</option>
+                    <option value="system">نظام</option>
+                    <option value="security">أمن</option>
+                    <option value="monitoring">مراقبة</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-white/5">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="px-4 py-2 rounded-lg bg-white/5 text-[#8a8f98] hover:text-[#f7f8f8] text-sm transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={creating || !newAlert.title || !newAlert.message}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0052ff] hover:bg-[#0045d1] text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {creating ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="h-4 w-4" />}
+                إنشاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-[#0c0d0e] border border-[#f6465d]/20 rounded-xl p-5">
@@ -210,6 +331,15 @@ export default function AdminAlertsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isSuperAdmin && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0052ff] hover:bg-[#0045d1] text-white text-sm font-medium transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              تنبيه جديد
+            </button>
+          )}
           <button
             onClick={() => handleAction('resolve_all')}
             disabled={actionLoading === 'bulk' || totalActive === 0}
@@ -280,15 +410,26 @@ export default function AdminAlertsPage() {
                   </div>
 
                   {/* Actions */}
-                  {alert.status === 'active' && (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => handleAction('acknowledge', alert.id)}
-                        disabled={actionLoading === alert.id}
-                        className="px-2.5 py-1.5 rounded-lg bg-[#f7931a]/10 text-[#f7931a] hover:bg-[#f7931a]/20 text-[10px] transition-colors disabled:opacity-50"
-                      >
-                        تعرف
-                      </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {alert.status === 'active' && (
+                      <>
+                        <button
+                          onClick={() => handleAction('acknowledge', alert.id)}
+                          disabled={actionLoading === alert.id}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#f7931a]/10 text-[#f7931a] hover:bg-[#f7931a]/20 text-[10px] transition-colors disabled:opacity-50"
+                        >
+                          تعرف
+                        </button>
+                        <button
+                          onClick={() => handleAction('resolve', alert.id)}
+                          disabled={actionLoading === alert.id}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#0ecb81]/10 text-[#0ecb81] hover:bg-[#0ecb81]/20 text-[10px] transition-colors disabled:opacity-50"
+                        >
+                          حل
+                        </button>
+                      </>
+                    )}
+                    {alert.status === 'acknowledged' && (
                       <button
                         onClick={() => handleAction('resolve', alert.id)}
                         disabled={actionLoading === alert.id}
@@ -296,17 +437,17 @@ export default function AdminAlertsPage() {
                       >
                         حل
                       </button>
-                    </div>
-                  )}
-                  {alert.status === 'acknowledged' && (
-                    <button
-                      onClick={() => handleAction('resolve', alert.id)}
-                      disabled={actionLoading === alert.id}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#0ecb81]/10 text-[#0ecb81] hover:bg-[#0ecb81]/20 text-[10px] transition-colors disabled:opacity-50 shrink-0"
-                    >
-                      حل
-                    </button>
-                  )}
+                    )}
+                    {isSuperAdmin && (
+                      <button
+                        onClick={() => handleDelete(alert.id)}
+                        className="p-1.5 rounded-lg hover:bg-[#f6465d]/10 text-[#8a8f98] hover:text-[#f6465d] transition-colors"
+                        title="حذف"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

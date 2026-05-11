@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import {
-  FileText, Plus, Edit3, Eye, Trash2, Globe, Lock,
-  Save, X, Search, ExternalLink,
+  FileText, Plus, Edit3, Eye, Trash2, Globe, Lock, X,
+  Save, Search, ExternalLink,
 } from 'lucide-react';
 import { useAdminStore } from '@/stores/admin-store';
 
@@ -352,6 +352,19 @@ export default function AdminContentPage() {
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
+                  )}
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => {
+                        if (confirm('هل أنت متأكد من حذف هذه الصفحة؟')) {
+                          fetch(`/api/admin/content?id=${page.id}`, { method: 'DELETE' }).then(() => fetchContent());
+                        }
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-[#f6465d]/10 text-[#8a8f98] hover:text-[#f6465d] transition-colors"
+                      title="حذف"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   )}
                 </div>
               </div>
