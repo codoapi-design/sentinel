@@ -10,7 +10,7 @@ import {
 import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors';
 
 // WalletConnect Project ID (free from https://cloud.walletconnect.com)
-const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo-project-id';
+const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '';
 
 // Platform wallet address (where payments are sent)
 export const PLATFORM_WALLET = '0xb3Ae51931CC644E64C3c43d59d0CfBB2Ee6D760F' as const;
@@ -66,6 +66,18 @@ export const ERC20_ABI = [
 // Supported chains for payment
 export const paymentChains = [mainnet, base, arbitrum, optimism, polygon, bsc];
 
+// Build connectors - only include WalletConnect if a valid project ID is configured
+const connectors = [
+  injected(),
+  coinbaseWallet({ appName: 'CryptoBooks' }),
+];
+
+// Only add WalletConnect connector if a valid project ID is provided
+// This prevents runtime errors with 'demo-project-id'
+if (WALLETCONNECT_PROJECT_ID && WALLETCONNECT_PROJECT_ID.length > 10) {
+  connectors.push(walletConnect({ projectId: WALLETCONNECT_PROJECT_ID }));
+}
+
 // Wagmi configuration
 export const wagmiConfig = createConfig({
   chains: [mainnet, base, arbitrum, optimism, polygon, bsc],
@@ -77,11 +89,5 @@ export const wagmiConfig = createConfig({
     [polygon.id]: http(),
     [bsc.id]: http(),
   },
-  connectors: [
-    injected(),
-    walletConnect({ projectId: WALLETCONNECT_PROJECT_ID }),
-    coinbaseWallet({
-      appName: 'CryptoBooks',
-    }),
-  ],
+  connectors,
 });
