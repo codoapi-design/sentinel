@@ -52,8 +52,12 @@ export default function AdminLoginPage() {
       }
 
       // بدون 2FA - تسجيل الدخول مباشرة
-      router.push('/admin');
-    } catch {
+      setTimeout(() => {
+        router.push('/admin');
+        router.refresh();
+      }, 300);
+    } catch (err) {
+      console.error('Admin login error:', err);
       setError('حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.');
     } finally {
       setLoading(false);
@@ -74,12 +78,16 @@ export default function AdminLoginPage() {
       });
 
       if (res.ok) {
-        router.push('/admin');
+        setTimeout(() => {
+          router.push('/admin');
+          router.refresh();
+        }, 300);
       } else {
         const data = await res.json();
         setError(data.error || 'رمز التحقق غير صحيح');
       }
-    } catch {
+    } catch (err) {
+      console.error('2FA verification error:', err);
       setError('حدث خطأ في التحقق. يرجى المحاولة مرة أخرى.');
     } finally {
       setLoading(false);

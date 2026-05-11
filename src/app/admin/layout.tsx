@@ -85,7 +85,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           email: session.user.email || '',
           role: adminData.role as AdminInfo['role'],
         });
-      } catch {
+      } catch (err) {
+        console.error('Admin layout auth error:', err);
         router.push('/admin/login');
       } finally {
         setLoading(false);

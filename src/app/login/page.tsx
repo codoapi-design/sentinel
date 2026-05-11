@@ -32,15 +32,27 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
-    const result = await signIn(email, password);
-    setIsLoading(false);
 
-    if (result.error) {
-      setError(result.error);
-      return;
+    try {
+      const result = await signIn(email, password);
+
+      if (result.error) {
+        setError(result.error);
+        setIsLoading(false);
+        return;
+      }
+
+      // Success - redirect to dashboard
+      // Use router.push with a small delay to ensure session cookies are set
+      setTimeout(() => {
+        router.push('/dashboard');
+        router.refresh();
+      }, 300);
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('An unexpected error occurred. Please try again.');
+      setIsLoading(false);
     }
-
-    router.push('/dashboard');
   };
 
   const handleGoogleSignIn = async () => {
