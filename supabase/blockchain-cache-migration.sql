@@ -193,6 +193,7 @@ ALTER TABLE public.provider_health ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.provider_costs ENABLE ROW LEVEL SECURITY;
 
 -- Cache: users can only read their own wallets' cache
+DROP POLICY IF EXISTS "Users can read own wallet cache" ON public.blockchain_cache;
 CREATE POLICY "Users can read own wallet cache" ON public.blockchain_cache
   FOR SELECT USING (
     wallet_address IN (
@@ -201,6 +202,7 @@ CREATE POLICY "Users can read own wallet cache" ON public.blockchain_cache
   );
 
 -- Sync status: users can read their own wallets' sync status
+DROP POLICY IF EXISTS "Users can read own sync status" ON public.sync_status;
 CREATE POLICY "Users can read own sync status" ON public.sync_status
   FOR SELECT USING (
     wallet_id IN (
@@ -209,10 +211,12 @@ CREATE POLICY "Users can read own sync status" ON public.sync_status
   );
 
 -- Provider health: readable by all authenticated users
+DROP POLICY IF EXISTS "Authenticated users can read provider health" ON public.provider_health;
 CREATE POLICY "Authenticated users can read provider health" ON public.provider_health
   FOR SELECT USING (auth.uid() IS NOT NULL);
 
 -- Provider costs: only admins
+DROP POLICY IF EXISTS "Admins can read provider costs" ON public.provider_costs;
 CREATE POLICY "Admins can read provider costs" ON public.provider_costs
   FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.admin_users WHERE user_id = auth.uid())
@@ -230,14 +234,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_blockchain_cache_updated_at ON public.blockchain_cache;
 CREATE TRIGGER update_blockchain_cache_updated_at
   BEFORE UPDATE ON public.blockchain_cache
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_sync_status_updated_at ON public.sync_status;
 CREATE TRIGGER update_sync_status_updated_at
   BEFORE UPDATE ON public.sync_status
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_provider_health_updated_at ON public.provider_health;
 CREATE TRIGGER update_provider_health_updated_at
   BEFORE UPDATE ON public.provider_health
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();

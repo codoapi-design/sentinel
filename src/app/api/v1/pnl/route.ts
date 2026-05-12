@@ -2,21 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateApiKey, checkRateLimit, recordApiUsage } from '@/lib/api-keys/service';
 import { getProviderManager } from '@/lib/blockchain/provider-manager';
 import { getBlockchainCache } from '@/lib/blockchain/cache';
-import { CHAIN_IDS } from '@/lib/blockchain/types';
 
 /**
- * GET /api/v1/transactions
- * Public API endpoint — list transactions for a wallet using hybrid architecture
+ * GET /api/v1/pnl
+ * Public API endpoint — get PnL (Profit and Loss) data for a wallet using hybrid architecture
  *
  * Headers:
  * - x-api-key: API key (required)
  *
  * Query params:
  * - wallet: Wallet address (required)
- * - chain: Chain name or chain ID (optional, default: ethereum)
- * - page: Page number (default: 0)
- * - limit: Max results per page (default: 25, max: 100)
  * - refresh: Force refresh from providers (default: false)
+ *
+ * PnL data is primarily sourced from Zerion, which provides
+ * daily and weekly change percentages for positions.
  */
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -40,10 +39,10 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Check permissions ──
-    if (!apiKey.permissions.includes('transactions:read')) {
+    if (!apiKey.permissions.includes('portfolio:read')) {
       recordApiUsage(apiKey.id, Date.now() - startTime, true);
       return NextResponse.json(
-        { error: 'Insufficient permissions: transactions:read required' },
+        { error: 'Insufficient permissions: portfolio:read required' },
         { status: 403 },
       );
     }
@@ -60,9 +59,6 @@ export async function GET(request: NextRequest) {
     // ── Parse query params ──
     const { searchParams } = new URL(request.url);
     const walletAddress = searchParams.get('wallet');
-    const chainParam = searchParams.get('chain') || 'ethereum';
-    const page = parseInt(searchParams.get('page') || '0');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '25'), 100);
     const forceRefresh = searchParams.get('refresh') === 'true';
 
     if (!walletAddress) {
@@ -79,78 +75,50 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Resolve chain ID from name or numeric string
-    let chainId: number;
-    if (/^\d+$/.test(chainParam)) {
-      chainId = parseInt(chainParam);
-    } else if (CHAIN_IDS[chainParam]) {
-      chainId = CHAIN_IDS[chainParam];
-    } else {
-      chainId = 1; // Default to Ethereum
-    }
-
-    // ── Fetch transactions using hybrid architecture ──
+    // ── Fetch PnL using hybrid architecture ──
     const providerManager = getProviderManager();
     const cache = getBlockchainCache();
 
-    // Invalidate cache if refresh requested
     if (forceRefresh) {
-      await cache.invalidate(walletAddress, 'transactions');
+      await cache.invalidate(walletAddress, 'pnl');
     }
 
-    const { transactions, providers } = await providerManager.fetchHistoricalTransactions(
-      walletAddress,
-      chainId,
-      page,
-      limit,
-    );
+    const pnl = await providerManager.fetchPnL(walletAddress);
 
-    // ── Build response ──
-    const data = transactions.map(tx => ({
-      hash: tx.hash,
-      from: tx.from,
-      to: tx.to,
-      value: tx.value,
-      valueEth: tx.valueEth,
-      gasFeeEth: tx.gasFeeEth,
-      timestamp: tx.timestamp,
-      date: tx.date,
-      type: tx.type,
-      direction: tx.direction,
-      status: tx.status,
-      chain: tx.chain,
-      chainId: tx.chainId,
-      blockNumber: tx.blockNumber,
-      methodName: tx.methodName,
-      protocol: tx.protocol,
-      tokenTransfers: tx.tokenTransfers.map(tt => ({
-        tokenSymbol: tt.tokenSymbol,
-        tokenName: tt.tokenName,
-        from: tt.from,
-        to: tt.to,
-        valueFormatted: tt.valueFormatted,
-        valueUsd: tt.valueUsd,
-      })),
-      provider: tx.provider,
-    }));
+    if (!pnl) {
+      recordApiUsage(apiKey.id, Date.now() - startTime, false);
+      return NextResponse.json({
+        success: true,
+        data: null,
+        message: 'No PnL data available for this wallet',
+      });
+    }
 
     // Record usage
     recordApiUsage(apiKey.id, Date.now() - startTime, false);
 
     return NextResponse.json({
       success: true,
-      data,
+      data: {
+        totalPnLUsd: pnl.totalPnLUsd,
+        totalPnLPercent: pnl.totalPnLPercent,
+        dailyPnLUsd: pnl.dailyPnLUsd,
+        dailyPnLPercent: pnl.dailyPnLPercent,
+        weeklyPnLUsd: pnl.weeklyPnLUsd,
+        weeklyPnLPercent: pnl.weeklyPnLPercent,
+        monthlyPnLUsd: pnl.monthlyPnLUsd,
+        monthlyPnLPercent: pnl.monthlyPnLPercent,
+        costBasisUsd: pnl.costBasisUsd,
+        currentValueUsd: pnl.currentValueUsd,
+        provider: 'zerion',
+      },
       meta: {
         wallet: walletAddress,
-        chainId,
-        page,
-        limit,
-        providers,
         generatedAt: new Date().toISOString(),
       },
     });
   } catch (error) {
-    console.error('V1 transactions GET error:', error);
+    console.error('V1 PnL GET error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 },
