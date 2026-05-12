@@ -1,71 +1,103 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchAndClassifyTransactions, NETWORKS } from '@/lib/alchemy';
+import { getProviderManager } from '@/lib/blockchain/provider-manager';
+import { CHAIN_IDS } from '@/lib/blockchain/types';
 
 /**
  * GET /api/transactions
- * Fetch and classify transactions for a wallet address
- * 
+ * Fetch transactions for a wallet address using hybrid architecture
+ *
+ * Routing:
+ *   Historical transactions → Covalent (primary)
+ *   Recent transactions     → Alchemy (fallback)
+ *   Results cached in Supabase
+ *
  * Query params:
  * - wallet: Wallet address (required)
- * - network: Network key (default: 'ethereum')
- * - fromBlock: Starting block (default: '0x0')
- * - toBlock: Ending block (default: 'latest')
- * - maxCount: Max transactions per page (default: 50)
- * - pageKey: Pagination key from previous response
+ * - chainId: Chain ID (default: 1)
+ * - page: Page number (default: 0)
+ * - pageSize: Results per page (default: 25, max: 100)
+ * - refresh: Force refresh from providers
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const wallet = searchParams.get('wallet');
-    const network = searchParams.get('network') || 'ethereum';
-    const fromBlock = searchParams.get('fromBlock') || '0x0'; // Will be adjusted by service
-    const toBlock = searchParams.get('toBlock') || 'latest';
-    const maxCount = parseInt(searchParams.get('maxCount') || '25');
-    const pageKey = searchParams.get('pageKey') || undefined;
+    const chainId = parseInt(searchParams.get('chainId') || '1');
+    const page = parseInt(searchParams.get('page') || '0');
+    const pageSize = Math.min(parseInt(searchParams.get('pageSize') || '25'), 100);
+    const refresh = searchParams.get('refresh') === 'true';
 
     if (!wallet) {
       return NextResponse.json(
         { error: 'wallet address is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // Validate network
-    if (!NETWORKS[network]) {
-      return NextResponse.json(
-        { error: `Invalid network. Supported: ${Object.keys(NETWORKS).join(', ')}` },
-        { status: 400 }
-      );
-    }
-
-    // Validate wallet address format
     if (!wallet.startsWith('0x') || wallet.length !== 42) {
       return NextResponse.json(
         { error: 'Invalid wallet address format' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const result = await fetchAndClassifyTransactions({
-      walletAddress: wallet,
-      networkKey: network,
-      fromBlock,
-      toBlock,
-      maxCount: Math.min(maxCount, 100), // Cap at 100
-      pageKey,
-    });
+    const providerManager = getProviderManager();
+
+    // Invalidate cache if refresh requested
+    if (refresh) {
+      const { getBlockchainCache } = await import('@/lib/blockchain/cache');
+      const cache = getBlockchainCache();
+      await cache.invalidate(wallet, 'transactions');
+    }
+
+    const { transactions, providers } = await providerManager.fetchHistoricalTransactions(
+      wallet,
+      chainId,
+      page,
+      pageSize,
+    );
+
+    const chainNames = Object.fromEntries(
+      Object.entries(CHAIN_IDS).map(([name, id]) => [id, name])
+    );
 
     return NextResponse.json({
       success: true,
-      data: result.transactions,
+      data: transactions.map(tx => ({
+        hash: tx.hash,
+        from: tx.from,
+        to: tx.to,
+        value: tx.valueEth,
+        gasFee: tx.gasFeeEth,
+        timestamp: tx.timestamp,
+        date: tx.date,
+        type: tx.type,
+        direction: tx.direction,
+        status: tx.status,
+        chain: tx.chain,
+        chainId: tx.chainId,
+        blockNumber: tx.blockNumber,
+        protocol: tx.protocol,
+        method: tx.methodName,
+        tokenTransfers: tx.tokenTransfers.map(t => ({
+          symbol: t.tokenSymbol,
+          name: t.tokenName,
+          amount: t.valueFormatted,
+          from: t.from,
+          to: t.to,
+        })),
+        provider: tx.provider,
+      })),
       pagination: {
-        pageKey: result.pageKey,
-        totalFetched: result.totalFetched,
+        page,
+        pageSize,
+        hasMore: transactions.length === pageSize,
       },
-      network: {
-        key: result.networkKey,
-        name: NETWORKS[result.networkKey].name,
-        nameAr: NETWORKS[result.networkKey].nameAr,
+      meta: {
+        chainId,
+        chainName: chainNames[chainId] || 'unknown',
+        providers,
+        architecture: 'hybrid',
       },
     });
   } catch (error: unknown) {
@@ -73,7 +105,7 @@ export async function GET(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Internal server error';
     return NextResponse.json(
       { error: message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

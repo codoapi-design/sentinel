@@ -247,6 +247,155 @@ export interface Database {
           updated_at?: string;
         };
       };
+      blockchain_cache: {
+        Row: {
+          id: string;
+          wallet_address: string;
+          data_type: string;
+          provider: string;
+          payload: Json;
+          fetched_at: number;
+          expires_at: number;
+          hit_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_address: string;
+          data_type: string;
+          provider: string;
+          payload?: Json;
+          fetched_at?: number;
+          expires_at: number;
+          hit_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          wallet_address?: string;
+          data_type?: string;
+          provider?: string;
+          payload?: Json;
+          fetched_at?: number;
+          expires_at?: number;
+          hit_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      sync_status: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          provider: string;
+          data_type: string;
+          last_synced_at: string;
+          status: string;
+          records_synced: number;
+          error_message: string | null;
+          duration_ms: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          provider: string;
+          data_type: string;
+          last_synced_at?: string;
+          status?: string;
+          records_synced?: number;
+          error_message?: string | null;
+          duration_ms?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          wallet_id?: string;
+          provider?: string;
+          data_type?: string;
+          last_synced_at?: string;
+          status?: string;
+          records_synced?: number;
+          error_message?: string | null;
+          duration_ms?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      provider_health: {
+        Row: {
+          id: string;
+          provider: string;
+          is_available: boolean;
+          last_checked_at: string | null;
+          latency_ms: number | null;
+          error_count: number;
+          rate_limit_remaining: number | null;
+          last_error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          provider: string;
+          is_available?: boolean;
+          last_checked_at?: string | null;
+          latency_ms?: number | null;
+          error_count?: number;
+          rate_limit_remaining?: number | null;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          provider?: string;
+          is_available?: boolean;
+          last_checked_at?: string | null;
+          latency_ms?: number | null;
+          error_count?: number;
+          rate_limit_remaining?: number | null;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      provider_costs: {
+        Row: {
+          id: string;
+          provider: string;
+          endpoint: string;
+          cost_usd: number;
+          records_fetched: number;
+          user_id: string | null;
+          wallet_address: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          provider: string;
+          endpoint: string;
+          cost_usd?: number;
+          records_fetched?: number;
+          user_id?: string | null;
+          wallet_address?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          provider?: string;
+          endpoint?: string;
+          cost_usd?: number;
+          records_fetched?: number;
+          user_id?: string | null;
+          wallet_address?: string | null;
+          created_at?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

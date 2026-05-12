@@ -1,131 +1,175 @@
 /**
  * Data Ingestion Service for Sentinel
- * Syncs wallet data from blockchain providers into Supabase
+ *
+ * Updated to use the Hybrid Blockchain Architecture:
+ *   - Uses Provider Manager for smart routing
+ *   - Uses Sync Engine for full/incremental syncs
+ *   - Uses Supabase Cache layer for reduced API calls
+ *
+ * This service is the high-level interface used by
+ * API routes and cron jobs to trigger data syncs.
  */
 
 import { createServerClient } from '@/lib/supabase/server';
-import { getBlockchainService } from '@/lib/blockchain-unified';
+import { getSyncEngine } from '@/lib/blockchain/sync-engine';
+import { getProviderManager } from '@/lib/blockchain/provider-manager';
+import { getBlockchainCache } from '@/lib/blockchain/cache';
+import type { SyncResult } from '@/lib/blockchain/types';
 
 export class DataIngestionService {
-  async syncWallet(walletId: string): Promise<{ success: boolean; recordsSynced: number; errors: string[] }> {
-    const errors: string[] = [];
-    let recordsSynced = 0;
+  /**
+   * Full sync for a wallet - fetches all data from optimal providers
+   * Used when a wallet is first added or a manual re-sync is triggered
+   */
+  async syncWallet(walletId: string): Promise<{
+    success: boolean;
+    recordsSynced: number;
+    errors: string[];
+  }> {
+    const syncEngine = getSyncEngine();
+    const result = await syncEngine.fullSync(walletId);
 
-    try {
-      const supabase = createServerClient();
-      
-      // Get wallet info
-      const { data: wallet, error: walletError } = await supabase
-        .from('wallets')
-        .select('*')
-        .eq('id', walletId)
-        .single();
+    return {
+      success: result.overallSuccess,
+      recordsSynced: result.totalRecordsSynced,
+      errors: result.results
+        .filter(r => !r.success)
+        .flatMap(r => r.errors),
+    };
+  }
 
-      if (walletError || !wallet) {
-        return { success: false, recordsSynced: 0, errors: ['Wallet not found'] };
-      }
+  /**
+   * Incremental sync - only fetches new/updated data
+   * Used for periodic syncs (cron jobs, auto-sync)
+   */
+  async incrementalSync(walletId: string): Promise<{
+    success: boolean;
+    recordsSynced: number;
+    errors: string[];
+  }> {
+    const syncEngine = getSyncEngine();
+    const result = await syncEngine.incrementalSync(walletId);
 
-      // Mark as syncing
-      await supabase
-        .from('wallets')
-        .update({ is_syncing: true })
-        .eq('id', walletId);
+    return {
+      success: result.overallSuccess,
+      recordsSynced: result.totalRecordsSynced,
+      errors: result.results
+        .filter(r => !r.success)
+        .flatMap(r => r.errors),
+    };
+  }
 
-      try {
-        // Fetch portfolio data
-        const blockchain = getBlockchainService();
-        const portfolio = await blockchain.getPortfolio(wallet.address);
+  /**
+   * Quick portfolio refresh - only updates balances and DeFi positions
+   * Used when user opens the dashboard (fast, <2s)
+   */
+  async quickRefresh(address: string): Promise<{
+    success: boolean;
+    provider: string;
+    fromCache: boolean;
+  }> {
+    const cache = getBlockchainCache();
+    const providerManager = getProviderManager();
 
-        // Upsert token positions
-        for (const token of portfolio.tokens) {
-          if (token.valueUsd < 0.01) continue; // Skip dust
-          
-          const { error: upsertError } = await supabase
-            .from('asset_positions')
-            .upsert({
-              wallet_id: walletId,
-              user_id: wallet.user_id,
-              token_symbol: token.symbol,
-              token_name: token.name,
-              token_address: token.address,
-              token_decimals: token.decimals,
-              network: token.chain,
-              balance: token.balance,
-              balance_raw: String(token.balance * Math.pow(10, token.decimals)),
-              price_usd: token.priceUsd,
-              value_usd: token.valueUsd,
-              source: portfolio.provider,
-              is_spam: token.isSpam || false,
-            }, { onConflict: 'wallet_id,token_address,network' });
-
-          if (upsertError) {
-            errors.push(`Failed to upsert ${token.symbol}: ${upsertError.message}`);
-          } else {
-            recordsSynced++;
-          }
-        }
-
-        // Upsert DeFi positions
-        for (const defi of portfolio.defiPositions) {
-          const { error: upsertError } = await supabase
-            .from('defi_positions')
-            .upsert({
-              wallet_id: walletId,
-              user_id: wallet.user_id,
-              protocol_name: defi.protocol,
-              protocol_chain: defi.chain,
-              protocol_logo: defi.logoUrl,
-              position_type: defi.type,
-              supplied_tokens: defi.suppliedTokens,
-              borrowed_tokens: defi.borrowedTokens,
-              reward_tokens: defi.rewardTokens,
-              net_value_usd: defi.netValueUsd,
-              asset_value_usd: defi.assetValueUsd,
-              debt_value_usd: defi.debtValueUsd,
-              apy: defi.apy,
-              health_factor: defi.healthFactor,
-              source: portfolio.provider,
-            });
-
-          if (upsertError) {
-            errors.push(`Failed to upsert DeFi ${defi.protocol}: ${upsertError.message}`);
-          } else {
-            recordsSynced++;
-          }
-        }
-
-        // Update wallet sync status
-        await supabase
-          .from('wallets')
-          .update({
-            is_syncing: false,
-            last_synced_at: new Date().toISOString(),
-          })
-          .eq('id', walletId);
-
-        // Update sync_status table
-        await supabase
-          .from('sync_status')
-          .upsert({
-            wallet_id: walletId,
-            provider: portfolio.provider,
-            data_type: 'portfolio',
-            last_synced_at: new Date().toISOString(),
-            status: 'completed',
-            records_synced: recordsSynced,
-          }, { onConflict: 'wallet_id,provider,data_type' });
-
-      } catch (syncError) {
-        errors.push(`Sync error: ${syncError}`);
-        await supabase
-          .from('wallets')
-          .update({ is_syncing: false })
-          .eq('id', walletId);
-      }
-
-      return { success: errors.length === 0, recordsSynced, errors };
-    } catch (error) {
-      return { success: false, recordsSynced: 0, errors: [String(error)] };
+    // Check cache first
+    const cached = await cache.get(address, 'portfolio');
+    if (cached) {
+      return { success: true, provider: 'cache', fromCache: true };
     }
+
+    // Fetch fresh data
+    try {
+      const portfolio = await providerManager.getPortfolio(address);
+      return {
+        success: portfolio.totalValueUsd > 0,
+        provider: portfolio.providers.join('+'),
+        fromCache: false,
+      };
+    } catch (error) {
+      return { success: false, provider: 'none', fromCache: false };
+    }
+  }
+
+  /**
+   * Sync all wallets for a user
+   */
+  async syncAllUserWallets(userId: string): Promise<{
+    totalSynced: number;
+    totalErrors: number;
+    results: Array<{ walletId: string; success: boolean; records: number }>;
+  }> {
+    const supabase = createServerClient();
+    const { data: wallets } = await supabase
+      .from('wallets')
+      .select('id')
+      .eq('user_id', userId);
+
+    if (!wallets || wallets.length === 0) {
+      return { totalSynced: 0, totalErrors: 0, results: [] };
+    }
+
+    const results = [];
+    let totalErrors = 0;
+
+    for (const wallet of wallets) {
+      const result = await this.syncWallet(wallet.id);
+      results.push({
+        walletId: wallet.id,
+        success: result.success,
+        records: result.recordsSynced,
+      });
+      if (!result.success) totalErrors++;
+    }
+
+    return {
+      totalSynced: results.filter(r => r.success).length,
+      totalErrors,
+      results,
+    };
+  }
+
+  /**
+   * Get sync status for a wallet
+   */
+  async getSyncStatus(walletId: string): Promise<{
+    lastSyncedAt: string | null;
+    isSyncing: boolean;
+    providerHealth: Array<{
+      provider: string;
+      isAvailable: boolean;
+      latencyMs: number | null;
+    }>;
+    cacheStats: Record<string, { cached: boolean; age: number; provider: string | null }>;
+  }> {
+    const supabase = createServerClient();
+    const providerManager = getProviderManager();
+    const cache = getBlockchainCache();
+
+    // Get wallet info
+    const { data: wallet } = await supabase
+      .from('wallets')
+      .select('address, last_synced_at, is_syncing')
+      .eq('id', walletId)
+      .maybeSingle();
+
+    // Get provider health
+    const health = providerManager.getAllProviderHealth();
+
+    // Get cache stats
+    let cacheStats = {};
+    if (wallet) {
+      cacheStats = await cache.getStats(wallet.address);
+    }
+
+    return {
+      lastSyncedAt: wallet?.last_synced_at || null,
+      isSyncing: wallet?.is_syncing || false,
+      providerHealth: health.map(h => ({
+        provider: h.provider,
+        isAvailable: h.isAvailable,
+        latencyMs: h.latencyMs,
+      })),
+      cacheStats,
+    };
   }
 }
