@@ -77,7 +77,7 @@ function getAlchemyClient(networkKey: string): Alchemy {
     throw new Error(`Unknown network: ${networkKey}`);
   }
 
-  const apiKey = process.env.ALCHEMY_API_KEY;
+  const apiKey = process.env.ALCHEMY_API_KEY || process.env.ALCHEMY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || '';
   if (!apiKey) {
     throw new Error('ALCHEMY_API_KEY not set in environment');
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProviderManager } from '@/lib/blockchain/provider-manager';
+import { getApiKey, getResolvedEnvKeyName, maskApiKey } from '@/lib/env';
 
 // ────────────────────────────────────────────────────────────
 // Provider metadata: roles, limits, pricing
@@ -48,7 +49,7 @@ const PROVIDER_META: Record<string, {
     chains: '5 chains (ETH, Base, Arb, OP, Polygon)',
     envKey: 'ALCHEMY_API_KEY',
     baseUrl: 'https://eth-mainnet.g.alchemy.com/v2',
-    freeQuota: 300000, // Compute units per month
+    freeQuota: 300000,
     paidQuota: 1500000,
     costPerCall: 0.0005,
     color: '#6e3afa',
@@ -117,11 +118,11 @@ export async function GET(request: NextRequest) {
       const runtime = runtimeHealth.find(r => r.provider === key);
       const db = dbHealth?.find(d => d.provider === key);
 
-      // Check if API key is configured
-      const apiKeyConfigured = !!process.env[meta.envKey];
-      const apiKeyMasked = apiKeyConfigured
-        ? `${process.env[meta.envKey]!.slice(0, 6)}•••••••${process.env[meta.envKey]!.slice(-4)}`
-        : null;
+      // Check if API key is configured using the env resolver with fallback support
+      const apiKeyValue = getApiKey(key);
+      const apiKeyConfigured = apiKeyValue !== '';
+      const resolvedKeyName = getResolvedEnvKeyName(key);
+      const apiKeyMasked = apiKeyConfigured ? maskApiKey(apiKeyValue) : null;
 
       // Aggregate costs
       const providerCosts = (costData || []).filter(c => c.provider === key);
@@ -162,6 +163,7 @@ export async function GET(request: NextRequest) {
           configured: apiKeyConfigured,
           masked: apiKeyMasked,
           envKey: meta.envKey,
+          resolvedKey: resolvedKeyName,
         },
 
         // Health
@@ -272,8 +274,9 @@ export async function POST(request: NextRequest) {
       try {
         switch (provider) {
           case 'covalent': {
-            if (!process.env.COVALENT_API_KEY) throw new Error('API key not configured');
-            const auth = 'Basic ' + Buffer.from(process.env.COVALENT_API_KEY + ':').toString('base64');
+            const covalentKey = getApiKey('covalent');
+            if (!covalentKey) throw new Error('API key not configured');
+            const auth = 'Basic ' + Buffer.from(covalentKey + ':').toString('base64');
             const res = await fetch('https://api.covalenthq.com/v1/1/block_v2/latest/', {
               headers: { Authorization: auth },
               signal: AbortSignal.timeout(10000),
@@ -284,8 +287,9 @@ export async function POST(request: NextRequest) {
             break;
           }
           case 'zerion': {
-            if (!process.env.ZERION_API_KEY) throw new Error('API key not configured');
-            const auth = `Basic ${Buffer.from(process.env.ZERION_API_KEY + ':').toString('base64')}`;
+            const zerionKey = getApiKey('zerion');
+            if (!zerionKey) throw new Error('API key not configured');
+            const auth = `Basic ${Buffer.from(zerionKey + ':').toString('base64')}`;
             const res = await fetch('https://api.zerion.io/v1/wallets/0x0000000000000000000000000000000000000000/positions?currency=usd&filter[positions]=only_with_fungible', {
               headers: { Authorization: auth, Accept: 'application/json' },
               signal: AbortSignal.timeout(10000),
@@ -299,8 +303,9 @@ export async function POST(request: NextRequest) {
             break;
           }
           case 'alchemy': {
-            if (!process.env.ALCHEMY_API_KEY) throw new Error('API key not configured');
-            const res = await fetch(`https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`, {
+            const alchemyKey = getApiKey('alchemy');
+            if (!alchemyKey) throw new Error('API key not configured');
+            const res = await fetch(`https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }),
@@ -312,9 +317,10 @@ export async function POST(request: NextRequest) {
             break;
           }
           case 'debank': {
-            if (!process.env.DEBANK_API_KEY) throw new Error('API key not configured');
+            const debankKey = getApiKey('debank');
+            if (!debankKey) throw new Error('API key not configured');
             const res = await fetch('https://pro-openapi.debank.com/v1/user/total_balance?id=0x0000000000000000000000000000000000000000', {
-              headers: { AccessKey: process.env.DEBANK_API_KEY },
+              headers: { AccessKey: debankKey },
               signal: AbortSignal.timeout(10000),
             });
             isReachable = res.status !== 0;
@@ -336,13 +342,14 @@ export async function POST(request: NextRequest) {
       // Update DB health
       await supabase
         .from('provider_health')
-        .update({
+        .upsert({
+          provider,
           is_available: isReachable,
           latency_ms: latencyMs,
           last_checked_at: new Date().toISOString(),
-          ...(isReachable ? { error_count: 0, last_error: null } : { error_count: 1, last_error: errorDetail }),
-        })
-        .eq('provider', provider);
+          error_count: isReachable ? 0 : 1,
+          last_error: isReachable ? null : errorDetail,
+        }, { onConflict: 'provider' });
 
       return NextResponse.json({
         success: true,

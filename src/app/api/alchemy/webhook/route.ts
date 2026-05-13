@@ -18,7 +18,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import type { AlchemyWebhookEvent } from '@/lib/blockchain/types';
 
 // Alchemy webhook secret for signature verification
-const ALCHEMY_WEBHOOK_SECRET = process.env.ALCHEMY_WEBHOOK_SECRET || '';
+const ALCHEMY_WEBHOOK_SECRET = process.env.ALCHEMY_WEBHOOK_SECRET || process.env.ALCHEMY_WEBHOOK_SIGNING_KEY || '';
 
 /**
  * POST /api/alchemy/webhook

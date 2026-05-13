@@ -65,7 +65,8 @@ export class DeBankService {
   private apiKey: string;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.DEBANK_API_KEY || '';
+    this.apiKey = apiKey || (() => {
+      process.env.DEBANK_API_KEY || process.env.DEBANK || process.env.NEXT_PUBLIC_DEBANK_API_KEY || '';
   }
 
   private getHeaders(): Record<string, string> {

@@ -63,7 +63,7 @@ export async function GET() {
     // Check Alchemy (if API key exists)
     const alchemyCheck = await checkService('Alchemy API', async () => {
       const start = Date.now();
-      const apiKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
+      const apiKey = process.env.ALCHEMY_API_KEY || process.env.ALCHEMY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
       if (!apiKey) {
         return { ok: false, latency: 0, details: 'API key not configured' };
       }
@@ -82,6 +82,58 @@ export async function GET() {
       } catch {
         return { ok: false, latency: Date.now() - start, details: 'Connection failed' };
       }
+    });
+
+    // Check Covalent (if API key exists)
+    const covalentCheck = await checkService('Covalent API', async () => {
+      const start = Date.now();
+      const apiKey = process.env.COVALENT_API_KEY || process.env.COVALENT;
+      if (!apiKey) {
+        return { ok: false, latency: 0, details: 'API key not configured' };
+      }
+      try {
+        const auth = 'Basic ' + Buffer.from(apiKey + ':').toString('base64');
+        const res = await fetch('https://api.covalenthq.com/v1/1/block_v2/latest/', {
+          headers: { Authorization: auth },
+          signal: AbortSignal.timeout(8000),
+        });
+        const data = await res.json();
+        return {
+          ok: res.ok && !!data.data,
+          latency: Date.now() - start,
+          details: res.ok ? 'Connected - historical data API' : `HTTP ${res.status}`,
+        };
+      } catch {
+        return { ok: false, latency: Date.now() - start, details: 'Connection failed' };
+      }
+    });
+
+    // Check Zerion (if API key exists)
+    const zerionCheck = await checkService('Zerion API', async () => {
+      const start = Date.now();
+      const apiKey = process.env.ZERION_API_KEY || process.env.ZERION;
+      if (!apiKey) {
+        return { ok: false, latency: 0, details: 'API key not configured' };
+      }
+      return {
+        ok: true,
+        latency: Date.now() - start,
+        details: 'Configured - balances & DeFi data',
+      };
+    });
+
+    // Check DeBank (if API key exists)
+    const debankCheck = await checkService('DeBank API', async () => {
+      const start = Date.now();
+      const apiKey = process.env.DEBANK_API_KEY || process.env.DEBANK;
+      if (!apiKey) {
+        return { ok: false, latency: 0, details: 'API key not configured' };
+      }
+      return {
+        ok: true,
+        latency: Date.now() - start,
+        details: 'Configured - DeFi protocol details',
+      };
     });
 
     // Check OpenRouter AI
@@ -139,7 +191,7 @@ export async function GET() {
       }
     });
 
-    const services = [supabaseCheck, alchemyCheck, openRouterCheck, vercelCheck, sesCheck, telegramCheck];
+    const services = [supabaseCheck, covalentCheck, zerionCheck, alchemyCheck, debankCheck, openRouterCheck, vercelCheck, sesCheck, telegramCheck];
 
     // Get recent alerts count
     const { count: activeAlerts } = await supabase

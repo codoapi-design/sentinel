@@ -32,6 +32,7 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState('general');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [serviceStatuses, setServiceStatuses] = useState<Array<{ name: string; status: string; details: string }>>([]);
 
   const [settings, setSettings] = useState({
     siteName: 'Sentinel',
@@ -89,6 +90,16 @@ export default function AdminSettingsPage() {
       }
     }
     fetchSettings();
+
+    // Fetch real service status
+    fetch('/api/admin/system-health')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.services) {
+          setServiceStatuses(data.services);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleSave = async () => {
@@ -457,22 +468,32 @@ export default function AdminSettingsPage() {
               <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
                 <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Service Status</h3>
                 <div className="space-y-2">
-                  {[
-                    { name: 'Supabase (Auth + DB)', status: 'connected' },
-                    { name: 'Covalent (Historical Data)', status: 'connected' },
-                    { name: 'Zerion (Balances + DeFi)', status: 'connected' },
-                    { name: 'Alchemy (Real-time)', status: 'connected' },
-                    { name: 'DeBank (DeFi Details)', status: 'connected' },
-                    { name: 'OpenRouter (AI)', status: 'connected' },
-                  ].map((service) => (
-                    <div key={service.name} className="flex items-center justify-between p-2.5 bg-white/[0.02] rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-[#0ecb81] animate-pulse" />
-                        <span className="text-xs text-[#f7f8f8]">{service.name}</span>
+                  {(serviceStatuses || []).length > 0 ? (
+                    (serviceStatuses || []).map((service: { name: string; status: string; details: string }) => (
+                      <div key={service.name} className="flex items-center justify-between p-2.5 bg-white/[0.02] rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            service.status === 'operational' ? 'bg-[#0ecb81] animate-pulse' :
+                            service.status === 'degraded' ? 'bg-[#f7931a]' : 'bg-[#8a8f98]'
+                          }`} />
+                          <span className="text-xs text-[#f7f8f8]">{service.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] text-[#8a8f98]">{service.details}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            service.status === 'operational' ? 'bg-[#0ecb81]/10 text-[#0ecb81]' :
+                            service.status === 'degraded' ? 'bg-[#f7931a]/10 text-[#f7931a]' :
+                            'bg-[#8a8f98]/10 text-[#8a8f98]'
+                          }`}>
+                            {service.status === 'operational' ? 'Online' :
+                             service.status === 'degraded' ? 'Degraded' : 'No Key'}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-[10px] text-[#0ecb81]">Connected</span>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-xs text-[#8a8f98]">Loading service status...</div>
+                  )}
                 </div>
               </div>
 

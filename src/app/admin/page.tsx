@@ -5,11 +5,11 @@ import { useAdminStore } from '@/stores/admin-store';
 import {
   Users, Wallet, CreditCard, TrendingUp, Activity,
   UserPlus, AlertTriangle, Bot, Zap, Globe, ArrowUpRight,
-  ArrowDownRight, Clock,
+  ArrowDownRight, Clock, RefreshCw, Radio, Database,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, BarChart, Bar, Legend,
+  PieChart, Pie, Cell, BarChart, Bar,
 } from 'recharts';
 
 interface Stats {
@@ -27,9 +27,18 @@ interface Stats {
   aiAnalysesTotal: number;
 }
 
-interface SystemHealth {
-  services: Array<{ name: string; status: string; latency: string; uptime: string }>;
-  recentAlerts: Array<{ id: string; severity: string; title: string; time: string }>;
+interface ProviderInfo {
+  id: string;
+  name: string;
+  apiKey: { configured: boolean; masked: string | null; envKey: string };
+  health: { isAvailable: boolean; latencyMs: number | null; errorCount: number; lastChecked: string | null };
+}
+
+interface ProviderSummary {
+  totalProviders: number;
+  configuredProviders: number;
+  availableProviders: number;
+  degradedProviders: number;
 }
 
 const COLORS = ['#0052ff', '#0ecb81', '#f7931a', '#627eea', '#f6465d'];
@@ -37,38 +46,35 @@ const COLORS = ['#0052ff', '#0ecb81', '#f7931a', '#627eea', '#f6465d'];
 export default function AdminDashboard() {
   const { admin } = useAdminStore();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [providerSummary, setProviderSummary] = useState<ProviderSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
 
   useEffect(() => {
-    async function fetchStats() {
+    async function fetchAll() {
       try {
-        const res = await fetch('/api/admin/stats');
-        if (res.ok) {
-          const data = await res.json();
+        // Fetch stats
+        const statsRes = await fetch('/api/admin/stats');
+        if (statsRes.ok) {
+          const data = await statsRes.json();
           setStats(data);
         }
+
+        // Fetch provider status
+        const providerRes = await fetch('/api/admin/providers');
+        if (providerRes.ok) {
+          const result = await providerRes.json();
+          setProviders(result.data?.providers || []);
+          setProviderSummary(result.data?.summary || null);
+        }
       } catch (error) {
-        console.error('Failed to fetch stats:', error);
+        console.error('Failed to fetch data:', error);
       } finally {
         setLoading(false);
       }
     }
-    fetchStats();
-
-    // Set mock system health data
-    setSystemHealth({
-      services: [
-        { name: 'Supabase', status: 'operational', latency: '23ms', uptime: '99.99%' },
-        { name: 'Alchemy API', status: 'operational', latency: '145ms', uptime: '99.95%' },
-        { name: 'OpenRouter AI', status: 'operational', latency: '890ms', uptime: '99.9%' },
-        { name: 'Telegram Bot', status: 'operational', latency: '56ms', uptime: '99.98%' },
-        { name: 'AWS SES', status: 'operational', latency: '89ms', uptime: '99.99%' },
-        { name: 'Vercel', status: 'operational', latency: '12ms', uptime: '99.99%' },
-      ],
-      recentAlerts: [],
-    });
+    fetchAll();
   }, []);
 
   if (loading) {
@@ -85,7 +91,6 @@ export default function AdminDashboard() {
     { name: 'Enterprise', value: stats.enterpriseUsers },
   ] : [];
 
-  // Revenue estimation
   const estimatedMRR = (stats?.proUsers || 0) * 29 + (stats?.enterpriseUsers || 0) * 99;
 
   const statCards = [
@@ -95,14 +100,14 @@ export default function AdminDashboard() {
     { title: 'Total Transactions', value: stats?.totalTransactions || 0, icon: Activity, change: 0, color: '#627eea' },
   ];
 
-  // Wallet distribution mock data
-  const walletNetworkData = [
-    { name: 'Ethereum', value: 45 },
-    { name: 'BSC', value: 20 },
-    { name: 'Polygon', value: 15 },
-    { name: 'Arbitrum', value: 12 },
-    { name: 'Other', value: 8 },
-  ];
+  // Provider status for quick display
+  const providerCards = providers.map(p => ({
+    id: p.id,
+    name: p.name.split(' ')[0],
+    configured: p.apiKey.configured,
+    available: p.health.isAvailable,
+    latency: p.health.latencyMs,
+  }));
 
   return (
     <div className="space-y-6">
@@ -243,26 +248,49 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Wallet Networks + Recent Signups + System Health */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Wallet Network Distribution */}
+      {/* Provider Status + Recent Signups */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Blockchain Providers Status (REAL DATA) */}
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Wallet className="h-4 w-4 text-[#f7931a]" />
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">Network Distribution</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Radio className="h-4 w-4 text-[#0052ff]" />
+              <h3 className="text-sm font-semibold text-[#f7f8f8]">Blockchain Providers</h3>
+            </div>
+            <span className="text-[10px] text-[#8a8f98]">
+              {providerSummary?.configuredProviders || 0}/{providerSummary?.totalProviders || 4} configured
+            </span>
           </div>
-          <div className="h-[160px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={walletNetworkData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0a" />
-                <XAxis type="number" stroke="#8a8f98" fontSize={10} tickLine={false} />
-                <YAxis type="category" dataKey="name" stroke="#8a8f98" fontSize={10} tickLine={false} width={60} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#191a1b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
-                />
-                <Bar dataKey="value" fill="#0052ff" radius={[0, 4, 4, 0]} name="%" />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="space-y-2">
+            {providerCards.map((p) => (
+              <div key={p.id} className="flex items-center justify-between p-3 bg-white/[0.02] rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${
+                    !p.configured ? 'bg-[#8a8f98]' :
+                    p.available ? 'bg-[#0ecb81] animate-pulse' : 'bg-[#f6465d]'
+                  }`} />
+                  <span className="text-xs text-[#f7f8f8] font-medium">{p.name}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {!p.configured ? (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#8a8f98]/10 text-[#8a8f98]">No Key</span>
+                  ) : p.available ? (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0ecb81]/10 text-[#0ecb81]">Online</span>
+                  ) : (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#f6465d]/10 text-[#f6465d]">Offline</span>
+                  )}
+                  {p.latency ? (
+                    <span className={`text-[9px] ${
+                      p.latency < 200 ? 'text-[#0ecb81]' : p.latency < 500 ? 'text-[#f7931a]' : 'text-[#f6465d]'
+                    }`}>
+                      {p.latency}ms
+                    </span>
+                  ) : (
+                    <span className="text-[9px] text-[#8a8f98]">--</span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -296,28 +324,6 @@ export default function AdminDashboard() {
             {(!stats?.recentSignups || stats.recentSignups.length === 0) && (
               <div className="text-center py-4 text-xs text-[#8a8f98]">No recent signups</div>
             )}
-          </div>
-        </div>
-
-        {/* System Health */}
-        <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertTriangle className="h-4 w-4 text-[#f7931a]" />
-            <h3 className="text-sm font-semibold text-[#f7f8f8]">System Health</h3>
-          </div>
-          <div className="space-y-2">
-            {(systemHealth?.services || []).map((service) => (
-              <div key={service.name} className="flex items-center justify-between p-2 bg-white/[0.02] rounded-lg">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#0ecb81]" />
-                  <span className="text-xs text-[#f7f8f8]">{service.name}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[9px] text-[#8a8f98]">{service.latency}</span>
-                  <span className="text-[9px] text-[#0ecb81]">{service.uptime}</span>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       </div>

@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   try {
     // ── Validate Alchemy webhook signature ──
     const signature = request.headers.get('x-alchemy-signature');
-    const signingKey = process.env.ALCHEMY_WEBHOOK_SIGNING_KEY;
+    const signingKey = process.env.ALCHEMY_WEBHOOK_SIGNING_KEY || process.env.ALCHEMY_WEBHOOK_SECRET;
 
     if (!signingKey) {
       console.error('[AlchemyWebhook] ALCHEMY_WEBHOOK_SIGNING_KEY not configured');

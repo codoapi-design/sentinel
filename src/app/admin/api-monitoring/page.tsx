@@ -29,6 +29,7 @@ interface ProviderInfo {
     configured: boolean;
     masked: string | null;
     envKey: string;
+    resolvedKey?: string;
   };
   health: {
     isAvailable: boolean;
@@ -411,7 +412,10 @@ export default function AdminApiMonitoringPage() {
                             <div className="flex items-center justify-between">
                               <div>
                                 <p className="text-xs text-[#8a8f98]">Environment Variable</p>
-                                <p className="text-sm text-[#f7f8f8] font-mono mt-0.5" dir="ltr">{provider.apiKey.envKey}</p>
+                                <p className="text-sm text-[#f7f8f8] font-mono mt-0.5" dir="ltr">{provider.apiKey.resolvedKey || provider.apiKey.envKey}</p>
+                                {provider.apiKey.resolvedKey && provider.apiKey.resolvedKey !== provider.apiKey.envKey && (
+                                  <p className="text-[9px] text-[#f7931a] mt-0.5" dir="ltr">Resolved from: {provider.apiKey.resolvedKey}</p>
+                                )}
                               </div>
                               <span className={`text-[10px] px-2.5 py-1 rounded-full font-medium ${
                                 provider.apiKey.configured

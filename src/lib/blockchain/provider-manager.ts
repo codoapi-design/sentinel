@@ -424,7 +424,7 @@ export class ProviderManager {
       // Covalent supports NFT endpoints
       const url = `https://api.covalenthq.com/v1/${chainId}/address/${address}/balances_v2/?nft=true`;
       const response = await fetch(url, {
-        headers: { 'Authorization': 'Basic ' + Buffer.from(process.env.COVALENT_API_KEY + ':').toString('base64') },
+        headers: { 'Authorization': 'Basic ' + Buffer.from((process.env.COVALENT_API_KEY || process.env.COVALENT || process.env.NEXT_PUBLIC_COVALENT_API_KEY || '') + ':').toString('base64') },
       });
 
       if (response.ok) {

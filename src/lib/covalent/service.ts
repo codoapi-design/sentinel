@@ -51,7 +51,7 @@ export class CovalentService {
   private apiKey: string;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.COVALENT_API_KEY || '';
+    this.apiKey = apiKey || (typeof window === 'undefined' ? (() => { const { getApiKey } = require('../env'); return getApiKey('covalent'); })() : '') || '';
   }
 
   private getAuthHeader(): string {
