@@ -56,8 +56,7 @@ export class ZerionService {
   private apiKey: string;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || (() => {
-      process.env.ZERION_API_KEY || process.env.ZERION || process.env.NEXT_PUBLIC_ZERION_API_KEY || '';
+    this.apiKey = apiKey || process.env.ZERION_API_KEY || process.env.ZERION || process.env.NEXT_PUBLIC_ZERION_API_KEY || '';
   }
 
   private getHeaders(): Record<string, string> {
