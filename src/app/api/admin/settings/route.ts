@@ -1,6 +1,25 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { isAdmin, getAdminRole, logAdminAction } from '@/lib/admin/auth';
+import { isAdmin, getAdminRole } from '@/lib/admin/auth';
+
+// Default settings values
+const DEFAULT_SETTINGS: Record<string, string> = {
+  site_name: 'Sentinel',
+  site_description: 'Digital Wallet Monitoring Platform',
+  support_email: 'support@sentinel.app',
+  maintenance_mode: 'false',
+  registration_enabled: 'true',
+  email_verification_required: 'true',
+  max_wallets_per_user: '10',
+  max_api_keys_per_user: '5',
+  ai_model: 'openai/o4-mini',
+  ai_daily_limit: '50',
+  ai_max_tokens: '4096',
+  rate_limit_window: '15',
+  rate_limit_max_requests: '100',
+  telegram_bot_enabled: 'true',
+  email_notifications_enabled: 'true',
+};
 
 export async function GET(request: Request) {
   try {
@@ -16,7 +35,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get system statistics
+    // Get system statistics from actual DB
     const { count: totalUsers } = await supabase
       .from('user_profiles')
       .select('*', { count: 'exact', head: true });
@@ -42,12 +61,35 @@ export async function GET(request: Request) {
       .from('audit_log')
       .select('*', { count: 'exact', head: true });
 
-    // Get rate limit stats
-    const { data: rateLimits } = await supabase
-      .from('rate_limits')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
+    // Get actual settings from DB
+    const { data: dbSettings } = await supabase
+      .from('system_settings')
+      .select('key, value');
+
+    // Merge DB settings with defaults
+    const settingsMap: Record<string, string> = { ...DEFAULT_SETTINGS };
+    for (const s of dbSettings || []) {
+      settingsMap[s.key] = s.value;
+    }
+
+    // Get admin list for security section
+    const { data: adminList } = await supabase
+      .from('admin_users')
+      .select('user_id, role, created_at')
+      .order('created_at', { ascending: true });
+
+    // Enrich with email from auth
+    const enrichedAdmins = await Promise.all((adminList || []).map(async (admin) => {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('email')
+        .eq('id', admin.user_id)
+        .maybeSingle();
+      return {
+        ...admin,
+        email: profile?.email || admin.user_id,
+      };
+    }));
 
     return NextResponse.json({
       stats: {
@@ -58,7 +100,8 @@ export async function GET(request: Request) {
         adminCount: adminCount || 0,
         auditLogCount: auditLogCount || 0,
       },
-      rateLimits: rateLimits || [],
+      settings: settingsMap,
+      adminList: enrichedAdmins,
     });
   } catch (error) {
     console.error('Admin settings error:', error);
@@ -83,14 +126,37 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { action, data } = body;
 
-    await logAdminAction({
-      adminId: session.user.id,
-      action: `settings_${action}`,
-      targetType: 'settings',
-      details: data,
-    });
+    if (action === 'update' && data) {
+      // Save each setting to DB via upsert
+      const entries = Object.entries(data) as [string, string | boolean][];
+      const upserts = entries.map(([key, value]) => ({
+        key,
+        value: String(value),
+      }));
 
-    return NextResponse.json({ success: true, message: 'Settings updated' });
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert(upserts, { onConflict: 'key' });
+
+      if (error) {
+        console.error('Settings upsert error:', error);
+        return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
+      }
+
+      // Log action
+      try {
+        await supabase.from('audit_log').insert({
+          admin_id: session.user.id,
+          action: 'settings_update',
+          target_type: 'system_settings',
+          details: { updatedKeys: entries.map(([k]) => k) },
+        });
+      } catch {}
+
+      return NextResponse.json({ success: true, message: 'Settings saved successfully' });
+    }
+
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     console.error('Admin settings update error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
