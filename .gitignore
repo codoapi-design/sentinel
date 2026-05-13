@@ -55,3 +55,21 @@ server.log
 
 .env
 node_modules/
+# Junk files to never commit
+bun.lock
+b3os_*.json
+base_paymaster_*.json
+coinbase_*.json
+Caddyfile
+serve.js
+simple-server.js
+test-server.js
+keep-alive.js
+rproxy.js
+watchdog.sh
+upload/
+download/
+agent-ctx/
+.zscripts/
+mini-services/
+worklog.md

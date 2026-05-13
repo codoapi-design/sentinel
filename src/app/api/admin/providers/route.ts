@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createCookieServerClient } from '@/lib/supabase/server';
 import { getProviderManager } from '@/lib/blockchain/provider-manager';
 import { getApiKey, getResolvedEnvKeyName, maskApiKey } from '@/lib/env';
 
@@ -71,13 +71,10 @@ const PROVIDER_META: Record<string, {
 
 /**
  * GET /api/admin/providers
- *
- * Comprehensive provider monitoring endpoint.
- * Returns: health, API key status, usage, remaining quota, costs.
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient();
+    const supabase = await createCookieServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
@@ -98,8 +95,13 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get('period') || 'monthly';
 
     // ── Get runtime health from ProviderManager ──
-    const providerManager = getProviderManager();
-    const runtimeHealth = providerManager.getAllProviderHealth();
+    let runtimeHealth: any[] = [];
+    try {
+      const providerManager = getProviderManager();
+      runtimeHealth = providerManager.getAllProviderHealth();
+    } catch {
+      // ProviderManager may not be available during build
+    }
 
     // ── Get persistent health from DB ──
     const { data: dbHealth } = await supabase
@@ -115,26 +117,24 @@ export async function GET(request: NextRequest) {
 
     // ── Build provider details ──
     const providers = Object.entries(PROVIDER_META).map(([key, meta]) => {
-      const runtime = runtimeHealth.find(r => r.provider === key);
-      const db = dbHealth?.find(d => d.provider === key);
+      const runtime = runtimeHealth.find((r: any) => r.provider === key);
+      const db = (dbHealth as any[])?.find((d: any) => d.provider === key);
 
-      // Check if API key is configured using the env resolver with fallback support
+      // Check if API key is configured using the env resolver
       const apiKeyValue = getApiKey(key);
       const apiKeyConfigured = apiKeyValue !== '';
       const resolvedKeyName = getResolvedEnvKeyName(key);
       const apiKeyMasked = apiKeyConfigured ? maskApiKey(apiKeyValue) : null;
 
       // Aggregate costs
-      const providerCosts = (costData || []).filter(c => c.provider === key);
-      const totalCostUsd = providerCosts.reduce((sum, c) => sum + parseFloat(c.cost_usd || '0'), 0);
+      const providerCosts = ((costData as any[]) || []).filter((c: any) => c.provider === key);
+      const totalCostUsd = providerCosts.reduce((sum: number, c: any) => sum + parseFloat(c.cost_usd || '0'), 0);
       const totalRequests = providerCosts.length;
-      const totalRecords = providerCosts.reduce((sum, c) => sum + (c.records_fetched || 0), 0);
+      const totalRecords = providerCosts.reduce((sum: number, c: any) => sum + (c.records_fetched || 0), 0);
 
-      // Calculate usage percentage (against free quota)
       const usagePercent = Math.min(100, (totalRequests / meta.freeQuota) * 100);
       const remainingQuota = Math.max(0, meta.freeQuota - totalRequests);
 
-      // Period costs (daily, weekly, monthly)
       const now = new Date();
       let periodStart: Date;
       if (period === 'daily') {
@@ -145,8 +145,8 @@ export async function GET(request: NextRequest) {
         periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       }
 
-      const periodCosts = providerCosts.filter(c => new Date(c.created_at) >= periodStart);
-      const periodCostUsd = periodCosts.reduce((sum, c) => sum + parseFloat(c.cost_usd || '0'), 0);
+      const periodCosts = providerCosts.filter((c: any) => new Date(c.created_at) >= periodStart);
+      const periodCostUsd = periodCosts.reduce((sum: number, c: any) => sum + parseFloat(c.cost_usd || '0'), 0);
       const periodRequests = periodCosts.length;
 
       return {
@@ -158,7 +158,6 @@ export async function GET(request: NextRequest) {
         icon: meta.icon,
         baseUrl: meta.baseUrl,
 
-        // API Key status
         apiKey: {
           configured: apiKeyConfigured,
           masked: apiKeyMasked,
@@ -166,9 +165,8 @@ export async function GET(request: NextRequest) {
           resolvedKey: resolvedKeyName,
         },
 
-        // Health
         health: {
-          isAvailable: runtime?.isAvailable ?? (db?.is_available ?? true),
+          isAvailable: runtime?.isAvailable ?? (db?.is_available ?? apiKeyConfigured),
           latencyMs: runtime?.latencyMs ?? (db?.latency_ms ?? null),
           errorCount: runtime?.errorCount ?? (db?.error_count ?? 0),
           lastChecked: db?.last_checked_at || null,
@@ -176,7 +174,6 @@ export async function GET(request: NextRequest) {
           rateLimitRemaining: runtime?.rateLimitRemaining ?? (db?.rate_limit_remaining ?? null),
         },
 
-        // Quota & Usage
         quota: {
           freeQuota: meta.freeQuota,
           paidQuota: meta.paidQuota,
@@ -186,7 +183,6 @@ export async function GET(request: NextRequest) {
           costPerCall: meta.costPerCall,
         },
 
-        // Costs
         costs: {
           totalCostUsd: Math.round(totalCostUsd * 100) / 100,
           totalRecords,
@@ -197,7 +193,6 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // ── Summary ──
     const summary = {
       totalProviders: providers.length,
       configuredProviders: providers.filter(p => p.apiKey.configured).length,
@@ -217,12 +212,10 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/providers
- *
- * Admin actions: reset_health | test_provider
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient();
+    const supabase = await createCookieServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
@@ -339,7 +332,7 @@ export async function POST(request: NextRequest) {
         errorDetail = testError instanceof Error ? testError.message : String(testError);
       }
 
-      // Update DB health
+      // Update DB health with upsert
       await supabase
         .from('provider_health')
         .upsert({
@@ -349,7 +342,7 @@ export async function POST(request: NextRequest) {
           last_checked_at: new Date().toISOString(),
           error_count: isReachable ? 0 : 1,
           last_error: isReachable ? null : errorDetail,
-        }, { onConflict: 'provider' });
+        } as any, { onConflict: 'provider' });
 
       return NextResponse.json({
         success: true,
