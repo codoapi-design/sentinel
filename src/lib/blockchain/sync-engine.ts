@@ -276,7 +276,7 @@ export class SyncEngine {
         const supabase = createServerClient();
         const { data: wallet } = await supabase
           .from('wallets')
-          .select('id, user_id')
+          .select('id, user_id, last_synced_block')
           .ilike('address', address)
           .maybeSingle();
 
@@ -284,7 +284,6 @@ export class SyncEngine {
           const tx = result.transactions[0];
           await supabase.from('transactions').upsert({
             wallet_id: wallet.id,
-            user_id: wallet.user_id,
             tx_hash: tx.txHash,
             block_number: tx.blockNumber,
             timestamp: tx.timestamp,
@@ -517,7 +516,6 @@ export class SyncEngine {
             // Store in Supabase
             const dbRows = result.transactions.map(tx => ({
               wallet_id: walletId,
-              user_id: userId,
               tx_hash: tx.txHash,
               block_number: tx.blockNumber,
               timestamp: tx.timestamp,

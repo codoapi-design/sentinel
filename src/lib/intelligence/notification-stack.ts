@@ -4,6 +4,10 @@
  */
 
 import { createServerClient } from '@/lib/supabase/server';
+import type { Database, Json } from '@/lib/supabase/types';
+
+type AlertEventInsert = Database['public']['Tables']['alert_events']['Insert'];
+type TelegramSettingsRow = Database['public']['Tables']['telegram_settings']['Row'];
 
 export interface NotificationPayload {
   userId: string;
@@ -31,8 +35,8 @@ export class NotificationStack {
           severity: payload.severity,
           title: payload.title,
           message: payload.message,
-          data: payload.data || {},
-        });
+          data: (payload.data || null) as Json | null,
+        } satisfies AlertEventInsert);
 
       if (alertError) {
         failed.push('database');
@@ -40,14 +44,16 @@ export class NotificationStack {
 
       // Try Telegram notification
       try {
-        const { data: telegramConn } = await supabase
-          .from('telegram_connections')
-          .select('telegram_chat_id')
+        const { data: telegramConnData } = await supabase
+          .from('telegram_settings')
+          .select('*')
           .eq('user_id', payload.userId)
-          .eq('is_active', true)
+          .eq('enabled', true)
           .single();
 
-        if (telegramConn) {
+        const telegramConn = telegramConnData as TelegramSettingsRow | null;
+
+        if (telegramConn?.telegram_chat_id) {
           const botToken = process.env.TELEGRAM_BOT_TOKEN;
           if (botToken) {
             const emoji = payload.severity === 'critical' ? '🔴' : payload.severity === 'warning' ? '🟡' : '🟢';

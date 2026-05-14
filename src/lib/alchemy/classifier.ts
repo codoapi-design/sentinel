@@ -24,7 +24,6 @@ export interface ProtocolInfo {
 // Mainnet contract addresses (lowercase for matching)
 const PROTOCOL_DB: Record<string, ProtocolInfo> = {
   // Uniswap
-  '0x7a250d5630b4cf539739df2c5dacb4c659f2488d': { name: 'Uniswap V2 Router', nameAr: 'يونيسواب V2', type: 'trade' },
   '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45': { name: 'Uniswap V3 Router', nameAr: 'يونيسواب V3', type: 'trade' },
   '0xe592427a0aece92de3edee1f18e0157c05861564': { name: 'Uniswap V3 SwapRouter', nameAr: 'يونيسواب V3', type: 'trade' },
   '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad': { name: 'Uniswap Universal Router', nameAr: 'يونيسواب', type: 'trade' },
@@ -115,7 +114,6 @@ const METHOD_DB: Record<string, MethodInfo> = {
   // Liquidity provision (DeFi)
   '0xe8e33700': { name: 'addLiquidity', type: 'defi' },
   '0xf305d719': { name: 'addLiquidityETH', type: 'defi' },
-  '0x2e1a7d4d': { name: 'removeLiquidity', type: 'defi' },
   '0x02751cec': { name: 'removeLiquidityETH', type: 'defi' },
 
   // Aave
@@ -162,7 +160,7 @@ const REWARD_PAID_SIG = '0xe2403640ba68fed3a2f88b7557551d1993f84b99bb10ff833f0cf
 // Classification Types
 // ============================================================
 
-export type TransactionType = 'income' | 'expense' | 'trade' | 'defi' | 'staking' | 'gas';
+export type TransactionType = 'income' | 'expense' | 'trade' | 'defi' | 'staking' | 'gas' | 'nft' | 'bridge';
 
 export interface ClassifiedTransaction {
   txHash: string;
@@ -213,6 +211,8 @@ const TYPE_LABELS_AR: Record<TransactionType, string> = {
   defi: 'DeFi',
   staking: 'Staking Reward',
   gas: 'رسوم غاز',
+  nft: 'NFT',
+  bridge: 'جسر',
 };
 
 // ============================================================

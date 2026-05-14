@@ -4,6 +4,7 @@
  */
 
 import { createServerClient } from '@/lib/supabase/server';
+import type { Json } from '@/lib/supabase/types';
 
 export interface AdminUser {
   user_id: string;
@@ -62,7 +63,7 @@ export async function logAdminAction(params: {
       action: params.action,
       target_type: params.targetType || null,
       target_id: params.targetId || null,
-      details: params.details || {},
+      details: (params.details as unknown as Json) || null,
       ip_address: params.ipAddress || null,
     });
   } catch (error) {

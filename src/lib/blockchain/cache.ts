@@ -22,12 +22,14 @@ import type {
   ProviderId,
   TokenBalance,
   DeFiPosition,
+  DeFiPositionType,
   WalletTransaction,
   WalletPortfolio,
   ChainBreakdown,
   PnLData,
   NFTAsset,
 } from './types';
+import type { Json } from '@/lib/supabase/types';
 
 // ────────────────────────────────────────────────────────────
 // TTL Configuration (milliseconds)
@@ -99,7 +101,7 @@ export class BlockchainCache {
           wallet_address: address.toLowerCase(),
           data_type: dataType,
           provider,
-          payload,
+          payload: payload as Json,
           fetched_at: now,
           expires_at: now + ttl,
           hit_count: 0,
@@ -188,13 +190,14 @@ export class BlockchainCache {
         .map(t => ({
           wallet_id: walletId,
           user_id: userId,
+          chain: t.chain,
           token_symbol: t.symbol,
           token_name: t.name,
           token_address: t.address,
           token_decimals: t.decimals,
           network: t.chain,
           chain_id: t.chainId,
-          balance: t.balance,
+          balance: String(t.balance),
           balance_raw: t.rawBalance,
           price_usd: t.priceUsd,
           value_usd: t.valueUsd,
@@ -248,13 +251,14 @@ export class BlockchainCache {
         user_id: userId,
         protocol_name: p.protocol,
         protocol_id: p.protocolId,
+        chain: p.chain,
         protocol_chain: p.chain,
         chain_id: p.chainId,
         protocol_logo: p.logoUrl,
         position_type: p.type,
-        supplied_tokens: p.suppliedTokens,
-        borrowed_tokens: p.borrowedTokens,
-        reward_tokens: p.rewardTokens,
+        supplied_tokens: p.suppliedTokens as unknown as Json,
+        borrowed_tokens: p.borrowedTokens as unknown as Json,
+        reward_tokens: p.rewardTokens as unknown as Json,
         net_value_usd: p.netValueUsd,
         asset_value_usd: p.assetValueUsd,
         debt_value_usd: p.debtValueUsd,
@@ -293,7 +297,6 @@ export class BlockchainCache {
 
       const rows = transactions.map(tx => ({
         wallet_id: walletId,
-        user_id: userId,
         tx_hash: tx.hash,
         block_number: tx.blockNumber,
         timestamp: tx.timestamp,
@@ -322,7 +325,7 @@ export class BlockchainCache {
         token_decimals: tx.tokenTransfers[0]?.decimals || 18,
         counterparty: tx.direction === 'in' ? tx.from : tx.to,
         counterparty_label: tx.protocol || null,
-        raw_data: { tokenTransfers: tx.tokenTransfers, provider },
+        raw_data: { tokenTransfers: tx.tokenTransfers, provider } as unknown as Json,
       }));
 
       const batchSize = 50;
@@ -387,16 +390,16 @@ export class BlockchainCache {
       // Build chain breakdown
       const chainMap = new Map<string, { value: number; tokens: number; defi: number }>();
       for (const t of tokens || []) {
-        const existing = chainMap.get(t.network) || { value: 0, tokens: 0, defi: 0 };
+        const existing = chainMap.get(t.chain) || { value: 0, tokens: 0, defi: 0 };
         existing.value += t.value_usd || 0;
         existing.tokens++;
-        chainMap.set(t.network, existing);
+        chainMap.set(t.chain, existing);
       }
       for (const p of defiPositions || []) {
-        const existing = chainMap.get(p.protocol_chain) || { value: 0, tokens: 0, defi: 0 };
+        const existing = chainMap.get(p.chain) || { value: 0, tokens: 0, defi: 0 };
         existing.value += p.net_value_usd || 0;
         existing.defi++;
-        chainMap.set(p.protocol_chain, existing);
+        chainMap.set(p.chain, existing);
       }
 
       return {
@@ -407,14 +410,14 @@ export class BlockchainCache {
         tokens: (tokens || []).map(t => ({
           symbol: t.token_symbol,
           name: t.token_name,
-          address: t.token_address,
+          address: t.token_address || '',
           decimals: t.token_decimals,
-          balance: t.balance,
+          balance: Number(t.balance),
           rawBalance: t.balance_raw || '0',
           priceUsd: t.price_usd,
           valueUsd: t.value_usd,
           change24h: t.change_24h,
-          chain: t.network,
+          chain: t.chain,
           chainId: t.chain_id || 1,
           logoUrl: t.logo_url,
           isSpam: t.is_spam || false,
@@ -425,12 +428,12 @@ export class BlockchainCache {
           id: p.id,
           protocol: p.protocol_name,
           protocolId: p.protocol_id || '',
-          chain: p.protocol_chain,
+          chain: p.chain,
           chainId: p.chain_id || 1,
-          type: p.position_type || 'unknown',
-          suppliedTokens: p.supplied_tokens || [],
-          borrowedTokens: p.borrowed_tokens || [],
-          rewardTokens: p.reward_tokens || [],
+          type: (p.position_type || 'unknown') as DeFiPositionType,
+          suppliedTokens: (p.supplied_tokens || []) as unknown as TokenBalance[],
+          borrowedTokens: (p.borrowed_tokens || []) as unknown as TokenBalance[],
+          rewardTokens: (p.reward_tokens || []) as unknown as TokenBalance[],
           netValueUsd: p.net_value_usd || 0,
           assetValueUsd: p.asset_value_usd || 0,
           debtValueUsd: p.debt_value_usd || 0,

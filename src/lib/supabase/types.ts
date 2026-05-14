@@ -18,37 +18,44 @@ export interface Database {
       user_profiles: {
         Row: {
           id: string;
+          user_id: string;
           email: string;
           full_name: string | null;
           avatar_url: string | null;
           plan: string;
           status: string;
           two_factor_enabled: boolean;
+          telegram_chat_id: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id: string;
+          user_id: string;
           email: string;
           full_name?: string | null;
           avatar_url?: string | null;
           plan?: string;
           status?: string;
           two_factor_enabled?: boolean;
+          telegram_chat_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
+          user_id?: string;
           email?: string;
           full_name?: string | null;
           avatar_url?: string | null;
           plan?: string;
           status?: string;
           two_factor_enabled?: boolean;
+          telegram_chat_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Admin Tables ───
@@ -57,20 +64,24 @@ export interface Database {
           id: string;
           user_id: string;
           role: string;
+          two_factor_enabled: boolean;
           created_at: string;
         };
         Insert: {
           id?: string;
           user_id: string;
           role?: string;
+          two_factor_enabled?: boolean;
           created_at?: string;
         };
         Update: {
           id?: string;
           user_id?: string;
           role?: string;
+          two_factor_enabled?: boolean;
           created_at?: string;
         };
+        Relationships: [];
       };
 
       audit_log: {
@@ -104,6 +115,7 @@ export interface Database {
           ip_address?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Wallet & Transaction Tables ───
@@ -141,6 +153,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       transactions: {
@@ -249,6 +262,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Client Management ───
@@ -283,6 +297,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Email Settings ───
@@ -344,6 +359,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Email Verification ───
@@ -351,6 +367,7 @@ export interface Database {
         Row: { id: string; email: string; code: string; expires_at: string; used: boolean; created_at: string; };
         Insert: { id?: string; email: string; code: string; expires_at: string; used?: boolean; created_at?: string; };
         Update: { id?: string; email?: string; code?: string; expires_at?: string; used?: boolean; created_at?: string; };
+        Relationships: [];
       };
 
       // ─── Email Log ───
@@ -358,6 +375,7 @@ export interface Database {
         Row: { id: string; user_id: string; to_email: string; subject: string; template: string | null; status: string; error: string | null; created_at: string; };
         Insert: { id?: string; user_id: string; to_email: string; subject: string; template?: string | null; status?: string; error?: string | null; created_at?: string; };
         Update: { id?: string; user_id?: string; to_email?: string; subject?: string; template?: string | null; status?: string; error?: string | null; created_at?: string; };
+        Relationships: [];
       };
 
       // ─── System Settings ───
@@ -365,6 +383,7 @@ export interface Database {
         Row: { key: string; value: string; created_at: string; updated_at: string; };
         Insert: { key: string; value: string; created_at?: string; updated_at?: string; };
         Update: { key?: string; value?: string; created_at?: string; updated_at?: string; };
+        Relationships: [];
       };
 
       // ─── System Alerts ───
@@ -411,6 +430,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Content Pages ───
@@ -418,6 +438,7 @@ export interface Database {
         Row: { id: string; slug: string; title: string; content: string; status: string; author: string | null; published_at: string | null; created_at: string; updated_at: string; };
         Insert: { id?: string; slug: string; title: string; content: string; status?: string; author?: string | null; published_at?: string | null; created_at?: string; updated_at?: string; };
         Update: { id?: string; slug?: string; title?: string; content?: string; status?: string; author?: string | null; published_at?: string | null; created_at?: string; updated_at?: string; };
+        Relationships: [];
       };
 
       // ─── Notification Templates ───
@@ -425,6 +446,7 @@ export interface Database {
         Row: { id: string; key: string; name: string; channel: string; subject: string | null; body: string; enabled: boolean; created_at: string; updated_at: string; };
         Insert: { id?: string; key: string; name: string; channel: string; subject?: string | null; body: string; enabled?: boolean; created_at?: string; updated_at?: string; };
         Update: { id?: string; key?: string; name?: string; channel?: string; subject?: string | null; body?: string; enabled?: boolean; created_at?: string; updated_at?: string; };
+        Relationships: [];
       };
 
       // ─── AI Usage ───
@@ -434,6 +456,7 @@ export interface Database {
           user_id: string;
           chat_count: number;
           analysis_count: number;
+          last_reset_date: string;
           total_input_tokens: number;
           total_output_tokens: number;
           created_at: string;
@@ -444,6 +467,7 @@ export interface Database {
           user_id: string;
           chat_count?: number;
           analysis_count?: number;
+          last_reset_date?: string;
           total_input_tokens?: number;
           total_output_tokens?: number;
           created_at?: string;
@@ -454,11 +478,13 @@ export interface Database {
           user_id?: string;
           chat_count?: number;
           analysis_count?: number;
+          last_reset_date?: string;
           total_input_tokens?: number;
           total_output_tokens?: number;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── API Keys ───
@@ -499,6 +525,7 @@ export interface Database {
           request_count?: number;
           created_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── API Key Usage ───
@@ -536,6 +563,7 @@ export interface Database {
           user_agent?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Blockchain Cache ───
@@ -576,6 +604,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Sync Status ───
@@ -619,6 +648,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Provider Health ───
@@ -659,6 +689,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Provider Costs ───
@@ -693,6 +724,7 @@ export interface Database {
           wallet_address?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Asset Positions ───
@@ -700,15 +732,25 @@ export interface Database {
         Row: {
           id: string;
           wallet_id: string;
+          user_id: string;
           chain: string;
           token_address: string | null;
           token_symbol: string;
           token_name: string;
+          token_decimals: number;
           balance: string;
+          balance_raw: string;
           value_usd: number;
           price_usd: number;
           change_24h: number | null;
+          network: string;
+          chain_id: number;
           is_spam: boolean;
+          is_verified: boolean;
+          source: string;
+          unrealized_pnl_usd: number | null;
+          unrealized_pnl_pct: number | null;
+          cost_basis_usd: number | null;
           logo_url: string | null;
           provider: string;
           created_at: string;
@@ -717,15 +759,25 @@ export interface Database {
         Insert: {
           id?: string;
           wallet_id: string;
+          user_id: string;
           chain: string;
           token_address?: string | null;
           token_symbol: string;
           token_name?: string;
+          token_decimals?: number;
           balance?: string;
+          balance_raw?: string;
           value_usd?: number;
           price_usd?: number;
           change_24h?: number | null;
+          network?: string;
+          chain_id?: number;
           is_spam?: boolean;
+          is_verified?: boolean;
+          source?: string;
+          unrealized_pnl_usd?: number | null;
+          unrealized_pnl_pct?: number | null;
+          cost_basis_usd?: number | null;
           logo_url?: string | null;
           provider?: string;
           created_at?: string;
@@ -734,20 +786,31 @@ export interface Database {
         Update: {
           id?: string;
           wallet_id?: string;
+          user_id?: string;
           chain?: string;
           token_address?: string | null;
           token_symbol?: string;
           token_name?: string;
+          token_decimals?: number;
           balance?: string;
+          balance_raw?: string;
           value_usd?: number;
           price_usd?: number;
           change_24h?: number | null;
+          network?: string;
+          chain_id?: number;
           is_spam?: boolean;
+          is_verified?: boolean;
+          source?: string;
+          unrealized_pnl_usd?: number | null;
+          unrealized_pnl_pct?: number | null;
+          cost_basis_usd?: number | null;
           logo_url?: string | null;
           provider?: string;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── DeFi Positions ───
@@ -755,54 +818,88 @@ export interface Database {
         Row: {
           id: string;
           wallet_id: string;
+          user_id: string;
           protocol_id: string;
           protocol_name: string;
+          protocol_chain: string;
           chain: string;
+          chain_id: number;
           type: string;
+          position_type: string;
           supplied_value_usd: number;
           borrowed_value_usd: number;
           net_value_usd: number;
+          supplied_tokens: Json | null;
+          borrowed_tokens: Json | null;
+          reward_tokens: Json | null;
+          asset_value_usd: number | null;
+          debt_value_usd: number | null;
           health_factor: number | null;
           apy: number | null;
           logo_url: string | null;
+          protocol_logo: string | null;
           provider: string;
+          source: string;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           wallet_id: string;
+          user_id: string;
           protocol_id?: string;
           protocol_name?: string;
+          protocol_chain?: string;
           chain?: string;
+          chain_id?: number;
           type?: string;
+          position_type?: string;
           supplied_value_usd?: number;
           borrowed_value_usd?: number;
           net_value_usd?: number;
+          supplied_tokens?: Json | null;
+          borrowed_tokens?: Json | null;
+          reward_tokens?: Json | null;
+          asset_value_usd?: number | null;
+          debt_value_usd?: number | null;
           health_factor?: number | null;
           apy?: number | null;
           logo_url?: string | null;
+          protocol_logo?: string | null;
           provider?: string;
+          source?: string;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           wallet_id?: string;
+          user_id?: string;
           protocol_id?: string;
           protocol_name?: string;
+          protocol_chain?: string;
           chain?: string;
+          chain_id?: number;
           type?: string;
+          position_type?: string;
           supplied_value_usd?: number;
           borrowed_value_usd?: number;
           net_value_usd?: number;
+          supplied_tokens?: Json | null;
+          borrowed_tokens?: Json | null;
+          reward_tokens?: Json | null;
+          asset_value_usd?: number | null;
+          debt_value_usd?: number | null;
           health_factor?: number | null;
           apy?: number | null;
           logo_url?: string | null;
+          protocol_logo?: string | null;
           provider?: string;
+          source?: string;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Subscriptions ───
@@ -825,7 +922,7 @@ export interface Database {
           status?: string;
           current_period_start?: string;
           current_period_end?: string;
-          cancel_at_end?: boolean;
+          cancel_at_period_end?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -836,10 +933,11 @@ export interface Database {
           status?: string;
           current_period_start?: string;
           current_period_end?: string;
-          cancel_at_end?: boolean;
+          cancel_at_period_end?: boolean;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Support Tickets ───
@@ -877,6 +975,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Webhooks ───
@@ -917,6 +1016,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
 
       // ─── Webhook Deliveries ───
@@ -954,6 +1054,253 @@ export interface Database {
           success?: boolean;
           created_at?: string;
         };
+        Relationships: [];
+      };
+
+      // ─── Airdrops ───
+      airdrops: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          protocol: string;
+          network: string;
+          estimated_value_usd: number | null;
+          status: string;
+          deadline: string | null;
+          claim_url: string | null;
+          eligibility_criteria: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          protocol: string;
+          network: string;
+          estimated_value_usd?: number | null;
+          status?: string;
+          deadline?: string | null;
+          claim_url?: string | null;
+          eligibility_criteria?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          protocol?: string;
+          network?: string;
+          estimated_value_usd?: number | null;
+          status?: string;
+          deadline?: string | null;
+          claim_url?: string | null;
+          eligibility_criteria?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ─── Sync Logs ───
+      sync_logs: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          success: boolean;
+          records: number;
+          provider: string | null;
+          data_type: string | null;
+          error_message: string | null;
+          duration_ms: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          success?: boolean;
+          records?: number;
+          provider?: string | null;
+          data_type?: string | null;
+          error_message?: string | null;
+          duration_ms?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          wallet_id?: string;
+          success?: boolean;
+          records?: number;
+          provider?: string | null;
+          data_type?: string | null;
+          error_message?: string | null;
+          duration_ms?: number | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ─── Telegram Settings ───
+      telegram_settings: {
+        Row: {
+          id: string;
+          user_id: string;
+          telegram_chat_id: string | null;
+          enabled: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          telegram_chat_id?: string | null;
+          enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          telegram_chat_id?: string | null;
+          enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ─── Alert Events ───
+      alert_events: {
+        Row: {
+          id: string;
+          user_id: string;
+          alert_type: string;
+          severity: string;
+          title: string;
+          message: string;
+          data: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          alert_type: string;
+          severity: string;
+          title: string;
+          message: string;
+          data?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          alert_type?: string;
+          severity?: string;
+          title?: string;
+          message?: string;
+          data?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ─── Token Approvals ───
+      token_approvals: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          token_symbol: string | null;
+          token_address: string | null;
+          spender_address: string;
+          spender_name: string | null;
+          is_unlimited: boolean;
+          risk_level: string;
+          is_revoked: boolean;
+          amount_approved: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          token_symbol?: string | null;
+          token_address?: string | null;
+          spender_address: string;
+          spender_name?: string | null;
+          is_unlimited?: boolean;
+          risk_level?: string;
+          is_revoked?: boolean;
+          amount_approved?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          wallet_id?: string;
+          token_symbol?: string | null;
+          token_address?: string | null;
+          spender_address?: string;
+          spender_name?: string | null;
+          is_unlimited?: boolean;
+          risk_level?: string;
+          is_revoked?: boolean;
+          amount_approved?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ─── Cost Basis Entries ───
+      cost_basis_entries: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          token_symbol: string;
+          token_name: string | null;
+          network: string;
+          total_cost_usd: number;
+          remaining_quantity: number;
+          is_disposed: boolean;
+          realized_pnl_usd: number;
+          disposed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          token_symbol: string;
+          token_name?: string | null;
+          network: string;
+          total_cost_usd?: number;
+          remaining_quantity?: number;
+          is_disposed?: boolean;
+          realized_pnl_usd?: number;
+          disposed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          wallet_id?: string;
+          token_symbol?: string;
+          token_name?: string | null;
+          network?: string;
+          total_cost_usd?: number;
+          remaining_quantity?: number;
+          is_disposed?: boolean;
+          realized_pnl_usd?: number;
+          disposed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
 
     };

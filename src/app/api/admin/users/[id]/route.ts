@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { isAdmin, logAdminAction, canPerformAction, getAdminRole } from '@/lib/admin/auth';
+import type { Database } from '@/lib/supabase/types';
+
+type UserProfileUpdate = Database['public']['Tables']['user_profiles']['Update'];
 
 export async function GET(
   request: Request,
@@ -105,10 +108,10 @@ export async function PUT(
     }
 
     // Update user profile
-    const updates: Record<string, unknown> = {};
+    const updates: UserProfileUpdate = {};
     if (plan) updates.plan = plan;
     if (status) updates.status = status;
-    if (ban_reason !== undefined) updates.ban_reason = ban_reason;
+    if (ban_reason !== undefined) updates.status = 'banned';
     if (full_name !== undefined) updates.full_name = full_name;
 
     const { error } = await supabase

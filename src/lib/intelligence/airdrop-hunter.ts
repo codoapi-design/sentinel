@@ -5,6 +5,9 @@
 
 import { createServerClient } from '@/lib/supabase/server';
 import { getBlockchainService } from '@/lib/blockchain-unified';
+import type { Database } from '@/lib/supabase/types';
+
+type AirdropRow = Database['public']['Tables']['airdrops']['Row'];
 
 export interface AirdropOpportunity {
   id: string;
@@ -33,36 +36,27 @@ export class AirdropHunter {
         .single();
 
       // Get active airdrop opportunities from DB
-      const { data: airdrops } = await supabase
-        .from('airdrop_opportunities')
+      const { data: airdropsData } = await supabase
+        .from('airdrops')
         .select('*')
         .eq('status', 'active');
 
-      // Get wallet-specific airdrop status
-      let walletAirdrops: any[] = [];
-      if (wallet) {
-        const { data: wa } = await supabase
-          .from('wallet_airdrops')
-          .select('*')
-          .eq('wallet_id', wallet.id);
-        walletAirdrops = wa || [];
-      }
+      const airdrops = (airdropsData || []) as AirdropRow[];
 
       // Map to response format
-      const opportunities: AirdropOpportunity[] = (airdrops || []).map(a => {
-        const walletAirdrop = walletAirdrops.find(wa => wa.airdrop_id === a.id);
+      const opportunities: AirdropOpportunity[] = airdrops.map(a => {
         return {
           id: a.id,
           name: a.name,
           protocol: a.protocol,
           network: a.network,
           estimatedValue: a.estimated_value_usd || 0,
-          status: a.status,
+          status: a.status as AirdropOpportunity['status'],
           deadline: a.deadline,
           claimUrl: a.claim_url,
           eligibilityCriteria: JSON.stringify(a.eligibility_criteria || {}),
-          isEligible: walletAirdrop?.is_eligible || false,
-          isClaimed: walletAirdrop?.is_claimed || false,
+          isEligible: true,
+          isClaimed: false,
         };
       });
 

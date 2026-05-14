@@ -4,6 +4,9 @@
  */
 
 import { createServerClient } from '@/lib/supabase/server';
+import type { Database } from '@/lib/supabase/types';
+
+type TokenApprovalRow = Database['public']['Tables']['token_approvals']['Row'];
 
 export interface SecurityScanResult {
   overallRisk: 'low' | 'medium' | 'high' | 'critical';
@@ -89,7 +92,7 @@ export class SecurityRadar {
     return 'low';
   }
 
-  private generateRecommendations(approvals: any[]): SecurityRecommendation[] {
+  private generateRecommendations(approvals: TokenApprovalRow[]): SecurityRecommendation[] {
     const recommendations: SecurityRecommendation[] = [];
 
     for (const approval of approvals) {
@@ -101,7 +104,7 @@ export class SecurityRadar {
           description: `You have granted unlimited spending approval for ${approval.token_symbol || 'a token'} to ${approval.spender_name || approval.spender_address}`,
           action: 'Revoke this approval immediately and set a specific limit',
           contractAddress: approval.spender_address,
-          tokenSymbol: approval.token_symbol,
+          tokenSymbol: approval.token_symbol || undefined,
         });
       }
       if (approval.risk_level === 'critical') {
@@ -112,7 +115,7 @@ export class SecurityRadar {
           description: `The contract at ${approval.spender_address} is flagged as critical risk`,
           action: 'Revoke approval and avoid interacting with this contract',
           contractAddress: approval.spender_address,
-          tokenSymbol: approval.token_symbol,
+          tokenSymbol: approval.token_symbol || undefined,
         });
       }
     }

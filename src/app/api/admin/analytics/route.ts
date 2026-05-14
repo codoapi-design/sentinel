@@ -90,13 +90,14 @@ export async function GET(request: Request) {
       .from('wallets')
       .select('*', { count: 'exact', head: true });
 
-    const { data: walletData } = await supabase
-      .from('wallets')
-      .select('network');
+    const { data: positionData } = await supabase
+      .from('asset_positions')
+      .select('chain');
 
     const networkMap: Record<string, number> = {};
-    (walletData || []).forEach((w) => {
-      networkMap[w.network] = (networkMap[w.network || 'unknown'] || 0) + 1;
+    (positionData || []).forEach((p) => {
+      const chain = p.chain || 'unknown';
+      networkMap[chain] = (networkMap[chain] || 0) + 1;
     });
 
     const walletNetworks = Object.entries(networkMap).map(([network, count]) => ({

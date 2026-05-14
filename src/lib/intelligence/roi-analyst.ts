@@ -4,6 +4,10 @@
  */
 
 import { createServerClient } from '@/lib/supabase/server';
+import type { Database } from '@/lib/supabase/types';
+
+type AssetPositionRow = Database['public']['Tables']['asset_positions']['Row'];
+type CostBasisEntryRow = Database['public']['Tables']['cost_basis_entries']['Row'];
 
 export interface ROIAnalysis {
   totalInvested: number;
@@ -108,7 +112,7 @@ export class ROIAnalyst {
     }
   }
 
-  private calculateTokenROI(costBasis: any[], positions: any[]): TokenROI[] {
+  private calculateTokenROI(costBasis: CostBasisEntryRow[], positions: AssetPositionRow[]): TokenROI[] {
     const tokenMap = new Map<string, TokenROI>();
 
     for (const cb of costBasis) {
@@ -146,9 +150,9 @@ export class ROIAnalyst {
           invested: pos.cost_basis_usd || 0,
           currentValue: pos.value_usd || 0,
           return: (pos.value_usd || 0) - (pos.cost_basis_usd || 0),
-          returnPct: pos.cost_basis_usd > 0 ? (pos.unrealized_pnl_pct || 0) : 0,
-          quantity: pos.balance || 0,
-          averageBuyPrice: pos.cost_basis_usd && pos.balance ? pos.cost_basis_usd / pos.balance : 0,
+          returnPct: pos.cost_basis_usd ? (pos.unrealized_pnl_pct || 0) : 0,
+          quantity: Number(pos.balance) || 0,
+          averageBuyPrice: pos.cost_basis_usd && Number(pos.balance) ? pos.cost_basis_usd / Number(pos.balance) : 0,
           currentPrice: pos.price_usd || 0,
         });
       }

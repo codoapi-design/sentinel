@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getBlockchainService } from '@/lib/blockchain-unified';
+import type { WalletPortfolio } from '@/lib/blockchain/types';
 
 export async function GET(request: NextRequest) {
   const wallet = request.nextUrl.searchParams.get('wallet');
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
   const supabase = createServerClient();
   const { data: walletData } = await supabase.from('wallets').select('*').ilike('address', wallet).single();
 
-  let portfolioSummary = null;
+  let portfolioSummary: WalletPortfolio | null = null;
   try {
     const blockchain = getBlockchainService();
     portfolioSummary = await blockchain.getPortfolio(wallet);

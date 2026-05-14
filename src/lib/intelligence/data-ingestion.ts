@@ -108,7 +108,7 @@ export class DataIngestionService {
       return { totalSynced: 0, totalErrors: 0, results: [] };
     }
 
-    const results = [];
+    const results: Array<{ walletId: string; success: boolean; records: number }> = [];
     let totalErrors = 0;
 
     for (const wallet of wallets) {

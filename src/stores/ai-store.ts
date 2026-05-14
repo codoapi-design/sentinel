@@ -70,6 +70,10 @@ interface AIState {
 
   // Model
   currentModelId: string;
+
+  // Streaming
+  isStreaming: boolean;
+  streamingMessageId: string | null;
 }
 
 interface AIActions {
@@ -121,8 +125,6 @@ interface AIActions {
 
   // Streaming chat
   sendMessageStream: (content: string) => Promise<void>;
-  isStreaming: boolean;
-  streamingMessageId: string | null;
 }
 
 // ============================================================

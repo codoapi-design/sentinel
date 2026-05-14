@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listTickets, createTicket } from '@/lib/support/service';
-import type { TicketCategory, TicketPriority } from '@/lib/support/types';
+import type { TicketCategory, TicketPriority, TicketStatus } from '@/lib/support/types';
 
 const VALID_CATEGORIES: TicketCategory[] = [
   'technical',
@@ -29,7 +29,7 @@ const VALID_PRIORITIES: TicketPriority[] = [
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') as TicketPriority | null;
+    const status = searchParams.get('status') as TicketStatus | null;
     const category = searchParams.get('category') as TicketCategory | null;
     const priority = searchParams.get('priority') as TicketPriority | null;
 

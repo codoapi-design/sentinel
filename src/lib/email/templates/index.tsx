@@ -12,8 +12,8 @@ import { ReportEmail } from './report-email';
 // ────────────────────────────────────────────────
 // Verification Email
 // ────────────────────────────────────────────────
-export function renderVerificationEmail(code: string): string {
-  const html = render(<VerificationEmail code={code} />);
+export async function renderVerificationEmail(code: string): Promise<string> {
+  const html = await render(<VerificationEmail code={code} />);
   return html;
 }
 
@@ -29,8 +29,8 @@ export interface AlertEmailData {
   dashboardUrl: string;
 }
 
-export function renderAlertEmail(data: AlertEmailData): string {
-  const html = render(<AlertEmail {...data} />);
+export async function renderAlertEmail(data: AlertEmailData): Promise<string> {
+  const html = await render(<AlertEmail {...data} />);
   return html;
 }
 
@@ -51,7 +51,7 @@ export interface ReportEmailData {
   dashboardUrl: string;
 }
 
-export function renderReportEmail(data: ReportEmailData): string {
-  const html = render(<ReportEmail {...data} />);
+export async function renderReportEmail(data: ReportEmailData): Promise<string> {
+  const html = await render(<ReportEmail {...data} />);
   return html;
 }

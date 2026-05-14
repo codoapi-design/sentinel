@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { isAdmin, logAdminAction } from '@/lib/admin/auth';
+import type { Database } from '@/lib/supabase/types';
+
+type NotificationTemplateUpdate = Database['public']['Tables']['notification_templates']['Update'];
 
 export async function GET(request: Request) {
   try {
@@ -55,10 +58,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Template ID is required' }, { status: 400 });
     }
 
-    const updates: Record<string, unknown> = { updated_by: session.user.id };
+    const updates: NotificationTemplateUpdate = {};
     if (subject !== undefined) updates.subject = subject;
     if (templateBody !== undefined) updates.body = templateBody;
-    if (is_active !== undefined) updates.is_active = is_active;
+    if (is_active !== undefined) updates.enabled = is_active;
     if (channel !== undefined) updates.channel = channel;
 
     const { error } = await supabase

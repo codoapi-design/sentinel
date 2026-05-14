@@ -31,25 +31,25 @@ export async function POST(request: NextRequest) {
     switch (type) {
       case 'alert': {
         const alertData = data as AlertEmailData;
-        html = renderAlertEmail(alertData);
+        html = await renderAlertEmail(alertData);
         subject = alertData.title;
         break;
       }
       case 'daily': {
         const reportData = data as ReportEmailData;
-        html = renderReportEmail(reportData);
+        html = await renderReportEmail(reportData);
         subject = `الملخص اليومي - CryptoBooks - ${reportData.periodLabel}`;
         break;
       }
       case 'weekly': {
         const reportData = data as ReportEmailData;
-        html = renderReportEmail(reportData);
+        html = await renderReportEmail(reportData);
         subject = `التقرير الأسبوعي - CryptoBooks - ${reportData.periodLabel}`;
         break;
       }
       case 'monthly': {
         const reportData = data as ReportEmailData;
-        html = renderReportEmail(reportData);
+        html = await renderReportEmail(reportData);
         subject = `التقرير الشهري - CryptoBooks - ${reportData.periodLabel}`;
         break;
       }

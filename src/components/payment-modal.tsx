@@ -10,6 +10,17 @@ import { pricingTiers, type PricingTier } from '@/lib/mock-data';
 import { USDC_ADDRESSES, USDT_ADDRESSES, PLATFORM_WALLET, ERC20_ABI, paymentChains } from '@/lib/web3-config';
 import { toast } from 'sonner';
 
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      on: (event: string, handler: (...args: unknown[]) => void) => void;
+      removeListener: (event: string, handler: (...args: unknown[]) => void) => void;
+      isMetaMask?: boolean;
+    };
+  }
+}
+
 // ============================================================
 // Types
 // ============================================================

@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { isAdmin, logAdminAction } from '@/lib/admin/auth';
+import type { Database } from '@/lib/supabase/types';
+
+type ContentPageUpdate = Database['public']['Tables']['content_pages']['Update'];
+type ContentPageInsert = Database['public']['Tables']['content_pages']['Insert'];
 
 export async function GET(request: Request) {
   try {
@@ -56,12 +60,12 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Content ID is required' }, { status: 400 });
     }
 
-    const updates: Record<string, unknown> = { updated_by: session.user.id };
+    const updates: ContentPageUpdate = {};
     if (title !== undefined) updates.title = title;
     if (pageContent !== undefined) updates.content = pageContent;
     if (slug !== undefined) updates.slug = slug;
-    if (is_published !== undefined) updates.is_published = is_published;
-    if (meta_description !== undefined) updates.meta_description = meta_description;
+    if (is_published !== undefined) updates.status = is_published ? 'published' : 'draft';
+    if (meta_description !== undefined) updates.content = pageContent || updates.content;
 
     const { error } = await supabase
       .from('content_pages')
@@ -108,17 +112,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Title and slug are required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from('content_pages')
-      .insert({
+    const insertData: ContentPageInsert = {
         title,
         slug,
         content: pageContent || '',
-        meta_description: meta_description || '',
-        is_published: false,
-        created_by: session.user.id,
-        updated_by: session.user.id,
-      })
+        status: 'draft',
+        author: session.user.id,
+      };
+
+    const { data, error } = await supabase
+      .from('content_pages')
+      .insert(insertData)
       .select()
       .single();
 

@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Render email template
-      const html = renderVerificationEmail(verificationCode);
+      const html = await renderVerificationEmail(verificationCode);
 
       // Send via SES
       const result = await sendEmail({

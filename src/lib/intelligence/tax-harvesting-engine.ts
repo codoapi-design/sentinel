@@ -4,6 +4,10 @@
  */
 
 import { createServerClient } from '@/lib/supabase/server';
+import type { Database } from '@/lib/supabase/types';
+
+type AssetPositionRow = Database['public']['Tables']['asset_positions']['Row'];
+type CostBasisEntryRow = Database['public']['Tables']['cost_basis_entries']['Row'];
 
 export interface TaxHarvestOpportunity {
   token: string;
@@ -64,7 +68,8 @@ export class TaxHarvestingEngine {
         .map(p => {
           const loss = Math.abs(p.unrealized_pnl_usd || 0);
           const lossPct = Math.abs(p.unrealized_pnl_pct || 0);
-          const avgCost = p.cost_basis_usd && p.balance ? p.cost_basis_usd / p.balance : 0;
+          const balance = Number(p.balance) || 0;
+          const avgCost = p.cost_basis_usd && balance ? p.cost_basis_usd / balance : 0;
           const taxSavings = loss * this.taxRate;
           
           return {
@@ -72,7 +77,7 @@ export class TaxHarvestingEngine {
             name: p.token_name || p.token_symbol,
             unrealizedLoss: loss,
             lossPct,
-            quantity: p.balance || 0,
+            quantity: balance,
             currentPrice: p.price_usd || 0,
             averageCost: avgCost,
             estimatedTaxSavings: taxSavings,

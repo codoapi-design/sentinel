@@ -8,7 +8,7 @@
  * - Supporting multiple networks (Ethereum, Base, Arbitrum, Optimism, BSC)
  */
 
-import { Alchemy, Network, AssetTransfersCategory, AssetTransfersResult, SortingOrder } from 'alchemy-sdk';
+import { Alchemy, Network, AssetTransfersCategory, AssetTransfersResult, SortingOrder, TransactionReceipt, TransactionResponse } from 'alchemy-sdk';
 import { classifyTransaction, type ClassifiedTransaction, type TokenTransfer } from './classifier';
 
 // ============================================================
@@ -224,8 +224,8 @@ async function classifyAssetTransfer(
   const userAddr = userAddress.toLowerCase();
 
   // Try to get receipt for deeper analysis
-  let receipt = null;
-  let txData = null;
+  let receipt: TransactionReceipt | null = null;
+  let txData: TransactionResponse | null = null;
   try {
     [receipt, txData] = await Promise.all([
       alchemy.core.getTransactionReceipt(transfer.hash),
@@ -252,13 +252,13 @@ async function classifyAssetTransfer(
       tx: {
         hash: txData.hash,
         from: txData.from,
-        to: txData.to,
+        to: txData.to ?? null,
         value: txData.value.toString(),
         data: txData.data,
         gasPrice: txData.gasPrice?.toString(),
       },
       receipt: {
-        status: receipt.status,
+        status: receipt.status ?? 1,
         gasUsed: Number(receipt.gasUsed),
         effectiveGasPrice: receipt.effectiveGasPrice.toString(),
         logs: receipt.logs.map(log => ({
@@ -280,11 +280,11 @@ async function classifyAssetTransfer(
     });
 
     // Enrich with data from asset transfer
-    classified.timestamp = transfer.metadata?.blockTimestamp
-      ? new Date(transfer.metadata.blockTimestamp).getTime()
+    classified.timestamp = (transfer as any).metadata?.blockTimestamp
+      ? new Date((transfer as any).metadata.blockTimestamp).getTime()
       : classified.timestamp;
-    classified.date = transfer.metadata?.blockTimestamp
-      ? new Date(transfer.metadata.blockTimestamp).toISOString().split('T')[0]
+    classified.date = (transfer as any).metadata?.blockTimestamp
+      ? new Date((transfer as any).metadata.blockTimestamp).toISOString().split('T')[0]
       : classified.date;
     classified.blockNumber = typeof transfer.blockNum === 'string'
       ? parseInt(transfer.blockNum, 16)
@@ -365,25 +365,27 @@ function createFallbackClassification(
     });
   }
 
-  const timestamp = transfer.metadata?.blockTimestamp
-    ? new Date(transfer.metadata.blockTimestamp).getTime()
+  const timestamp = (transfer as any).metadata?.blockTimestamp
+    ? new Date((transfer as any).metadata.blockTimestamp).getTime()
     : Date.now();
 
-  const date = transfer.metadata?.blockTimestamp
-    ? new Date(transfer.metadata.blockTimestamp).toISOString().split('T')[0]
+  const date = (transfer as any).metadata?.blockTimestamp
+    ? new Date((transfer as any).metadata.blockTimestamp).toISOString().split('T')[0]
     : new Date().toISOString().split('T')[0];
 
   const blockNumber = typeof transfer.blockNum === 'string'
     ? parseInt(transfer.blockNum, 16)
     : 0;
 
-  const TYPE_LABELS_AR = {
+  const TYPE_LABELS_AR: Record<string, string> = {
     income: 'إيراد',
     expense: 'مصروف',
     trade: 'تداول',
     defi: 'DeFi',
     staking: 'Staking Reward',
     gas: 'رسوم غاز',
+    nft: 'NFT',
+    bridge: 'جسر',
   };
 
   return {
