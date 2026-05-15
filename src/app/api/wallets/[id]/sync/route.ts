@@ -13,6 +13,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getSyncEngine } from '@/lib/blockchain/sync-engine';
 
+export const maxDuration = 60; // Allow up to 60 seconds for sync
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -28,15 +30,25 @@ export async function POST(
   try {
     const { id: walletId } = await params;
     const body = await request.json().catch(() => ({}));
-    const mode = body.mode || 'incremental'; // 'full' or 'incremental'
+    const mode = body.mode || 'incremental';
 
+    // ── Authenticate user ──
     const supabase = createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 },
+      );
+    }
 
     // Get wallet info
     const { data: wallet, error: walletError } = await supabase
       .from('wallets')
       .select('*')
       .eq('id', walletId)
+      .eq('user_id', user.id)
       .single();
 
     if (walletError || !wallet) {
@@ -53,12 +65,27 @@ export async function POST(
       );
     }
 
+    console.log(`[WalletSync] Starting ${mode} sync for ${wallet.address}`);
+
     const syncEngine = getSyncEngine();
 
     // Choose sync mode
     const result = mode === 'full'
       ? await syncEngine.fullSync(walletId)
       : await syncEngine.incrementalSync(walletId);
+
+    console.log(`[WalletSync] ${mode} sync completed for ${wallet.address}:`, {
+      success: result.overallSuccess,
+      records: result.totalRecordsSynced,
+      durationMs: result.totalDurationMs,
+      results: result.results.map(r => ({
+        provider: r.provider,
+        dataType: r.dataType,
+        recordsSynced: r.recordsSynced,
+        success: r.success,
+        errors: r.errors,
+      })),
+    });
 
     return NextResponse.json({
       success: result.overallSuccess,
@@ -78,7 +105,7 @@ export async function POST(
       })),
     });
   } catch (error) {
-    console.error('Wallet Sync error:', error);
+    console.error('[WalletSync] Error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 },

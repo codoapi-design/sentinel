@@ -146,14 +146,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Trigger full sync in the background (don't await to avoid timeout)
+    // Trigger full sync - await it so data is ready when the user sees the dashboard
     try {
       const syncEngine = getSyncEngine();
-      syncEngine.fullSync(data.id).catch(err =>
-        console.error('[Wallets] Background sync error:', err)
-      );
+      const syncResult = await syncEngine.fullSync(data.id);
+      console.log('[Wallets] Initial sync completed:', {
+        success: syncResult.overallSuccess,
+        records: syncResult.totalRecordsSynced,
+        durationMs: syncResult.totalDurationMs,
+        results: syncResult.results.map(r => ({
+          provider: r.provider,
+          dataType: r.dataType,
+          recordsSynced: r.recordsSynced,
+          success: r.success,
+          errors: r.errors,
+        })),
+      });
     } catch (syncInitError) {
-      console.error('[Wallets] Failed to initiate background sync:', syncInitError);
+      console.error('[Wallets] Initial sync error:', syncInitError);
+      // Don't fail the wallet creation even if sync fails
     }
 
     return NextResponse.json({

@@ -79,7 +79,7 @@ function getAlchemyClient(networkKey: string): Alchemy {
 
   const apiKey = process.env.ALCHEMY_API_KEY || process.env.ALCHEMY || process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || '';
   if (!apiKey) {
-    throw new Error('ALCHEMY_API_KEY not set in environment');
+    throw new Error('ALCHEMY_API_KEY not set in environment. Please add ALCHEMY_API_KEY to your Vercel environment variables.');
   }
 
   const alchemy = new Alchemy({

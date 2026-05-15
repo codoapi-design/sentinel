@@ -1,9 +1,15 @@
 /**
  * DeBank API Service for Sentinel
  * Provides portfolio, DeFi positions, and token balance data
+ *
+ * Uses the free public API (api.debank.com) as primary,
+ * with pro-openapi.debank.com as fallback when AccessKey is available.
+ *
+ * The free API is rate-limited but works without authentication.
  */
 
-const DEBANK_BASE_URL = 'https://pro-openapi.debank.com/v1';
+const DEBANK_FREE_BASE_URL = 'https://api.debank.com';
+const DEBANK_PRO_BASE_URL = 'https://pro-openapi.debank.com/v1';
 
 interface DeBankTokenBalance {
   id: string;
@@ -63,71 +69,147 @@ interface DeBankTotalBalance {
 
 export class DeBankService {
   private apiKey: string;
+  private useProApi: boolean;
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey || process.env.DEBANK_API_KEY || process.env.DEBANK || process.env.NEXT_PUBLIC_DEBANK_API_KEY || '';
+    this.useProApi = this.apiKey !== '';
+  }
+
+  private getBaseUrl(): string {
+    return this.useProApi ? DEBANK_PRO_BASE_URL : DEBANK_FREE_BASE_URL;
   }
 
   private getHeaders(): Record<string, string> {
-    return {
-      'AccessKey': this.apiKey,
+    const headers: Record<string, string> = {
       'Accept': 'application/json',
     };
+    if (this.useProApi) {
+      headers['AccessKey'] = this.apiKey;
+    }
+    return headers;
   }
 
   async getTotalBalance(address: string): Promise<DeBankTotalBalance | null> {
-    if (!this.apiKey) {
-      console.error('[DeBank] API key not configured');
-      return null;
-    }
     try {
-      const url = `${DEBANK_BASE_URL}/user/total_balance?id=${address}`;
-      const response = await fetch(url, { headers: this.getHeaders() });
-      if (!response.ok) throw new Error(`DeBank API error: ${response.status}`);
+      const url = `${this.getBaseUrl()}/user/total_balance?id=${address}`;
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) {
+        // If pro API fails, try free API as fallback
+        if (this.useProApi) {
+          console.warn('[DeBank] Pro API failed, trying free API');
+          return this.getFreeTotalBalance(address);
+        }
+        throw new Error(`DeBank API error: ${response.status}`);
+      }
       return await response.json();
     } catch (error) {
+      // Try free API as fallback
+      if (this.useProApi) {
+        return this.getFreeTotalBalance(address);
+      }
       console.error('[DeBank] getTotalBalance error for', address, ':', error);
       return null;
     }
   }
 
-  async getTokenBalances(address: string): Promise<DeBankTokenBalance[]> {
-    if (!this.apiKey) {
-      console.error('[DeBank] API key not configured');
-      return [];
-    }
+  private async getFreeTotalBalance(address: string): Promise<DeBankTotalBalance | null> {
     try {
-      const url = `${DEBANK_BASE_URL}/user/token_list?id=${address}&is_all=false`;
-      const response = await fetch(url, { headers: this.getHeaders() });
-      if (!response.ok) throw new Error(`DeBank API error: ${response.status}`);
+      const url = `${DEBANK_FREE_BASE_URL}/user/total_balance?id=${address}`;
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`DeBank free API error: ${response.status}`);
       return await response.json();
     } catch (error) {
+      console.error('[DeBank] Free API getTotalBalance error:', error);
+      return null;
+    }
+  }
+
+  async getTokenBalances(address: string): Promise<DeBankTokenBalance[]> {
+    try {
+      const url = `${this.getBaseUrl()}/user/token_list?id=${address}&is_all=false`;
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) {
+        if (this.useProApi) {
+          console.warn('[DeBank] Pro API failed for tokens, trying free API');
+          return this.getFreeTokenBalances(address);
+        }
+        throw new Error(`DeBank API error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      if (this.useProApi) {
+        return this.getFreeTokenBalances(address);
+      }
       console.error('[DeBank] getTokenBalances error for', address, ':', error);
       return [];
     }
   }
 
-  async getComplexProtocolList(address: string): Promise<DeBankProtocol[]> {
-    if (!this.apiKey) {
-      console.error('[DeBank] API key not configured');
-      return [];
-    }
+  private async getFreeTokenBalances(address: string): Promise<DeBankTokenBalance[]> {
     try {
-      const url = `${DEBANK_BASE_URL}/user/complex_protocol_list?id=${address}`;
-      const response = await fetch(url, { headers: this.getHeaders() });
-      if (!response.ok) throw new Error(`DeBank API error: ${response.status}`);
+      const url = `${DEBANK_FREE_BASE_URL}/user/token_list?id=${address}&is_all=false`;
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`DeBank free API error: ${response.status}`);
       return await response.json();
     } catch (error) {
+      console.error('[DeBank] Free API getTokenBalances error:', error);
+      return [];
+    }
+  }
+
+  async getComplexProtocolList(address: string): Promise<DeBankProtocol[]> {
+    try {
+      const url = `${this.getBaseUrl()}/user/complex_protocol_list?id=${address}`;
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) {
+        if (this.useProApi) {
+          console.warn('[DeBank] Pro API failed for protocols, trying free API');
+          return this.getFreeComplexProtocolList(address);
+        }
+        throw new Error(`DeBank API error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      if (this.useProApi) {
+        return this.getFreeComplexProtocolList(address);
+      }
       console.error('[DeBank] getComplexProtocolList error for', address, ':', error);
       return [];
     }
   }
 
-  async getPortfolioSummary(address: string) {
-    if (!this.apiKey) {
-      console.error('[DeBank] API key not configured');
-      return { totalValue: 0, totalTokenValue: 0, totalDefiValue: 0, chainList: [], tokenCount: 0, protocolCount: 0, tokens: [], protocols: [] };
+  private async getFreeComplexProtocolList(address: string): Promise<DeBankProtocol[]> {
+    try {
+      const url = `${DEBANK_FREE_BASE_URL}/user/complex_protocol_list?id=${address}`;
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`DeBank free API error: ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.error('[DeBank] Free API getComplexProtocolList error:', error);
+      return [];
     }
+  }
+
+  async getPortfolioSummary(address: string) {
     const [totalBalance, tokens, protocols] = await Promise.all([
       this.getTotalBalance(address),
       this.getTokenBalances(address),

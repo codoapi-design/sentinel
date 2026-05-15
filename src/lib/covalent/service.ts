@@ -60,17 +60,25 @@ export class CovalentService {
 
   async getTransactions(chainId: number, address: string, page = 0, pageSize = 50): Promise<CovalentTransaction[]> {
     if (!this.apiKey) {
-      console.error('[Covalent] API key not configured');
+      console.warn('[Covalent] API key not configured - skipping transactions');
       return [];
     }
     try {
       const url = `${COVALENT_BASE_URL}/${chainId}/address/${address}/transactions_v3/?page-number=${page}&page-size=${pageSize}`;
+      console.log(`[Covalent] Fetching transactions for ${address.slice(0,8)}... on chain ${chainId}`);
       const response = await fetch(url, {
         headers: { 'Authorization': this.getAuthHeader() },
+        signal: AbortSignal.timeout(30000),
       });
-      if (!response.ok) throw new Error(`Covalent API error: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        console.error(`[Covalent] API error ${response.status}: ${errorText.slice(0, 200)}`);
+        throw new Error(`Covalent API error: ${response.status}`);
+      }
       const data = await response.json();
-      return data.data?.items || [];
+      const items = data.data?.items || [];
+      console.log(`[Covalent] Got ${items.length} transactions for ${address.slice(0,8)}... on chain ${chainId}`);
+      return items;
     } catch (error) {
       console.error('[Covalent] getTransactions error for chain', chainId, 'address', address, ':', error);
       return [];
@@ -79,17 +87,25 @@ export class CovalentService {
 
   async getTokenBalances(chainId: number, address: string): Promise<CovalentTokenBalance[]> {
     if (!this.apiKey) {
-      console.error('[Covalent] API key not configured');
+      console.warn('[Covalent] API key not configured - skipping token balances');
       return [];
     }
     try {
       const url = `${COVALENT_BASE_URL}/${chainId}/address/${address}/balances_v2/`;
+      console.log(`[Covalent] Fetching token balances for ${address.slice(0,8)}... on chain ${chainId}`);
       const response = await fetch(url, {
         headers: { 'Authorization': this.getAuthHeader() },
+        signal: AbortSignal.timeout(30000),
       });
-      if (!response.ok) throw new Error(`Covalent API error: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        console.error(`[Covalent] API error ${response.status}: ${errorText.slice(0, 200)}`);
+        throw new Error(`Covalent API error: ${response.status}`);
+      }
       const data = await response.json();
-      return data.data?.items || [];
+      const items = data.data?.items || [];
+      console.log(`[Covalent] Got ${items.length} token balances for ${address.slice(0,8)}... on chain ${chainId}`);
+      return items;
     } catch (error) {
       console.error('[Covalent] getTokenBalances error for chain', chainId, 'address', address, ':', error);
       return [];
