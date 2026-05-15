@@ -51,23 +51,66 @@ export async function GET(
       );
     }
 
-    // Convert DB rows to app Transaction format
-    const transactions: Transaction[] = (data || []).map((row, i) => ({
-      id: row.id || `tx-${i}`,
-      date: row.date,
-      timestamp: row.timestamp,
-      type: row.type as Transaction['type'],
-      typeLabel: row.type_ar,
-      token: row.token_symbol || 'ETH',
-      quantity: row.token_value || row.value_eth,
-      price: row.token_value ? (row.value_eth / row.token_value) : 0,
-      value: row.value_eth,
-      network: row.network,
-      networkLabel: row.network_ar,
-      txHash: row.tx_hash,
-      counterparty: row.counterparty || row.from_addr,
-      counterpartyLabel: row.counterparty_label || row.protocol_ar || row.protocol || '',
-    }));
+    // Map of network keys to human-readable labels
+    const NETWORK_LABELS: Record<string, string> = {
+      ethereum: 'Ethereum',
+      base: 'Base',
+      arbitrum: 'Arbitrum',
+      optimism: 'Optimism',
+      polygon: 'Polygon',
+      avalanche: 'Avalanche',
+      bsc: 'BNB Chain',
+      fantom: 'Fantom',
+      gnosis: 'Gnosis',
+      celo: 'Celo',
+      linea: 'Linea',
+      scroll: 'Scroll',
+      zksync: 'zkSync',
+      mantle: 'Mantle',
+      blast: 'Blast',
+    };
+
+    // Map of transaction types to human-readable labels
+    const TYPE_LABELS: Record<string, string> = {
+      income: 'Income',
+      expense: 'Expense',
+      trade: 'Trade',
+      defi: 'DeFi',
+      staking: 'Staking',
+      gas: 'Gas Fee',
+      nft: 'NFT',
+      bridge: 'Bridge',
+    };
+
+    // Convert DB rows to app Transaction format with proper fallbacks
+    const transactions: Transaction[] = (data || []).map((row, i) => {
+      const network = row.network || 'ethereum';
+      const txType = row.type as Transaction['type'];
+      const counterparty = row.counterparty || row.from_addr || '';
+
+      // Build counterparty label with fallbacks
+      let counterpartyLabel = row.counterparty_label || row.protocol_ar || row.protocol || '';
+      if (!counterpartyLabel && counterparty.startsWith('0x')) {
+        counterpartyLabel = `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`;
+      }
+
+      return {
+        id: row.id || `tx-${i}`,
+        date: row.date,
+        timestamp: row.timestamp,
+        type: txType,
+        typeLabel: row.type_ar || TYPE_LABELS[txType] || txType,
+        token: row.token_symbol || 'ETH',
+        quantity: row.token_value || row.value_eth,
+        price: row.token_value ? (row.value_eth / row.token_value) : 0,
+        value: row.value_eth,
+        network,
+        networkLabel: row.network_ar || NETWORK_LABELS[network] || network.charAt(0).toUpperCase() + network.slice(1),
+        txHash: row.tx_hash,
+        counterparty,
+        counterpartyLabel,
+      };
+    });
 
     return NextResponse.json({
       success: true,

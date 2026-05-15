@@ -270,13 +270,32 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         }));
 
         try {
-          // Try to sync from Supabase first
           let transactions: Transaction[] = [];
           let clients: Client[] = [];
           let txCount = 0;
 
+          // Step 1: Trigger proper sync endpoint (fetches balances + DeFi + transactions from providers)
           try {
-            // Check if we have data in Supabase
+            const syncResponse = await fetch(`/api/wallets/${walletId}/sync`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'full' }),
+            });
+            if (syncResponse.ok) {
+              const syncResult = await syncResponse.json();
+              console.log('[WalletStore] Sync completed:', {
+                success: syncResult.success,
+                recordsSynced: syncResult.totalRecordsSynced,
+              });
+            } else {
+              console.warn('[WalletStore] Sync endpoint returned:', syncResponse.status);
+            }
+          } catch (syncError) {
+            console.warn('[WalletStore] Sync endpoint error:', syncError);
+          }
+
+          // Step 2: Fetch stored transactions from Supabase (populated by sync)
+          try {
             const dbResponse = await fetch(`/api/wallets/${walletId}/transactions`);
             if (dbResponse.ok) {
               const dbResult = await dbResponse.json();
@@ -289,10 +308,9 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             // Supabase not available
           }
 
-          // If no stored data, fetch from Alchemy
+          // Step 3: If still no stored data, fetch from Alchemy as fallback
           if (transactions.length === 0) {
             try {
-              // Fetch from all supported networks
               const networks = ['ethereum', 'base', 'arbitrum', 'optimism', 'polygon'];
               const allTransactions: Transaction[] = [];
 
@@ -333,7 +351,6 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               }
             } catch (error) {
               console.error('Error fetching from Alchemy:', error);
-              // Do NOT fall back to mock data for real users
               transactions = [];
               txCount = 0;
             }

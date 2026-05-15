@@ -76,42 +76,58 @@ export class DeBankService {
   }
 
   async getTotalBalance(address: string): Promise<DeBankTotalBalance | null> {
+    if (!this.apiKey) {
+      console.error('[DeBank] API key not configured');
+      return null;
+    }
     try {
       const url = `${DEBANK_BASE_URL}/user/total_balance?id=${address}`;
       const response = await fetch(url, { headers: this.getHeaders() });
       if (!response.ok) throw new Error(`DeBank API error: ${response.status}`);
       return await response.json();
     } catch (error) {
-      console.error('[DeBank] getTotalBalance error:', error);
+      console.error('[DeBank] getTotalBalance error for', address, ':', error);
       return null;
     }
   }
 
   async getTokenBalances(address: string): Promise<DeBankTokenBalance[]> {
+    if (!this.apiKey) {
+      console.error('[DeBank] API key not configured');
+      return [];
+    }
     try {
       const url = `${DEBANK_BASE_URL}/user/token_list?id=${address}&is_all=false`;
       const response = await fetch(url, { headers: this.getHeaders() });
       if (!response.ok) throw new Error(`DeBank API error: ${response.status}`);
       return await response.json();
     } catch (error) {
-      console.error('[DeBank] getTokenBalances error:', error);
+      console.error('[DeBank] getTokenBalances error for', address, ':', error);
       return [];
     }
   }
 
   async getComplexProtocolList(address: string): Promise<DeBankProtocol[]> {
+    if (!this.apiKey) {
+      console.error('[DeBank] API key not configured');
+      return [];
+    }
     try {
       const url = `${DEBANK_BASE_URL}/user/complex_protocol_list?id=${address}`;
       const response = await fetch(url, { headers: this.getHeaders() });
       if (!response.ok) throw new Error(`DeBank API error: ${response.status}`);
       return await response.json();
     } catch (error) {
-      console.error('[DeBank] getComplexProtocolList error:', error);
+      console.error('[DeBank] getComplexProtocolList error for', address, ':', error);
       return [];
     }
   }
 
   async getPortfolioSummary(address: string) {
+    if (!this.apiKey) {
+      console.error('[DeBank] API key not configured');
+      return { totalValue: 0, totalTokenValue: 0, totalDefiValue: 0, chainList: [], tokenCount: 0, protocolCount: 0, tokens: [], protocols: [] };
+    }
     const [totalBalance, tokens, protocols] = await Promise.all([
       this.getTotalBalance(address),
       this.getTokenBalances(address),

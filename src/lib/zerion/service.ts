@@ -67,6 +67,10 @@ export class ZerionService {
   }
 
   async getPortfolio(address: string, currency = 'usd'): Promise<ZerionPortfolio[]> {
+    if (!this.apiKey) {
+      console.error('[Zerion] API key not configured');
+      return [];
+    }
     try {
       const url = `${ZERION_BASE_URL}/wallets/${address}/positions?currency=${currency}&filter[positions]=only_with_fungible`;
       const response = await fetch(url, { headers: this.getHeaders() });
@@ -74,12 +78,16 @@ export class ZerionService {
       const data = await response.json();
       return data.data || [];
     } catch (error) {
-      console.error('[Zerion] getPortfolio error:', error);
+      console.error('[Zerion] getPortfolio error for', address, ':', error);
       return [];
     }
   }
 
   async getTransactions(address: string, currency = 'usd', page = 1, pageSize = 50): Promise<ZerionTransaction[]> {
+    if (!this.apiKey) {
+      console.error('[Zerion] API key not configured');
+      return [];
+    }
     try {
       const url = `${ZERION_BASE_URL}/wallets/${address}/transactions?currency=${currency}&page[number]=${page}&page[size]=${pageSize}`;
       const response = await fetch(url, { headers: this.getHeaders() });
@@ -87,12 +95,16 @@ export class ZerionService {
       const data = await response.json();
       return data.data || [];
     } catch (error) {
-      console.error('[Zerion] getTransactions error:', error);
+      console.error('[Zerion] getTransactions error for', address, ':', error);
       return [];
     }
   }
 
   async getPortfolioSummary(address: string) {
+    if (!this.apiKey) {
+      console.error('[Zerion] API key not configured');
+      return { totalValue: 0, tokenCount: 0, defiPositionCount: 0, positions: [] };
+    }
     const positions = await this.getPortfolio(address);
 
     const totalValue = positions.reduce((sum, p) => sum + (p.attributes.value || 0), 0);

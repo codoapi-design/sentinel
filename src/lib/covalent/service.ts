@@ -59,6 +59,10 @@ export class CovalentService {
   }
 
   async getTransactions(chainId: number, address: string, page = 0, pageSize = 50): Promise<CovalentTransaction[]> {
+    if (!this.apiKey) {
+      console.error('[Covalent] API key not configured');
+      return [];
+    }
     try {
       const url = `${COVALENT_BASE_URL}/${chainId}/address/${address}/transactions_v3/?page-number=${page}&page-size=${pageSize}`;
       const response = await fetch(url, {
@@ -68,12 +72,16 @@ export class CovalentService {
       const data = await response.json();
       return data.data?.items || [];
     } catch (error) {
-      console.error('[Covalent] getTransactions error:', error);
+      console.error('[Covalent] getTransactions error for chain', chainId, 'address', address, ':', error);
       return [];
     }
   }
 
   async getTokenBalances(chainId: number, address: string): Promise<CovalentTokenBalance[]> {
+    if (!this.apiKey) {
+      console.error('[Covalent] API key not configured');
+      return [];
+    }
     try {
       const url = `${COVALENT_BASE_URL}/${chainId}/address/${address}/balances_v2/`;
       const response = await fetch(url, {
@@ -83,12 +91,16 @@ export class CovalentService {
       const data = await response.json();
       return data.data?.items || [];
     } catch (error) {
-      console.error('[Covalent] getTokenBalances error:', error);
+      console.error('[Covalent] getTokenBalances error for chain', chainId, 'address', address, ':', error);
       return [];
     }
   }
 
   async getPortfolioSummary(chainId: number, address: string) {
+    if (!this.apiKey) {
+      console.error('[Covalent] API key not configured');
+      return { totalValue: 0, tokenCount: 0, transactionCount: 0, balances: [], recentTransactions: [] };
+    }
     const [transactions, balances] = await Promise.all([
       this.getTransactions(chainId, address, 0, 10),
       this.getTokenBalances(chainId, address),

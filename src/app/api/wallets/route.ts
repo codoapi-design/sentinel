@@ -9,13 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-
-// Temporary user ID - in production this would come from auth session
-// Must be a valid UUID for Supabase
-const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
-function getUserId(request: NextRequest): string {
-  return request.headers.get('x-user-id') || DEMO_USER_ID;
-}
+import { getSyncEngine } from '@/lib/blockchain/sync-engine';
 
 /**
  * GET /api/wallets
@@ -23,8 +17,12 @@ function getUserId(request: NextRequest): string {
  */
 export async function GET(request: NextRequest) {
   try {
-    const userId = getUserId(request);
     const supabase = createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const userId = user.id;
 
     const { data, error } = await supabase
       .from('wallets')
@@ -68,7 +66,12 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const userId = getUserId(request);
+    const supabase = createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const userId = user.id;
     const body = await request.json();
     const { address, label } = body;
 
@@ -85,8 +88,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const supabase = createServerClient();
 
     // Check for duplicate
     const { data: existing } = await supabase
@@ -145,6 +146,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Trigger full sync in the background (don't await to avoid timeout)
+    try {
+      const syncEngine = getSyncEngine();
+      syncEngine.fullSync(data.id).catch(err =>
+        console.error('[Wallets] Background sync error:', err)
+      );
+    } catch (syncInitError) {
+      console.error('[Wallets] Failed to initiate background sync:', syncInitError);
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -173,7 +184,12 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const userId = getUserId(request);
+    const supabase = createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const userId = user.id;
     const body = await request.json();
     const { id, label } = body;
 
@@ -183,8 +199,6 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const supabase = createServerClient();
 
     const { error } = await supabase
       .from('wallets')
@@ -216,7 +230,12 @@ export async function PATCH(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const userId = getUserId(request);
+    const supabase = createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const userId = user.id;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -226,8 +245,6 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const supabase = createServerClient();
 
     // Delete wallet (cascades to transactions)
     const { error } = await supabase
