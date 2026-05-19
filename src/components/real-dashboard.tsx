@@ -65,6 +65,7 @@ export function RealDashboard() {
     activeWalletId,
     isSyncing,
     syncWallet,
+    loadWalletsFromDB,
     getActiveWallet,
     getActiveTransactions,
     getActiveClients,
@@ -76,6 +77,11 @@ export function RealDashboard() {
 
   // AI store
   const { setCurrentPage, setCurrentPlan: setAIPlan } = useAIStore();
+
+  // Load wallets from DB on mount (so we have the real Supabase UUIDs)
+  useEffect(() => {
+    loadWalletsFromDB();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setCurrentPage(activeTab);
@@ -97,12 +103,16 @@ export function RealDashboard() {
   const displayTransactions = transactions;
   const displayClients = clients;
 
-  // Sync active wallet on mount if it has no transactions
+  // Sync active wallet on mount if it has no transactions (after DB load)
   useEffect(() => {
     if (activeWalletId && transactions.length === 0) {
-      syncWallet(activeWalletId);
+      // Small delay to let loadWalletsFromDB complete first
+      const timer = setTimeout(() => {
+        syncWallet(activeWalletId);
+      }, 1500);
+      return () => clearTimeout(timer);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeWalletId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     toast.success('Logged out successfully');

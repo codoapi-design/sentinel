@@ -2,10 +2,13 @@
  * DeBank API Service for Sentinel
  * Provides portfolio, DeFi positions, and token balance data
  *
- * Uses the free public API (api.debank.com) as primary,
- * with pro-openapi.debank.com as fallback when AccessKey is available.
+ * NOTE: DeBank has migrated their free API to a paid model (DeBank Cloud).
+ * The old free endpoints (api.debank.com) may return 404 for some paths.
+ * This service gracefully falls back when endpoints are unavailable,
+ * allowing other providers (Zerion, Covalent) to handle data instead.
  *
- * The free API is rate-limited but works without authentication.
+ * If a DEBANK_API_KEY is configured, it uses the pro API.
+ * Otherwise, it tries the free API as a best-effort fallback.
  */
 
 const DEBANK_FREE_BASE_URL = 'https://api.debank.com';
@@ -103,15 +106,16 @@ export class DeBankService {
           console.warn('[DeBank] Pro API failed, trying free API');
           return this.getFreeTotalBalance(address);
         }
-        throw new Error(`DeBank API error: ${response.status}`);
+        // Free API may be rate-limited or endpoint removed
+        console.warn(`[DeBank] getTotalBalance returned ${response.status}`);
+        return null;
       }
       return await response.json();
     } catch (error) {
-      // Try free API as fallback
       if (this.useProApi) {
         return this.getFreeTotalBalance(address);
       }
-      console.error('[DeBank] getTotalBalance error for', address, ':', error);
+      console.warn('[DeBank] getTotalBalance error:', error);
       return null;
     }
   }
@@ -123,10 +127,14 @@ export class DeBankService {
         headers: { 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15000),
       });
-      if (!response.ok) throw new Error(`DeBank free API error: ${response.status}`);
+      if (!response.ok) {
+        // 429 = rate limited, 404 = endpoint removed
+        console.warn(`[DeBank] Free API getTotalBalance returned ${response.status}`);
+        return null;
+      }
       return await response.json();
     } catch (error) {
-      console.error('[DeBank] Free API getTotalBalance error:', error);
+      console.warn('[DeBank] Free API getTotalBalance error:', error);
       return null;
     }
   }
@@ -143,14 +151,16 @@ export class DeBankService {
           console.warn('[DeBank] Pro API failed for tokens, trying free API');
           return this.getFreeTokenBalances(address);
         }
-        throw new Error(`DeBank API error: ${response.status}`);
+        // Free API endpoint may no longer exist
+        console.warn(`[DeBank] getTokenBalances returned ${response.status}`);
+        return [];
       }
       return await response.json();
     } catch (error) {
       if (this.useProApi) {
         return this.getFreeTokenBalances(address);
       }
-      console.error('[DeBank] getTokenBalances error for', address, ':', error);
+      console.warn('[DeBank] getTokenBalances error:', error);
       return [];
     }
   }
@@ -162,10 +172,13 @@ export class DeBankService {
         headers: { 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15000),
       });
-      if (!response.ok) throw new Error(`DeBank free API error: ${response.status}`);
+      if (!response.ok) {
+        console.warn(`[DeBank] Free API getTokenBalances returned ${response.status}`);
+        return [];
+      }
       return await response.json();
     } catch (error) {
-      console.error('[DeBank] Free API getTokenBalances error:', error);
+      console.warn('[DeBank] Free API getTokenBalances error:', error);
       return [];
     }
   }
@@ -182,14 +195,15 @@ export class DeBankService {
           console.warn('[DeBank] Pro API failed for protocols, trying free API');
           return this.getFreeComplexProtocolList(address);
         }
-        throw new Error(`DeBank API error: ${response.status}`);
+        console.warn(`[DeBank] getComplexProtocolList returned ${response.status}`);
+        return [];
       }
       return await response.json();
     } catch (error) {
       if (this.useProApi) {
         return this.getFreeComplexProtocolList(address);
       }
-      console.error('[DeBank] getComplexProtocolList error for', address, ':', error);
+      console.warn('[DeBank] getComplexProtocolList error:', error);
       return [];
     }
   }
@@ -201,10 +215,13 @@ export class DeBankService {
         headers: { 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15000),
       });
-      if (!response.ok) throw new Error(`DeBank free API error: ${response.status}`);
+      if (!response.ok) {
+        console.warn(`[DeBank] Free API getComplexProtocolList returned ${response.status}`);
+        return [];
+      }
       return await response.json();
     } catch (error) {
-      console.error('[DeBank] Free API getComplexProtocolList error:', error);
+      console.warn('[DeBank] Free API getComplexProtocolList error:', error);
       return [];
     }
   }
