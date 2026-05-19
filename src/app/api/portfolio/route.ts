@@ -10,15 +10,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { getProviderManager } from '@/lib/blockchain/provider-manager';
 import { getBlockchainCache } from '@/lib/blockchain/cache';
 
 export async function GET(request: NextRequest) {
   try {
     // ── Authenticate via cookie session ──
-    const supabase = createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
 
     if (authError || !user) {
       return NextResponse.json(
@@ -26,6 +26,9 @@ export async function GET(request: NextRequest) {
         { status: 401 },
       );
     }
+
+    // Use service role client for data operations
+    const supabase = createServerClient();
 
     const { searchParams } = new URL(request.url);
     const walletId = searchParams.get('walletId');

@@ -96,6 +96,7 @@ interface WalletActions {
   // Data operations
   syncWallet: (walletId: string) => Promise<void>;
   syncAllWallets: () => Promise<void>;
+  loadWalletsFromDB: () => Promise<void>;
 
   // Getters
   getActiveWallet: () => WalletInfo | null;
@@ -123,6 +124,15 @@ const initialState: WalletState = {
   currentPlan: 'pro', // Default to pro for development
   lastSyncAt: {},
   error: null,
+};
+
+// Chain name to chainId mapping for API calls
+const NETWORK_TO_CHAIN_ID: Record<string, number> = {
+  ethereum: 1,
+  base: 8453,
+  arbitrum: 42161,
+  optimism: 10,
+  polygon: 137,
 };
 
 export const useWalletStore = create<WalletState & WalletActions>()(
@@ -154,8 +164,9 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         set({ isAddingWallet: true, error: null });
 
         try {
-          // Try to save to Supabase first
+          // Save to Supabase
           let walletId = `wallet-${Date.now()}`;
+          let dbSuccess = false;
 
           try {
             const response = await fetch('/api/wallets', {
@@ -167,10 +178,13 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             if (response.ok) {
               const result = await response.json();
               walletId = result.data?.id || walletId;
+              dbSuccess = true;
+            } else {
+              const errData = await response.json().catch(() => ({}));
+              console.warn('[WalletStore] Failed to add wallet to DB:', errData.error);
             }
-          } catch {
-            // Supabase not available, use local state
-            console.log('Supabase not available, using local wallet state');
+          } catch (err) {
+            console.warn('[WalletStore] Supabase not available, using local wallet state:', err);
           }
 
           const newWallet: WalletInfo = {
@@ -188,7 +202,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             isAddingWallet: false,
           }));
 
-          // Trigger initial sync
+          // Trigger initial sync (non-blocking)
           get().syncWallet(walletId);
         } catch (error) {
           set({
@@ -256,6 +270,44 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         }));
       },
 
+      // ====== Load wallets from DB ======
+
+      loadWalletsFromDB: async () => {
+        try {
+          const response = await fetch('/api/wallets');
+          if (response.ok) {
+            const result = await response.json();
+            if (result.data && result.data.length > 0) {
+              const dbWallets = result.data.map((w: any) => ({
+                id: w.id,
+                address: w.address,
+                label: w.label,
+                lastSyncedAt: w.lastSyncedAt,
+                isSyncing: false,
+                transactionCount: 0,
+              }));
+
+              set(state => {
+                // Merge: keep local state for wallets that exist in DB, add new DB wallets
+                const localIds = new Set(state.wallets.map(w => w.id));
+                const merged = [...state.wallets];
+                for (const dbW of dbWallets) {
+                  if (!localIds.has(dbW.id)) {
+                    merged.push(dbW);
+                  }
+                }
+                return {
+                  wallets: merged,
+                  activeWalletId: state.activeWalletId || merged[0]?.id,
+                };
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('[WalletStore] Failed to load wallets from DB:', err);
+        }
+      },
+
       // ====== Data Operations ======
 
       syncWallet: async (walletId: string) => {
@@ -286,9 +338,11 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               console.log('[WalletStore] Sync completed:', {
                 success: syncResult.success,
                 recordsSynced: syncResult.totalRecordsSynced,
+                results: syncResult.results,
               });
             } else {
-              console.warn('[WalletStore] Sync endpoint returned:', syncResponse.status);
+              const errData = await syncResponse.json().catch(() => ({}));
+              console.warn('[WalletStore] Sync endpoint returned:', syncResponse.status, errData.error || '');
             }
           } catch (syncError) {
             console.warn('[WalletStore] Sync endpoint error:', syncError);
@@ -302,40 +356,46 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               if (dbResult.data && dbResult.data.length > 0) {
                 transactions = dbResult.data;
                 txCount = transactions.length;
+                console.log(`[WalletStore] Got ${txCount} transactions from DB`);
               }
+            } else {
+              console.warn('[WalletStore] DB transactions fetch failed:', dbResponse.status);
             }
-          } catch {
-            // Supabase not available
+          } catch (err) {
+            console.warn('[WalletStore] DB transactions fetch error:', err);
           }
 
-          // Step 3: If still no stored data, fetch from Alchemy as fallback
+          // Step 3: If still no stored data, fetch from provider APIs directly as fallback
           if (transactions.length === 0) {
+            console.log('[WalletStore] No DB transactions, trying provider API fallback...');
             try {
-              const networks = ['ethereum', 'base', 'arbitrum', 'optimism', 'polygon'];
+              const chainIds = [1, 8453, 42161, 10, 137]; // ETH, Base, Arbitrum, Optimism, Polygon
               const allTransactions: Transaction[] = [];
 
-              for (const network of networks) {
+              for (const chainId of chainIds) {
                 try {
                   const response = await fetch(
-                    `/api/transactions?wallet=${wallet.address}&network=${network}&maxCount=50`
+                    `/api/transactions?wallet=${wallet.address}&chainId=${chainId}&pageSize=50`
                   );
                   if (response.ok) {
                     const result = await response.json();
-                    if (result.data) {
+                    if (result.data && result.data.length > 0) {
                       const networkTx = result.data.map(
                         (apiTx: Record<string, unknown>, i: number) =>
-                          apiToAppTransaction(apiTx, i, wallet.address)
+                          providerApiToAppTransaction(apiTx, i, wallet.address)
                       );
                       allTransactions.push(...networkTx);
                     }
                   }
                 } catch {
-                  // Skip network on error
+                  // Skip chain on error
                 }
               }
 
               transactions = allTransactions.sort((a, b) => b.timestamp - a.timestamp);
               txCount = transactions.length;
+
+              console.log(`[WalletStore] Got ${txCount} transactions from provider APIs`);
 
               // Save to Supabase
               if (transactions.length > 0) {
@@ -350,7 +410,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
                 }
               }
             } catch (error) {
-              console.error('Error fetching from Alchemy:', error);
+              console.error('[WalletStore] Error fetching from providers:', error);
               transactions = [];
               txCount = 0;
             }
@@ -359,17 +419,18 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           // Extract unique clients from transactions
           const clientMap = new Map<string, Client>();
           transactions.forEach(tx => {
-            const key = tx.counterparty.toLowerCase();
+            const key = (tx.counterparty || '').toLowerCase();
+            if (!key || !key.startsWith('0x')) return;
             if (!clientMap.has(key)) {
               const existingClient = defaultClients.find(
                 c => c.address.toLowerCase() === key
               );
               if (existingClient) {
                 clientMap.set(key, existingClient);
-              } else if (tx.counterparty.startsWith('0x')) {
+              } else {
                 clientMap.set(key, {
                   id: `client-auto-${key.slice(2, 8)}`,
-                  name: tx.counterpartyLabel || `${tx.counterparty.slice(0, 6)}...${tx.counterparty.slice(-4)}`,
+                  name: tx.counterpartyLabel || `${key.slice(0, 6)}...${key.slice(-4)}`,
                   address: tx.counterparty,
                   notes: '',
                   color: '#8a8f98',
@@ -480,55 +541,93 @@ export const useWalletStore = create<WalletState & WalletActions>()(
 );
 
 // ============================================================
-// Helper: Convert API transaction to app Transaction format
+// Helper: Convert Provider API transaction to app Transaction format
+// Used when fetching from /api/transactions endpoint
 // ============================================================
 
-function apiToAppTransaction(
+function providerApiToAppTransaction(
   apiTx: Record<string, unknown>,
   index: number,
   userAddress: string
 ): Transaction {
+  const userAddr = userAddress.toLowerCase();
+  const fromAddr = ((apiTx.from as string) || '').toLowerCase();
+  const toAddr = ((apiTx.to as string) || '').toLowerCase();
+  const isFromUser = fromAddr === userAddr;
+  const isToUser = toAddr === userAddr;
+
+  // Determine type and direction
+  let type: Transaction['type'] = 'income';
+  let direction = 'in';
+  if (isFromUser && isToUser) {
+    direction = 'self';
+    type = 'income';
+  } else if (isFromUser) {
+    direction = 'out';
+    type = 'expense';
+  } else {
+    direction = 'in';
+    type = 'income';
+  }
+
+  // Token info
   let token = 'ETH';
-  let quantity = (apiTx.valueEth as number) || 0;
+  let quantity = (apiTx.value as number) || 0;
   let price = 0;
 
   const tokenTransfers = apiTx.tokenTransfers as Array<Record<string, unknown>> | undefined;
   if (tokenTransfers && tokenTransfers.length > 0) {
     const mainTransfer = tokenTransfers[0];
-    token = (mainTransfer.tokenSymbol as string) || 'ETH';
-    quantity = (mainTransfer.valueFormatted as number) || 0;
+    token = (mainTransfer.symbol as string) || (mainTransfer.tokenSymbol as string) || 'ETH';
+    quantity = (mainTransfer.amount as number) || (mainTransfer.valueFormatted as number) || 0;
   }
 
-  price = quantity > 0 ? ((apiTx.valueEth as number) || 0) / quantity : 0;
+  price = quantity > 0 ? ((apiTx.value as number) || 0) / quantity : 0;
 
-  const userAddr = userAddress.toLowerCase();
-  let counterparty = (apiTx.to as string) || '';
-  let counterpartyLabel =
-    (apiTx.protocolLabel as string) || (apiTx.protocol as string) || (apiTx.to as string) || '';
+  // Counterparty
+  let counterparty = direction === 'out' ? toAddr : fromAddr;
+  let counterpartyLabel = (apiTx.protocol as string) || '';
 
-  if ((apiTx.direction as string) === 'in') {
-    counterparty = (apiTx.from as string) || '';
-    counterpartyLabel =
-      (apiTx.protocolLabel as string) || (apiTx.protocol as string) || (apiTx.from as string) || '';
-  }
-
-  if (!(apiTx.protocol as string) && counterparty.startsWith('0x')) {
+  if (!counterpartyLabel && counterparty.startsWith('0x')) {
     counterpartyLabel = `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`;
   }
 
+  // Network
+  const chain = (apiTx.chain as string) || 'ethereum';
+  const chainId = (apiTx.chainId as number) || 1;
+
+  const NETWORK_LABELS: Record<string, string> = {
+    ethereum: 'Ethereum',
+    base: 'Base',
+    arbitrum: 'Arbitrum',
+    optimism: 'Optimism',
+    polygon: 'Polygon',
+  };
+
+  const TYPE_LABELS: Record<string, string> = {
+    income: 'Income',
+    expense: 'Expense',
+    trade: 'Trade',
+    defi: 'DeFi',
+    staking: 'Staking',
+    gas: 'Gas Fee',
+    nft: 'NFT',
+    bridge: 'Bridge',
+  };
+
   return {
-    id: `tx-${(apiTx.txHash as string)}-${index}`,
+    id: `tx-${(apiTx.hash as string) || index}-${index}`,
     date: (apiTx.date as string) || new Date().toISOString().split('T')[0],
     timestamp: (apiTx.timestamp as number) || Date.now(),
-    type: (apiTx.type as Transaction['type']) || 'income',
-    typeLabel: (apiTx.typeLabel as string) || '',
+    type,
+    typeLabel: TYPE_LABELS[type] || type,
     token,
     quantity,
     price,
-    value: (apiTx.valueEth as number) || 0,
-    network: (apiTx.network as string) || 'ethereum',
-    networkLabel: (apiTx.networkLabel as string) || 'Ethereum',
-    txHash: (apiTx.txHash as string) || '',
+    value: (apiTx.value as number) || 0,
+    network: chain,
+    networkLabel: NETWORK_LABELS[chain] || chain.charAt(0).toUpperCase() + chain.slice(1),
+    txHash: (apiTx.hash as string) || '',
     counterparty,
     counterpartyLabel,
   };

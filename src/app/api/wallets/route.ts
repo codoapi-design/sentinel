@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { getSyncEngine } from '@/lib/blockchain/sync-engine';
 
 /**
@@ -17,12 +17,16 @@ import { getSyncEngine } from '@/lib/blockchain/sync-engine';
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Authenticate user via cookie session
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
     const userId = user.id;
+
+    // Use service role client for data operations
+    const supabase = createServerClient();
 
     const { data, error } = await supabase
       .from('wallets')
@@ -66,12 +70,17 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Authenticate user via cookie session
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
     const userId = user.id;
+
+    // Use service role client for data operations
+    const supabase = createServerClient();
+
     const body = await request.json();
     const { address, label } = body;
 
@@ -141,16 +150,15 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Error inserting wallet:', error);
       return NextResponse.json(
-        { error: 'Failed to add wallet' },
+        { error: 'Failed to add wallet', details: error.message },
         { status: 500 }
       );
     }
 
-    // Trigger full sync - await it so data is ready when the user sees the dashboard
-    try {
-      const syncEngine = getSyncEngine();
-      const syncResult = await syncEngine.fullSync(data.id);
-      console.log('[Wallets] Initial sync completed:', {
+    // Trigger full sync in the background (don't await it so the response is quick)
+    // The user will see data populate after sync completes
+    getSyncEngine().fullSync(data.id).then(syncResult => {
+      console.log('[Wallets] Background sync completed:', {
         success: syncResult.overallSuccess,
         records: syncResult.totalRecordsSynced,
         durationMs: syncResult.totalDurationMs,
@@ -162,10 +170,9 @@ export async function POST(request: NextRequest) {
           errors: r.errors,
         })),
       });
-    } catch (syncInitError) {
-      console.error('[Wallets] Initial sync error:', syncInitError);
-      // Don't fail the wallet creation even if sync fails
-    }
+    }).catch(syncInitError => {
+      console.error('[Wallets] Background sync error:', syncInitError);
+    });
 
     return NextResponse.json({
       success: true,
@@ -195,12 +202,17 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Authenticate user via cookie session
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
     const userId = user.id;
+
+    // Use service role client for data operations
+    const supabase = createServerClient();
+
     const body = await request.json();
     const { id, label } = body;
 
@@ -241,12 +253,17 @@ export async function PATCH(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Authenticate user via cookie session
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
     const userId = user.id;
+
+    // Use service role client for data operations
+    const supabase = createServerClient();
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

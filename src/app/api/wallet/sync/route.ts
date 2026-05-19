@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { getSyncEngine } from '@/lib/blockchain/sync-engine';
 import { getBlockchainCache } from '@/lib/blockchain/cache';
 
@@ -13,22 +13,12 @@ import { getBlockchainCache } from '@/lib/blockchain/cache';
  * Body:
  * - walletId: UUID of the wallet to sync (required)
  * - mode: 'full' | 'incremental' (default: 'incremental')
- *
- * Full sync:
- *   - Covalent: Historical transactions (from first block)
- *   - Zerion: Current balances + DeFi positions
- *   - DeBank: Complex DeFi protocol details
- *
- * Incremental sync:
- *   - Alchemy: New transactions since last synced block
- *   - Zerion: Updated balances & PnL
- *   - DeBank: Updated DeFi positions
  */
 export async function POST(request: NextRequest) {
   try {
     // ── Authenticate via cookie session ──
-    const supabase = createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
 
     if (authError || !user) {
       return NextResponse.json(
@@ -57,6 +47,9 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Use service role client for data operations
+    const supabase = createServerClient();
 
     // ── Verify wallet ownership ──
     const { data: wallet, error: walletError } = await supabase
@@ -125,15 +118,12 @@ export async function POST(request: NextRequest) {
  * GET /api/wallet/sync
  *
  * Get sync status for a wallet.
- *
- * Query params:
- * - walletId: UUID of the wallet (required)
  */
 export async function GET(request: NextRequest) {
   try {
-    // ── Authenticate ──
-    const supabase = createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // ── Authenticate via cookie session ──
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
 
     if (authError || !user) {
       return NextResponse.json(
@@ -141,6 +131,9 @@ export async function GET(request: NextRequest) {
         { status: 401 },
       );
     }
+
+    // Use service role client for data operations
+    const supabase = createServerClient();
 
     // ── Parse query params ──
     const { searchParams } = new URL(request.url);

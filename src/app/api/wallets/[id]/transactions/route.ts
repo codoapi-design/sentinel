@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { type Transaction } from '@/lib/mock-data';
 
 interface RouteParams {
@@ -29,7 +29,34 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '500');
     const offset = parseInt(searchParams.get('offset') || '0');
 
+    // Authenticate user
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // Use service role client for data operations
     const supabase = createServerClient();
+
+    // Verify wallet belongs to this user
+    const { data: wallet } = await supabase
+      .from('wallets')
+      .select('id')
+      .eq('id', walletId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!wallet) {
+      return NextResponse.json(
+        { error: 'Wallet not found' },
+        { status: 404 }
+      );
+    }
 
     let query = supabase
       .from('transactions')
@@ -46,7 +73,7 @@ export async function GET(
     if (error) {
       console.error('Error fetching transactions:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch transactions' },
+        { error: 'Failed to fetch transactions', details: error.message },
         { status: 500 }
       );
     }
@@ -94,19 +121,24 @@ export async function GET(
         counterpartyLabel = `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`;
       }
 
+      // Safely compute price (avoid division by zero)
+      const tokenValue = row.token_value || 0;
+      const valueEth = row.value_eth || 0;
+      const price = tokenValue > 0 ? valueEth / tokenValue : 0;
+
       return {
         id: row.id || `tx-${i}`,
-        date: row.date,
-        timestamp: row.timestamp,
-        type: txType,
+        date: row.date || '',
+        timestamp: row.timestamp || 0,
+        type: txType || 'income',
         typeLabel: row.type_ar || TYPE_LABELS[txType] || txType,
         token: row.token_symbol || 'ETH',
-        quantity: row.token_value || row.value_eth,
-        price: row.token_value ? (row.value_eth / row.token_value) : 0,
-        value: row.value_eth,
+        quantity: tokenValue || valueEth,
+        price,
+        value: valueEth,
         network,
         networkLabel: row.network_ar || NETWORK_LABELS[network] || network.charAt(0).toUpperCase() + network.slice(1),
-        txHash: row.tx_hash,
+        txHash: row.tx_hash || '',
         counterparty,
         counterpartyLabel,
       };
@@ -120,7 +152,7 @@ export async function GET(
   } catch (error) {
     console.error('Wallet Transactions GET error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
@@ -136,6 +168,18 @@ export async function POST(
 ) {
   try {
     const { id: walletId } = await params;
+
+    // Authenticate user
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const { transactions } = body as { transactions: Transaction[] };
 
@@ -146,6 +190,7 @@ export async function POST(
       );
     }
 
+    // Use service role client for data operations
     const supabase = createServerClient();
 
     // Convert app Transactions to DB format
@@ -182,7 +227,7 @@ export async function POST(
     if (error) {
       console.error('Error saving transactions:', error);
       return NextResponse.json(
-        { error: 'Failed to save transactions' },
+        { error: 'Failed to save transactions', details: error.message },
         { status: 500 }
       );
     }
@@ -203,7 +248,7 @@ export async function POST(
   } catch (error) {
     console.error('Wallet Transactions POST error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

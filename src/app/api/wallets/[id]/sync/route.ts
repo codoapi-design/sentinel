@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { getSyncEngine } from '@/lib/blockchain/sync-engine';
 
 export const maxDuration = 60; // Allow up to 60 seconds for sync
@@ -32,18 +32,22 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const mode = body.mode || 'incremental';
 
-    // ── Authenticate user ──
-    const supabase = createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // ── Authenticate user via cookie session ──
+    const cookieClient = await createCookieServerClient();
+    const { data: { user }, error: authError } = await cookieClient.auth.getUser();
 
     if (authError || !user) {
+      console.error('[WalletSync] Auth error:', authError);
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 },
       );
     }
 
-    // Get wallet info
+    // Use service role client for data operations (bypasses RLS)
+    const supabase = createServerClient();
+
+    // Get wallet info - verify it belongs to this user
     const { data: wallet, error: walletError } = await supabase
       .from('wallets')
       .select('*')
@@ -52,6 +56,7 @@ export async function POST(
       .single();
 
     if (walletError || !wallet) {
+      console.error('[WalletSync] Wallet not found:', walletError);
       return NextResponse.json(
         { error: 'Wallet not found' },
         { status: 404 },

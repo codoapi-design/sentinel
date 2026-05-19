@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getNativeBalance, getWalletBalances, NETWORKS } from '@/lib/alchemy';
 import { getProviderManager } from '@/lib/blockchain/provider-manager';
-import { createServerClient } from '@/lib/supabase/server';
+import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 
 /**
  * GET /api/wallet
@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
 
     // ── Portfolio mode: fetch from providers + cache ──
     if (mode === 'portfolio') {
-      const supabase = createServerClient();
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const cookieClient = await createCookieServerClient();
+      const { data: { user }, error: authError } = await cookieClient.auth.getUser();
 
       if (authError || !user) {
         return NextResponse.json(
@@ -50,6 +50,9 @@ export async function GET(request: NextRequest) {
           { status: 401 }
         );
       }
+
+      // Use service role client for data operations
+      const supabase = createServerClient();
 
       // Verify the wallet belongs to the user
       const { data: wallet } = await supabase
@@ -135,7 +138,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ── Legacy balances mode ──
+    // ── Legacy balances mode (no auth required - public blockchain data) ──
     if (!NETWORKS[network]) {
       return NextResponse.json(
         { error: `Invalid network. Supported: ${Object.keys(NETWORKS).join(', ')}` },
