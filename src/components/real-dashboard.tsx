@@ -64,6 +64,7 @@ export function RealDashboard() {
     wallets,
     activeWalletId,
     isSyncing,
+    isLoadingWallets,
     syncWallet,
     loadWalletsFromDB,
     getActiveWallet,
@@ -103,16 +104,17 @@ export function RealDashboard() {
   const displayTransactions = transactions;
   const displayClients = clients;
 
-  // Sync active wallet on mount if it has no transactions (after DB load)
+  // Sync active wallet on mount if it has no transactions
+  // Wait for loadWalletsFromDB to complete first (to get real UUIDs)
   useEffect(() => {
-    if (activeWalletId && transactions.length === 0) {
-      // Small delay to let loadWalletsFromDB complete first
+    if (activeWalletId && transactions.length === 0 && !isLoadingWallets) {
+      // Small delay to ensure store is fully reconciled
       const timer = setTimeout(() => {
         syncWallet(activeWalletId);
-      }, 1500);
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [activeWalletId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeWalletId, isLoadingWallets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     toast.success('Logged out successfully');

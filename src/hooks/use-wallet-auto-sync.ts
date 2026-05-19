@@ -3,6 +3,7 @@
  *
  * Automatically syncs the active wallet every 60 seconds.
  * Only fetches new transactions (incremental sync).
+ * Validates wallet ID is a proper UUID before making API calls.
  */
 
 'use client';
@@ -12,9 +13,17 @@ import { useWalletStore } from '@/stores/wallet-store';
 
 const SYNC_INTERVAL_MS = 60_000; // 1 minute
 
+/**
+ * Check if a string looks like a valid UUID
+ */
+function isUUID(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 export function useWalletAutoSync() {
   const wallets = useWalletStore(state => state.wallets);
   const activeWalletId = useWalletStore(state => state.activeWalletId);
+  const isLoadingWallets = useWalletStore(state => state.isLoadingWallets);
   const isSyncing = useWalletStore(state => state.isSyncing);
   const syncWallet = useWalletStore(state => state.syncWallet);
   const lastSyncAt = useWalletStore(state => state.lastSyncAt);
@@ -23,6 +32,15 @@ export function useWalletAutoSync() {
   // Check for new transactions on the active wallet
   const checkForNewTransactions = useCallback(async () => {
     if (!activeWalletId) return;
+
+    // Don't sync while wallets are still loading from DB
+    if (isLoadingWallets) return;
+
+    // Validate wallet ID is a proper UUID (not a stale wallet-XXXXX ID)
+    if (!isUUID(activeWalletId)) {
+      console.warn('[AutoSync] Active wallet ID is not a valid UUID, skipping sync');
+      return;
+    }
 
     const syncingState = isSyncing[activeWalletId];
     if (syncingState) return; // Already syncing
@@ -44,7 +62,7 @@ export function useWalletAutoSync() {
 
           if (response.ok) {
             const result = await response.json();
-            if (result.newTransactions > 0) {
+            if (result.totalRecordsSynced > 0) {
               // Refresh local state from DB
               const txResponse = await fetch(`/api/wallets/${activeWalletId}/transactions`);
               if (txResponse.ok) {
@@ -61,20 +79,21 @@ export function useWalletAutoSync() {
             return;
           }
         } catch {
-          // Supabase not available, use Alchemy direct
+          // Supabase not available, use provider direct
         }
       }
 
-      // Fallback: sync via store (which uses Alchemy API)
+      // Fallback: sync via store (which uses provider APIs)
       await syncWallet(activeWalletId);
     } catch (error) {
       console.error('Auto-sync error:', error);
     }
-  }, [activeWalletId, isSyncing, lastSyncAt, syncWallet, wallets]);
+  }, [activeWalletId, isLoadingWallets, isSyncing, lastSyncAt, syncWallet, wallets]);
 
   // Set up interval
   useEffect(() => {
     if (!activeWalletId) return;
+    if (!isUUID(activeWalletId)) return; // Don't set up interval with stale ID
 
     // Initial check after 10 seconds
     const initialTimeout = setTimeout(() => {
@@ -96,8 +115,10 @@ export function useWalletAutoSync() {
 
   // Manual trigger
   const triggerSync = useCallback(() => {
-    if (activeWalletId) {
+    if (activeWalletId && isUUID(activeWalletId)) {
       syncWallet(activeWalletId);
+    } else if (activeWalletId) {
+      console.warn('[AutoSync] Cannot sync: wallet ID is not a valid UUID');
     }
   }, [activeWalletId, syncWallet]);
 

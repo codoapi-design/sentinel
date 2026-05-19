@@ -290,6 +290,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       // ====== Load wallets from DB ======
 
       loadWalletsFromDB: async () => {
+        set({ isLoadingWallets: true });
         try {
           const response = await fetch('/api/wallets');
           if (response.ok) {
@@ -311,6 +312,9 @@ export const useWalletStore = create<WalletState & WalletActions>()(
                   dbByAddress.set(dbW.address.toLowerCase(), dbW);
                 }
 
+                // Track ID migrations for transactionsMap/clientsMap migration
+                const idMigrations: Map<string, string> = new Map(); // oldId -> newId
+
                 // Reconcile: replace stale local wallets (with wallet-XXXXX IDs)
                 // with the real DB wallet (UUID), preserving any local data like transactions
                 const merged: WalletInfo[] = [];
@@ -328,9 +332,10 @@ export const useWalletStore = create<WalletState & WalletActions>()(
                     merged.push(reconciled);
                     usedDbIds.add(dbMatch.id);
 
-                    // If ID changed, migrate local data (transactions, clients, etc.)
+                    // If ID changed, track migration for transactionsMap/clientsMap
                     if (localW.id !== dbMatch.id) {
                       console.log(`[WalletStore] Reconciling wallet ${localW.id} -> ${dbMatch.id}`);
+                      idMigrations.set(localW.id, dbMatch.id);
                     }
                   } else {
                     // Local wallet not in DB - keep it only if it has a UUID-like ID
@@ -364,15 +369,47 @@ export const useWalletStore = create<WalletState & WalletActions>()(
                   }
                 }
 
+                // Migrate transactionsMap and clientsMap keys from old IDs to new IDs
+                const newTransactionsMap = { ...state.transactionsMap };
+                const newClientsMap = { ...state.clientsMap };
+                const newSyncing = { ...state.isSyncing };
+                const newLastSync = { ...state.lastSyncAt };
+
+                for (const [oldId, newId] of idMigrations) {
+                  if (newTransactionsMap[oldId] !== undefined) {
+                    newTransactionsMap[newId] = newTransactionsMap[oldId];
+                    delete newTransactionsMap[oldId];
+                  }
+                  if (newClientsMap[oldId] !== undefined) {
+                    newClientsMap[newId] = newClientsMap[oldId];
+                    delete newClientsMap[oldId];
+                  }
+                  if (newSyncing[oldId] !== undefined) {
+                    newSyncing[newId] = newSyncing[oldId];
+                    delete newSyncing[oldId];
+                  }
+                  if (newLastSync[oldId] !== undefined) {
+                    newLastSync[newId] = newLastSync[oldId];
+                    delete newLastSync[oldId];
+                  }
+                }
+
                 return {
                   wallets: merged,
                   activeWalletId: activeId || merged[0]?.id,
+                  transactionsMap: newTransactionsMap,
+                  clientsMap: newClientsMap,
+                  isSyncing: newSyncing,
+                  lastSyncAt: newLastSync,
+                  isLoadingWallets: false,
                 };
               });
             }
           }
+          set({ isLoadingWallets: false });
         } catch (err) {
           console.warn('[WalletStore] Failed to load wallets from DB:', err);
+          set({ isLoadingWallets: false });
         }
       },
 
