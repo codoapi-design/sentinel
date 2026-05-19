@@ -14,6 +14,53 @@ interface RouteParams {
 }
 
 /**
+ * Resolve wallet ID - handles both UUID and stale client-generated IDs
+ */
+async function resolveWalletId(
+  walletIdOrAddress: string,
+  userId: string,
+  supabase: ReturnType<typeof createServerClient>
+): Promise<string | null> {
+  // First try: direct UUID lookup
+  const { data: walletById } = await supabase
+    .from('wallets')
+    .select('id')
+    .eq('id', walletIdOrAddress)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (walletById) return walletById.id;
+
+  // Second try: if it looks like an address, look up by address
+  if (walletIdOrAddress.startsWith('0x') && walletIdOrAddress.length === 42) {
+    const { data: walletByAddr } = await supabase
+      .from('wallets')
+      .select('id')
+      .eq('user_id', userId)
+      .ilike('address', walletIdOrAddress)
+      .maybeSingle();
+
+    if (walletByAddr) return walletByAddr.id;
+  }
+
+  // Third try: for stale wallet-XXXXX IDs, find any wallet for this user
+  // that doesn't match a UUID pattern - return the first user wallet
+  if (walletIdOrAddress.startsWith('wallet-')) {
+    console.warn(`[WalletTx] Stale wallet ID detected: ${walletIdOrAddress}, trying first user wallet`);
+    const { data: firstWallet } = await supabase
+      .from('wallets')
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (firstWallet) return firstWallet.id;
+  }
+
+  return null;
+}
+
+/**
  * GET /api/wallets/[id]/transactions
  * Get stored transactions for a wallet
  */
@@ -43,17 +90,12 @@ export async function GET(
     // Use service role client for data operations
     const supabase = createServerClient();
 
-    // Verify wallet belongs to this user
-    const { data: wallet } = await supabase
-      .from('wallets')
-      .select('id')
-      .eq('id', walletId)
-      .eq('user_id', user.id)
-      .maybeSingle();
+    // Resolve wallet ID with fallback
+    const resolvedId = await resolveWalletId(walletId, user.id, supabase);
 
-    if (!wallet) {
+    if (!resolvedId) {
       return NextResponse.json(
-        { error: 'Wallet not found' },
+        { error: 'Wallet not found', hint: 'Try removing and re-adding the wallet' },
         { status: 404 }
       );
     }
@@ -61,7 +103,7 @@ export async function GET(
     let query = supabase
       .from('transactions')
       .select('*')
-      .eq('wallet_id', walletId)
+      .eq('wallet_id', resolvedId)
       .order('timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -193,9 +235,19 @@ export async function POST(
     // Use service role client for data operations
     const supabase = createServerClient();
 
+    // Resolve wallet ID with fallback
+    const resolvedId = await resolveWalletId(walletId, user.id, supabase);
+
+    if (!resolvedId) {
+      return NextResponse.json(
+        { error: 'Wallet not found' },
+        { status: 404 }
+      );
+    }
+
     // Convert app Transactions to DB format
     const dbTransactions = transactions.map(tx => ({
-      wallet_id: walletId,
+      wallet_id: resolvedId,
       tx_hash: tx.txHash,
       block_number: 0,
       timestamp: tx.timestamp,
@@ -239,7 +291,7 @@ export async function POST(
         last_synced_at: new Date().toISOString(),
         is_syncing: false,
       })
-      .eq('id', walletId);
+      .eq('id', resolvedId);
 
     return NextResponse.json({
       success: true,

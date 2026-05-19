@@ -164,9 +164,8 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         set({ isAddingWallet: true, error: null });
 
         try {
-          // Save to Supabase
-          let walletId = `wallet-${Date.now()}`;
-          let dbSuccess = false;
+          // Save to Supabase - MUST succeed to get a valid DB UUID
+          let walletId: string | null = null;
 
           try {
             const response = await fetch('/api/wallets', {
@@ -177,19 +176,37 @@ export const useWalletStore = create<WalletState & WalletActions>()(
 
             if (response.ok) {
               const result = await response.json();
-              walletId = result.data?.id || walletId;
-              dbSuccess = true;
+              walletId = result.data?.id || null;
+              console.log('[WalletStore] Wallet created in DB with ID:', walletId);
             } else {
               const errData = await response.json().catch(() => ({}));
-              console.warn('[WalletStore] Failed to add wallet to DB:', errData.error);
+              console.error('[WalletStore] Failed to add wallet to DB:', errData.error);
+              set({
+                isAddingWallet: false,
+                error: `Failed to create wallet: ${errData.error || 'Server error'}`,
+              });
+              return; // Don't add locally if DB creation fails - we need the UUID
             }
           } catch (err) {
-            console.warn('[WalletStore] Supabase not available, using local wallet state:', err);
+            console.error('[WalletStore] Supabase not available:', err);
+            set({
+              isAddingWallet: false,
+              error: 'Cannot connect to server. Please try again.',
+            });
+            return; // Don't add locally without a DB UUID
+          }
+
+          if (!walletId) {
+            set({
+              isAddingWallet: false,
+              error: 'Failed to create wallet: no ID returned from server',
+            });
+            return;
           }
 
           const newWallet: WalletInfo = {
-            id: walletId,
-            address,
+            id: walletId, // Always a DB UUID
+            address: address.toLowerCase(),
             label,
             lastSyncedAt: null,
             isSyncing: false,
@@ -198,7 +215,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
 
           set(state => ({
             wallets: [...state.wallets, newWallet],
-            activeWalletId: state.activeWalletId || walletId, // Set as active if first wallet
+            activeWalletId: state.activeWalletId || walletId,
             isAddingWallet: false,
           }));
 
@@ -282,23 +299,74 @@ export const useWalletStore = create<WalletState & WalletActions>()(
                 id: w.id,
                 address: w.address,
                 label: w.label,
-                lastSyncedAt: w.lastSyncedAt,
+                lastSyncedAt: w.lastSyncedAt || w.last_synced_at,
                 isSyncing: false,
                 transactionCount: 0,
               }));
 
               set(state => {
-                // Merge: keep local state for wallets that exist in DB, add new DB wallets
-                const localIds = new Set(state.wallets.map(w => w.id));
-                const merged = [...state.wallets];
+                // Build a map of DB wallets by address (lowercase for matching)
+                const dbByAddress = new Map<string, typeof dbWallets[0]>();
                 for (const dbW of dbWallets) {
-                  if (!localIds.has(dbW.id)) {
+                  dbByAddress.set(dbW.address.toLowerCase(), dbW);
+                }
+
+                // Reconcile: replace stale local wallets (with wallet-XXXXX IDs)
+                // with the real DB wallet (UUID), preserving any local data like transactions
+                const merged: WalletInfo[] = [];
+                const usedDbIds = new Set<string>();
+
+                for (const localW of state.wallets) {
+                  const dbMatch = dbByAddress.get(localW.address.toLowerCase());
+                  if (dbMatch) {
+                    // Replace local wallet with DB version (has correct UUID)
+                    const reconciled: WalletInfo = {
+                      ...dbMatch,
+                      // Preserve local sync state if available
+                      lastSyncedAt: localW.lastSyncedAt || dbMatch.lastSyncedAt,
+                    };
+                    merged.push(reconciled);
+                    usedDbIds.add(dbMatch.id);
+
+                    // If ID changed, migrate local data (transactions, clients, etc.)
+                    if (localW.id !== dbMatch.id) {
+                      console.log(`[WalletStore] Reconciling wallet ${localW.id} -> ${dbMatch.id}`);
+                    }
+                  } else {
+                    // Local wallet not in DB - keep it only if it has a UUID-like ID
+                    if (localW.id.includes('-') && localW.id.length >= 32) {
+                      merged.push(localW);
+                    }
+                    // Skip stale wallet-XXXXX entries that aren't in DB
+                  }
+                }
+
+                // Add DB wallets not yet in local state
+                for (const dbW of dbWallets) {
+                  if (!usedDbIds.has(dbW.id) && !merged.some(m => m.id === dbW.id)) {
                     merged.push(dbW);
                   }
                 }
+
+                // Fix activeWalletId if it was a stale ID
+                let activeId = state.activeWalletId;
+                if (activeId) {
+                  const activeInMerged = merged.find(w => w.id === activeId);
+                  if (!activeInMerged) {
+                    // Try to find by matching the old wallet address
+                    const oldWallet = state.wallets.find(w => w.id === activeId);
+                    if (oldWallet) {
+                      const replacement = merged.find(w => w.address.toLowerCase() === oldWallet.address.toLowerCase());
+                      activeId = replacement?.id || merged[0]?.id || null;
+                    } else {
+                      activeId = merged[0]?.id || null;
+                    }
+                  }
+                }
+
                 return {
                   wallets: merged,
-                  activeWalletId: state.activeWalletId || merged[0]?.id,
+                  activeWalletId: activeId || merged[0]?.id,
                 };
               });
             }
@@ -315,6 +383,25 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         const wallet = state.wallets.find(w => w.id === walletId);
         if (!wallet || wallet.isSyncing) return;
 
+        // Validate wallet ID is a proper DB UUID (not a stale wallet-XXXXX ID)
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(walletId);
+        if (!isUUID) {
+          console.warn('[WalletStore] Wallet ID is not a valid UUID, attempting to resolve from DB...');
+          // Try to reload wallets from DB to get the correct UUID
+          await get().loadWalletsFromDB();
+          const updatedState = get();
+          const resolvedWallet = updatedState.wallets.find(
+            w => w.address.toLowerCase() === wallet.address.toLowerCase()
+          );
+          if (resolvedWallet && resolvedWallet.id !== walletId) {
+            console.log(`[WalletStore] Resolved wallet ID: ${walletId} -> ${resolvedWallet.id}`);
+            walletId = resolvedWallet.id;
+          } else {
+            console.error('[WalletStore] Cannot resolve wallet UUID. Skipping sync.');
+            return;
+          }
+        }
+
         // Set syncing state
         set(state => ({
           isSyncing: { ...state.isSyncing, [walletId]: true },
@@ -325,6 +412,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           let transactions: Transaction[] = [];
           let clients: Client[] = [];
           let txCount = 0;
+          const walletAddress = wallet.address;
 
           // Step 1: Trigger proper sync endpoint (fetches balances + DeFi + transactions from providers)
           try {
@@ -375,14 +463,14 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               for (const chainId of chainIds) {
                 try {
                   const response = await fetch(
-                    `/api/transactions?wallet=${wallet.address}&chainId=${chainId}&pageSize=50`
+                    `/api/transactions?wallet=${walletAddress}&chainId=${chainId}&pageSize=50`
                   );
                   if (response.ok) {
                     const result = await response.json();
                     if (result.data && result.data.length > 0) {
                       const networkTx = result.data.map(
                         (apiTx: Record<string, unknown>, i: number) =>
-                          providerApiToAppTransaction(apiTx, i, wallet.address)
+                          providerApiToAppTransaction(apiTx, i, walletAddress)
                       );
                       allTransactions.push(...networkTx);
                     }

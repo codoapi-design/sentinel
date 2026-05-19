@@ -20,6 +20,45 @@ interface RouteParams {
 }
 
 /**
+ * Resolve a wallet ID or address to a valid DB wallet record
+ * Handles both UUID IDs and address-based lookups
+ */
+async function resolveWallet(
+  walletIdOrAddress: string,
+  userId: string,
+  supabase: ReturnType<typeof createServerClient>
+) {
+  // First try: direct UUID lookup
+  const { data: walletById, error: err1 } = await supabase
+    .from('wallets')
+    .select('*')
+    .eq('id', walletIdOrAddress)
+    .eq('user_id', userId)
+    .single();
+
+  if (walletById) return walletById;
+
+  // Second try: if it looks like an address (0x...), look up by address
+  if (walletIdOrAddress.startsWith('0x') && walletIdOrAddress.length === 42) {
+    const { data: walletByAddr } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .ilike('address', walletIdOrAddress)
+      .single();
+
+    if (walletByAddr) return walletByAddr;
+  }
+
+  // Third try: it might be a stale client-generated ID (wallet-XXXXX)
+  // In this case, we can't find it directly - but we can check if any wallet
+  // belongs to this user (they may have created one but the ID wasn't synced)
+  console.warn(`[WalletSync] Wallet not found with ID: ${walletIdOrAddress}`);
+
+  return null;
+}
+
+/**
  * POST /api/wallets/[id]/sync
  * Sync wallet data using hybrid provider architecture
  */
@@ -47,21 +86,19 @@ export async function POST(
     // Use service role client for data operations (bypasses RLS)
     const supabase = createServerClient();
 
-    // Get wallet info - verify it belongs to this user
-    const { data: wallet, error: walletError } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('id', walletId)
-      .eq('user_id', user.id)
-      .single();
+    // Get wallet info - with address-based fallback resolution
+    const wallet = await resolveWallet(walletId, user.id, supabase);
 
-    if (walletError || !wallet) {
-      console.error('[WalletSync] Wallet not found:', walletError);
+    if (!wallet) {
+      console.error('[WalletSync] Wallet not found for ID:', walletId, 'user:', user.id);
       return NextResponse.json(
-        { error: 'Wallet not found' },
+        { error: 'Wallet not found', hint: 'Try removing and re-adding the wallet' },
         { status: 404 },
       );
     }
+
+    // Use the resolved wallet's actual DB ID (in case it was looked up by address)
+    const resolvedWalletId = wallet.id;
 
     if (wallet.is_syncing) {
       return NextResponse.json(
@@ -70,14 +107,14 @@ export async function POST(
       );
     }
 
-    console.log(`[WalletSync] Starting ${mode} sync for ${wallet.address}`);
+    console.log(`[WalletSync] Starting ${mode} sync for ${wallet.address} (ID: ${resolvedWalletId})`);
 
     const syncEngine = getSyncEngine();
 
     // Choose sync mode
     const result = mode === 'full'
-      ? await syncEngine.fullSync(walletId)
-      : await syncEngine.incrementalSync(walletId);
+      ? await syncEngine.fullSync(resolvedWalletId)
+      : await syncEngine.incrementalSync(resolvedWalletId);
 
     console.log(`[WalletSync] ${mode} sync completed for ${wallet.address}:`, {
       success: result.overallSuccess,
