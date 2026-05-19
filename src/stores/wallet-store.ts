@@ -661,6 +661,55 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         currentPlan: state.currentPlan,
         lastSyncAt: state.lastSyncAt,
       }),
+      // Migrate stale wallet IDs on rehydration from localStorage
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<WalletState>;
+        if (!persisted?.wallets) return currentState;
+
+        // Find stale wallet-XXXXX IDs and remove them
+        const staleIds = new Set<string>();
+        const validWallets = (persisted.wallets || []).filter(w => {
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(w.id);
+          if (!isUUID) {
+            staleIds.add(w.id);
+            return false;
+          }
+          return true;
+        });
+
+        if (staleIds.size > 0) {
+          console.log(`[WalletStore] Migrating ${staleIds.size} stale wallet IDs from localStorage`);
+
+          // Clean up transactionsMap, clientsMap keys for stale IDs
+          const cleanTransactionsMap = { ...(persisted.transactionsMap || {}) };
+          const cleanClientsMap = { ...(persisted.clientsMap || {}) };
+          const cleanLastSyncAt = { ...(persisted.lastSyncAt || {}) };
+
+          for (const staleId of staleIds) {
+            delete cleanTransactionsMap[staleId];
+            delete cleanClientsMap[staleId];
+            delete cleanLastSyncAt[staleId];
+          }
+
+          // Fix activeWalletId if it was stale
+          let activeId: string | null = persisted.activeWalletId || null;
+          if (activeId && staleIds.has(activeId)) {
+            activeId = validWallets[0]?.id || null;
+          }
+
+          return {
+            ...currentState,
+            ...persisted,
+            wallets: validWallets,
+            activeWalletId: activeId,
+            transactionsMap: cleanTransactionsMap,
+            clientsMap: cleanClientsMap,
+            lastSyncAt: cleanLastSyncAt,
+          };
+        }
+
+        return { ...currentState, ...persisted };
+      },
     }
   )
 );
