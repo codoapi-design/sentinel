@@ -3,26 +3,29 @@
  *
  * Routes data requests to the optimal provider based on data category:
  *
- *   current_balances  → Zerion (primary) → DeBank (fallback)
- *   historical_tx     → Covalent (primary) → Alchemy (fallback)
- *   realtime_transfers → Alchemy (primary, webhook-driven)
+ *   current_balances  → Etherscan V2 (primary) → Alchemy (chains not on Etherscan plan)
+ *   historical_tx     → Etherscan V2 (primary) → Alchemy (fallback)
+ *   realtime_transfers → Alchemy (webhook-driven)
  *   defi_positions    → DeBank (primary) → Zerion (fallback)
- *   defi_detail       → DeBank (primary, complex protocols only)
- *   nft_portfolio     → Covalent (primary)
- *   pnl               → Zerion (primary)
- *   full_portfolio    → Aggregated from all providers
+ *   Pricing           → CoinGecko only
  *
- * Includes:
- *   - Supabase cache layer (check cache first)
- *   - Provider health tracking
- *   - Automatic failover on provider errors
- *   - Cost tracking per request
+ * UI is DB-first: sync writes to Supabase; display reads from the database.
  */
 
 import { DeBankService } from '../debank/service';
 import { ZerionService } from '../zerion/service';
 import { CovalentService } from '../covalent/service';
-import { fetchAndClassifyTransactions, NETWORKS } from '../alchemy/service';
+import { getEtherscanService, EtherscanService } from '../etherscan/service';
+import type { EtherscanTokenHolding } from '../etherscan/service';
+import {
+  isAlchemyConfigured,
+  isAlchemyChainSupported,
+  isAlchemyNetworkForbidden,
+  AlchemyNetworkForbiddenError,
+  fetchAlchemyChainBalances,
+  fetchAlchemyTransfersAsWalletTxs,
+} from '../alchemy/service';
+import { getPricingService } from '../pricing/service';
 import { getBlockchainCache } from './cache';
 import type {
   DataCategory,
@@ -44,15 +47,22 @@ import type {
 // Provider priority per data category
 // ────────────────────────────────────────────────────────────
 
+/** Chains scanned for multichain balances + txs (Etherscan and/or Alchemy). */
+export const SYNC_CHAIN_IDS = [
+  1, 8453, 42161, 10, 137, 56, 59144, 999, 143, 5042002,
+]; // ETH, Base, Arb, OP, Polygon, BSC, Linea, HyperEVM, Monad, Arc
+// Conventional placeholder address for a chain's native coin.
+const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 const CATEGORY_PRIORITY: Record<DataCategory, ProviderId[]> = {
-  current_balances: ['zerion', 'debank'],
-  historical_tx: ['covalent', 'alchemy'],
+  current_balances: ['etherscan', 'alchemy'],
+  historical_tx: ['etherscan', 'alchemy'],
   realtime_transfers: ['alchemy'],
   defi_positions: ['debank', 'zerion'],
   defi_detail: ['debank'],
   nft_portfolio: ['covalent'],
   pnl: ['zerion'],
-  full_portfolio: ['zerion', 'debank', 'covalent', 'alchemy'],
+  full_portfolio: ['etherscan', 'alchemy'],
 };
 
 // ────────────────────────────────────────────────────────────
@@ -63,13 +73,25 @@ export class ProviderManager {
   private debank: DeBankService;
   private zerion: ZerionService;
   private covalent: CovalentService;
+  private etherscan: ReturnType<typeof getEtherscanService>;
+  private pricing: ReturnType<typeof getPricingService>;
   private healthMap: Map<ProviderId, ProviderHealth>;
   private cache: ReturnType<typeof getBlockchainCache>;
+  // Whether the Etherscan `addresstokenbalance` (PRO) endpoint is usable for the
+  // current key. null = unknown, true = available, false = fall back to transfers.
+  private tokenHoldingApiAvailable: boolean | null = null;
+  // Chains the current Etherscan API plan cannot access (e.g. Base/Optimism on Free).
+  // Learned at runtime; Alchemy is used as the complementary source for these.
+  private etherscanUnsupportedChains = new Set<number>();
+  // Providers that contributed to the last balance fetch (etherscan and/or alchemy).
+  private lastBalanceProviders: ProviderId[] = [];
 
   constructor() {
     this.debank = new DeBankService();
     this.zerion = new ZerionService();
     this.covalent = new CovalentService();
+    this.etherscan = getEtherscanService();
+    this.pricing = getPricingService();
     this.cache = getBlockchainCache();
 
     this.healthMap = new Map([
@@ -77,6 +99,7 @@ export class ProviderManager {
       ['zerion', { provider: 'zerion', isAvailable: true, lastChecked: 0, latencyMs: null, errorCount: 0, rateLimitRemaining: null }],
       ['alchemy', { provider: 'alchemy', isAvailable: true, lastChecked: 0, latencyMs: null, errorCount: 0, rateLimitRemaining: null }],
       ['debank', { provider: 'debank', isAvailable: true, lastChecked: 0, latencyMs: null, errorCount: 0, rateLimitRemaining: null }],
+      ['etherscan', { provider: 'etherscan', isAvailable: true, lastChecked: 0, latencyMs: null, errorCount: 0, rateLimitRemaining: null }],
     ]);
   }
 
@@ -128,9 +151,10 @@ export class ProviderManager {
 
     // 1. Check cache first
     const cached = await this.cache.get<WalletPortfolio>(address, 'portfolio');
-    if (cached) {
+    if (cached && Array.isArray(cached.tokens)) {
       console.log(`[ProviderManager] Portfolio served from cache (${Date.now() - startTime}ms)`);
-      return { ...cached, providers: ['cache' as ProviderId, ...cached.providers] };
+      const cachedProviders = Array.isArray(cached.providers) ? cached.providers : [];
+      return { ...cached, providers: ['cache' as ProviderId, ...cachedProviders] };
     }
 
     // 2. Fetch current balances from Zerion (primary) or DeBank (fallback)
@@ -183,66 +207,430 @@ export class ProviderManager {
   }
 
   // ────────────────────────────────────────────────────────────
-  // Current Balances (Zerion primary, DeBank fallback)
+  // Current Balances (Etherscan V2 + Alchemy complementary, CoinGecko pricing)
   // ────────────────────────────────────────────────────────────
 
+  /**
+   * Fetch the wallet's current assets across ALL supported ETH-linked chains.
+   * Per chain: Etherscan first; if the plan doesn't cover that chain (e.g. Base
+   * on Free), fall back to Alchemy. USD prices come from CoinGecko.
+   */
   async fetchCurrentBalances(address: string): Promise<{
     tokens: TokenBalance[];
     providers: ProviderId[];
   }> {
-    const providers: ProviderId[] = [];
+    if (!this.etherscan.isConfigured() && !isAlchemyConfigured()) {
+      throw new Error(
+        'Neither ETHERSCAN_API_KEY nor ALCHEMY_API_KEY is configured — balances cannot be fetched.',
+      );
+    }
 
-    // Try Zerion first
-    try {
-      const start = Date.now();
-      const zerionData = await this.zerion.getPortfolioSummary(address);
-      this.markProviderSuccess('zerion', Date.now() - start);
+    this.lastBalanceProviders = [];
+    const start = Date.now();
+    const results = await this.mapWithConcurrency(
+      SYNC_CHAIN_IDS,
+      2,
+      chainId => this.fetchChainBalances(address, chainId),
+    );
 
-      if (zerionData && zerionData.positions.length > 0) {
-        providers.push('zerion');
-        const tokens = zerionData.positions
-          .filter((p: any) => p.attributes?.position_type === 'wallet')
-          .map((p: any) => this.normalizeZerionToken(p));
+    const allTokens: TokenBalance[] = [];
+    let anySuccess = false;
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        anySuccess = true;
+        allTokens.push(...r.value);
+      } else {
+        this.markProviderError('etherscan', r.reason);
+      }
+    }
+    if (anySuccess) {
+      const primary = this.lastBalanceProviders[0] || allTokens[0]?.provider || 'etherscan';
+      this.markProviderSuccess(primary, Date.now() - start);
+    }
 
-        if (tokens.length > 0) {
-          return { tokens, providers };
+    // Highest value first
+    allTokens.sort((a, b) => b.valueUsd - a.valueUsd);
+    const providers = [
+      ...new Set([
+        ...this.lastBalanceProviders,
+        ...allTokens.map(t => t.provider).filter((p): p is ProviderId => p !== 'cache'),
+      ]),
+    ];
+    return { tokens: allTokens, providers };
+  }
+
+  /**
+   * Run `task` over `items` with at most `limit` concurrent executions,
+   * returning settled results in input order.
+   */
+  private async mapWithConcurrency<T, R>(
+    items: T[],
+    limit: number,
+    task: (item: T) => Promise<R>,
+  ): Promise<PromiseSettledResult<R>[]> {
+    const results: PromiseSettledResult<R>[] = new Array(items.length);
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (cursor < items.length) {
+        const index = cursor++;
+        try {
+          results[index] = { status: 'fulfilled', value: await task(items[index]) };
+        } catch (reason) {
+          results[index] = { status: 'rejected', reason };
         }
       }
-    } catch (error) {
-      this.markProviderError('zerion', error);
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
+  /**
+   * Compute all balances for a single chain (native + ERC-20) and price them.
+   *
+   * Etherscan first (addresstokenbalance or transfer-derivation). When Etherscan
+   * rejects the chain (Free tier), fall through to Alchemy if configured.
+   */
+  private async fetchChainBalances(address: string, chainId: number): Promise<TokenBalance[]> {
+    // Known Etherscan-unsupported → go straight to Alchemy (no wasted call)
+    if (this.etherscanUnsupportedChains.has(chainId)) {
+      return this.fetchAlchemyChainBalancesPriced(address, chainId);
     }
 
-    // Fallback: DeBank
-    try {
-      const start = Date.now();
-      const debankData = await this.debank.getTokenBalances(address);
-      this.markProviderSuccess('debank', Date.now() - start);
-
-      if (debankData.length > 0) {
-        providers.push('debank');
-        const tokens = debankData.map((t: any) => this.normalizeDeBankToken(t));
-        return { tokens, providers };
+    if (this.etherscan.isConfigured()) {
+      try {
+        const tokens = await this.fetchEtherscanChainBalances(address, chainId);
+        if (!this.lastBalanceProviders.includes('etherscan')) {
+          this.lastBalanceProviders.push('etherscan');
+        }
+        return tokens;
+      } catch (error) {
+        if (EtherscanService.isChainUnsupported(error)) {
+          this.etherscanUnsupportedChains.add(chainId);
+          console.warn(
+            `[ProviderManager] Chain ${chainId} (${this.chainIdToName(chainId) || 'unknown'}) not on Etherscan plan — trying Alchemy.`,
+          );
+          return this.fetchAlchemyChainBalancesPriced(address, chainId);
+        }
+        // Other Etherscan errors: still try Alchemy for this chain if available
+        if (isAlchemyConfigured() && isAlchemyChainSupported(chainId)) {
+          console.warn(
+            `[ProviderManager] Etherscan failed for chain ${chainId}, falling back to Alchemy:`,
+            error instanceof Error ? error.message : error,
+          );
+          return this.fetchAlchemyChainBalancesPriced(address, chainId);
+        }
+        throw error;
       }
-    } catch (error) {
-      this.markProviderError('debank', error);
     }
 
-    // Last resort: Covalent (single chain)
+    return this.fetchAlchemyChainBalancesPriced(address, chainId);
+  }
+
+  private async fetchEtherscanChainBalances(address: string, chainId: number): Promise<TokenBalance[]> {
+    const chainName = this.chainIdToName(chainId) || 'ethereum';
+    const tokens: TokenBalance[] = [];
+
+    const holdingsPromise =
+      this.tokenHoldingApiAvailable === false
+        ? Promise.resolve(null)
+        : this.etherscan.getAddressTokenBalances(address, chainId).catch(() => null);
+
+    const [nativeWei, holdings] = await Promise.all([
+      this.etherscan.getNativeBalance(address, chainId),
+      holdingsPromise,
+    ]);
+
+    if (nativeWei > BigInt(0)) {
+      const balance = Number(nativeWei) / 1e18;
+      const priceUsd = await this.pricing.getCurrentNativePriceUsd(chainId).catch(() => 0);
+      tokens.push({
+        symbol: this.nativeSymbol(chainId),
+        name: this.nativeName(chainId),
+        address: NATIVE_TOKEN_ADDRESS,
+        decimals: 18,
+        balance,
+        rawBalance: nativeWei.toString(),
+        priceUsd,
+        valueUsd: balance * priceUsd,
+        change24h: null,
+        chain: chainName,
+        chainId,
+        logoUrl: null,
+        isSpam: false,
+        isVerified: true,
+        provider: 'etherscan',
+      });
+    }
+
+    if (holdings) {
+      this.tokenHoldingApiAvailable = true;
+      tokens.push(...(await this.buildTokensFromHoldings(holdings, chainId, chainName)));
+    } else {
+      if (this.tokenHoldingApiAvailable === null) this.tokenHoldingApiAvailable = false;
+      tokens.push(...(await this.deriveBalancesFromTransfers(address, chainId, chainName)));
+    }
+
+    return tokens;
+  }
+
+  /** Alchemy balances + CoinGecko pricing for one chain. */
+  private async fetchAlchemyChainBalancesPriced(
+    address: string,
+    chainId: number,
+  ): Promise<TokenBalance[]> {
+    if (!isAlchemyConfigured() || !isAlchemyChainSupported(chainId)) {
+      return [];
+    }
+    if (isAlchemyNetworkForbidden(chainId)) {
+      console.warn(
+        `[ProviderManager] Skipping Alchemy balances for chain ${chainId} — network not enabled on API key.`,
+      );
+      return [];
+    }
+
+    const start = Date.now();
     try {
-      const start = Date.now();
-      const covalentData = await this.covalent.getTokenBalances(1, address);
-      this.markProviderSuccess('covalent', Date.now() - start);
+      const raw = await fetchAlchemyChainBalances(address, chainId);
+      const chainName = this.chainIdToName(chainId) || 'ethereum';
 
-      if (covalentData.length > 0) {
-        providers.push('covalent');
-        const tokens = covalentData.map((b: any) => this.normalizeCovalentToken(b));
-        return { tokens, providers };
+      const erc20Addrs = raw
+        .filter(t => t.address !== NATIVE_TOKEN_ADDRESS)
+        .filter(t => !this.isLikelySpamToken(t.symbol, t.name))
+        .map(t => t.address);
+
+      const [nativePrice, priceMap] = await Promise.all([
+        this.pricing.getCurrentNativePriceUsd(chainId).catch(() => 0),
+        this.pricing.getCurrentTokenPricesUsd(chainId, erc20Addrs),
+      ]);
+
+      const tokens: TokenBalance[] = raw.map(t => {
+        const spam = this.isLikelySpamToken(t.symbol, t.name);
+        const isNative = t.address === NATIVE_TOKEN_ADDRESS;
+        const priceUsd = spam
+          ? 0
+          : isNative
+            ? nativePrice
+            : priceMap.get(t.address.toLowerCase()) ?? 0;
+        return {
+          ...t,
+          chain: chainName,
+          isSpam: spam,
+          isVerified: !spam,
+          priceUsd,
+          valueUsd: t.balance * priceUsd,
+          change24h: null,
+          provider: 'alchemy' as ProviderId,
+        };
+      });
+
+      this.markProviderSuccess('alchemy', Date.now() - start);
+      if (!this.lastBalanceProviders.includes('alchemy')) {
+        this.lastBalanceProviders.push('alchemy');
       }
+      return tokens;
     } catch (error) {
-      this.markProviderError('covalent', error);
+      if (error instanceof AlchemyNetworkForbiddenError) {
+        console.warn(`[ProviderManager] ${error.message}`);
+        return [];
+      }
+      this.markProviderError('alchemy', error);
+      console.warn(
+        `[ProviderManager] Alchemy balances failed for chain ${chainId}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Build priced TokenBalances from the direct `addresstokenbalance` holdings.
+   * Uses the Etherscan-provided USD price when present, otherwise asks CoinGecko.
+   */
+  private async buildTokensFromHoldings(
+    holdings: EtherscanTokenHolding[],
+    chainId: number,
+    chainName: string,
+  ): Promise<TokenBalance[]> {
+    const held = holdings
+      .map(h => {
+        const contract = (h.TokenAddress || '').toLowerCase();
+        const parsed = parseInt(h.TokenDivisor || '18', 10);
+        const decimals = Number.isFinite(parsed) ? parsed : 18;
+        let raw: bigint;
+        try {
+          raw = BigInt(h.TokenQuantity || '0');
+        } catch {
+          raw = BigInt(0);
+        }
+        const balance = Number(raw) / Math.pow(10, decimals);
+        const etherscanPrice = parseFloat(h.TokenPriceUSD || '0') || 0;
+        return {
+          contract,
+          symbol: h.TokenSymbol || 'UNKNOWN',
+          name: h.TokenName || '',
+          decimals,
+          balance,
+          raw,
+          etherscanPrice,
+          spam: this.isLikelySpamToken(h.TokenSymbol || '', h.TokenName || ''),
+        };
+      })
+      .filter(h => h.contract && Number.isFinite(h.balance) && h.balance > 0);
+
+    // Only tokens without an Etherscan price (and not spam) need a CoinGecko lookup.
+    const needPricing = held.filter(h => !h.spam && h.etherscanPrice <= 0).map(h => h.contract);
+    const priceMap = needPricing.length
+      ? await this.pricing.getCurrentTokenPricesUsd(chainId, needPricing)
+      : new Map<string, number>();
+
+    return held.map(h => {
+      const priceUsd =
+        h.etherscanPrice > 0
+          ? h.etherscanPrice
+          : h.spam
+            ? 0
+            : priceMap.get(h.contract) ?? 0;
+      return {
+        symbol: h.symbol,
+        name: h.name,
+        address: h.contract,
+        decimals: h.decimals,
+        balance: h.balance,
+        rawBalance: h.raw.toString(),
+        priceUsd,
+        valueUsd: h.balance * priceUsd,
+        change24h: null,
+        chain: chainName,
+        chainId,
+        logoUrl: null,
+        isSpam: h.spam,
+        isVerified: !h.spam,
+        provider: 'etherscan' as ProviderId,
+      };
+    });
+  }
+
+  /**
+   * Fallback: derive ERC-20 balances from the token-transfer history
+   * (net incoming − outgoing per token). Used when `addresstokenbalance` is
+   * unavailable for the key (e.g. Free tier).
+   */
+  private async deriveBalancesFromTransfers(
+    address: string,
+    chainId: number,
+    chainName: string,
+  ): Promise<TokenBalance[]> {
+    const userAddr = address.toLowerCase();
+    const transfers = await this.etherscan.getTokenTransfers(address, chainId, {
+      page: 1,
+      offset: 10000,
+      sort: 'asc',
+    });
+
+    const positions = new Map<
+      string,
+      { symbol: string; name: string; decimals: number; net: bigint }
+    >();
+
+    for (const t of transfers) {
+      const contract = (t.contractAddress || '').toLowerCase();
+      if (!contract) continue;
+      let raw: bigint;
+      try {
+        raw = BigInt(t.value || '0');
+      } catch {
+        continue;
+      }
+      const decimals = parseInt(t.tokenDecimal || '18', 10);
+      const entry =
+        positions.get(contract) || {
+          symbol: t.tokenSymbol || 'UNKNOWN',
+          name: t.tokenName || '',
+          decimals,
+          net: BigInt(0),
+        };
+      if ((t.to || '').toLowerCase() === userAddr) entry.net += raw;
+      if ((t.from || '').toLowerCase() === userAddr) entry.net -= raw;
+      entry.symbol = t.tokenSymbol || entry.symbol;
+      entry.name = t.tokenName || entry.name;
+      entry.decimals = Number.isFinite(decimals) ? decimals : 18;
+      positions.set(contract, entry);
     }
 
-    return { tokens: [], providers };
+    // Keep only positive holdings; classify spam
+    const held: Array<{ contract: string; symbol: string; name: string; decimals: number; balance: number; net: bigint; spam: boolean }> = [];
+    for (const [contract, info] of positions) {
+      if (info.net <= BigInt(0)) continue;
+      const balance = Number(info.net) / Math.pow(10, info.decimals);
+      if (!Number.isFinite(balance) || balance <= 0) continue;
+      held.push({
+        contract,
+        symbol: info.symbol,
+        name: info.name,
+        decimals: info.decimals,
+        balance,
+        net: info.net,
+        spam: this.isLikelySpamToken(info.symbol, info.name),
+      });
+    }
+
+    // Batch-price the non-spam tokens via CoinGecko (one call per ~40 contracts)
+    const priceable = held.filter(h => !h.spam).map(h => h.contract);
+    const priceMap = await this.pricing.getCurrentTokenPricesUsd(chainId, priceable);
+
+    return held.map(h => {
+      const priceUsd = h.spam ? 0 : (priceMap.get(h.contract) ?? 0);
+      return {
+        symbol: h.symbol,
+        name: h.name,
+        address: h.contract,
+        decimals: h.decimals,
+        balance: h.balance,
+        rawBalance: h.net.toString(),
+        priceUsd,
+        valueUsd: h.balance * priceUsd,
+        change24h: null,
+        chain: chainName,
+        chainId,
+        logoUrl: null,
+        isSpam: h.spam,
+        isVerified: !h.spam,
+        provider: 'etherscan' as ProviderId,
+      };
+    });
+  }
+
+  /** Heuristic spam/phishing token detection (airdropped scam tokens). */
+  private isLikelySpamToken(symbol: string, name: string): boolean {
+    const combined = `${symbol} ${name}`.toLowerCase();
+    if (/https?:|www\.|\.com|\.io|\.xyz|\.org|\.net|\.app|\.vip|\.finance|claim|visit|reward|airdrop|voucher|bonus|t\.me|telegram|giveaway|\$ /.test(combined)) {
+      return true;
+    }
+    // Non-ASCII / homoglyph symbols (e.g. "ĖTḨ" spoofing "ETH")
+    if (/[^\x00-\x7F]/.test(symbol)) return true;
+    if (symbol.trim().length === 0 || symbol.length > 20) return true;
+    return false;
+  }
+
+  private nativeSymbol(chainId: number): string {
+    if (chainId === 137) return 'MATIC';
+    if (chainId === 56) return 'BNB';
+    if (chainId === 43114) return 'AVAX';
+    if (chainId === 999) return 'HYPE';
+    if (chainId === 143) return 'MON';
+    if (chainId === 5042002) return 'USDC';
+    return 'ETH';
+  }
+
+  private nativeName(chainId: number): string {
+    if (chainId === 137) return 'Polygon';
+    if (chainId === 56) return 'BNB';
+    if (chainId === 43114) return 'Avalanche';
+    if (chainId === 999) return 'HYPE';
+    if (chainId === 143) return 'Monad';
+    if (chainId === 5042002) return 'USDC';
+    if (chainId === 59144) return 'Ethereum';
+    return 'Ethereum';
   }
 
   // ────────────────────────────────────────────────────────────
@@ -255,42 +643,53 @@ export class ProviderManager {
   }> {
     const providers: ProviderId[] = [];
 
-    // Try DeBank first (most comprehensive DeFi data)
-    try {
-      const start = Date.now();
-      const debankProtocols = await this.debank.getComplexProtocolList(address);
-      this.markProviderSuccess('debank', Date.now() - start);
+    // DeFi positions require DeBank or Zerion. In the Etherscan-only setup neither
+    // is configured, so skip the network calls entirely — otherwise every
+    // portfolio load would block on their (up to 15–30s) request timeouts.
+    if (!this.debank.isConfigured() && !this.zerion.isConfigured()) {
+      return { positions: [], providers };
+    }
 
-      if (debankProtocols.length > 0) {
-        providers.push('debank');
-        const positions = this.normalizeDeBankProtocols(debankProtocols);
-        return { positions, providers };
+    // Try DeBank first (most comprehensive DeFi data)
+    if (this.debank.isConfigured()) {
+      try {
+        const start = Date.now();
+        const debankProtocols = await this.debank.getComplexProtocolList(address);
+        this.markProviderSuccess('debank', Date.now() - start);
+
+        if (debankProtocols.length > 0) {
+          providers.push('debank');
+          const positions = this.normalizeDeBankProtocols(debankProtocols);
+          return { positions, providers };
+        }
+      } catch (error) {
+        this.markProviderError('debank', error);
       }
-    } catch (error) {
-      this.markProviderError('debank', error);
     }
 
     // Fallback: Zerion
-    try {
-      const start = Date.now();
-      const zerionData = await this.zerion.getPortfolio(address);
-      this.markProviderSuccess('zerion', Date.now() - start);
+    if (this.zerion.isConfigured()) {
+      try {
+        const start = Date.now();
+        const zerionData = await this.zerion.getPortfolio(address);
+        this.markProviderSuccess('zerion', Date.now() - start);
 
-      const defiPositions = zerionData.filter((p: any) => p.attributes?.position_type !== 'wallet');
-      if (defiPositions.length > 0) {
-        providers.push('zerion');
-        const positions = defiPositions.map((p: any) => this.normalizeZerionDeFi(p));
-        return { positions, providers };
+        const defiPositions = zerionData.filter((p: any) => p.attributes?.position_type !== 'wallet');
+        if (defiPositions.length > 0) {
+          providers.push('zerion');
+          const positions = defiPositions.map((p: any) => this.normalizeZerionDeFi(p));
+          return { positions, providers };
+        }
+      } catch (error) {
+        this.markProviderError('zerion', error);
       }
-    } catch (error) {
-      this.markProviderError('zerion', error);
     }
 
     return { positions: [], providers };
   }
 
   // ────────────────────────────────────────────────────────────
-  // Historical Transactions (Covalent primary)
+  // Historical Transactions (Etherscan V2 primary)
   // ────────────────────────────────────────────────────────────
 
   async fetchHistoricalTransactions(
@@ -298,61 +697,125 @@ export class ProviderManager {
     chainId: number = 1,
     page: number = 0,
     pageSize: number = 50,
+    startBlock: number = 0,
   ): Promise<{
     transactions: WalletTransaction[];
     providers: ProviderId[];
   }> {
-    const providers: ProviderId[] = [];
+    if (!this.etherscan.isConfigured() && !isAlchemyConfigured()) {
+      throw new Error(
+        'Neither ETHERSCAN_API_KEY nor ALCHEMY_API_KEY is configured — transactions cannot be fetched.',
+      );
+    }
 
-    // Check cache
-    const cacheKey = `tx_${chainId}_${page}`;
-    const cached = await this.cache.get<WalletTransaction[]>(
-      `${address.toLowerCase()}_tx_${chainId}_${page}`,
-      'transactions',
-    );
+    // Check cache (key includes startBlock so incremental queries stay isolated)
+    const cacheKey = `${address.toLowerCase()}_tx_${chainId}_${page}_${startBlock}`;
+    const cached = await this.cache.get<WalletTransaction[]>(cacheKey, 'transactions');
     if (cached) {
       return { transactions: cached, providers: ['cache'] };
     }
 
-    // Try Covalent first (full historical data from first block)
+    // Known Etherscan-unsupported → Alchemy directly
+    if (this.etherscanUnsupportedChains.has(chainId)) {
+      return this.fetchAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, cacheKey);
+    }
+
+    // Try Etherscan first when configured
+    if (this.etherscan.isConfigured()) {
+      try {
+        const start = Date.now();
+        const { normal, tokens } = await this.etherscan.getTransactionsForAddress(
+          address,
+          chainId,
+          page + 1, // Etherscan pages are 1-indexed
+          pageSize,
+          startBlock,
+        );
+        this.markProviderSuccess('etherscan', Date.now() - start);
+
+        if (normal.length === 0 && tokens.length === 0) {
+          return { transactions: [], providers: [] };
+        }
+
+        let transactions = this.mergeEtherscanTransactions(normal, tokens, address, chainId);
+        transactions = await this.pricing.enrichTransactions(transactions);
+
+        await this.cache.set(cacheKey, 'transactions', 'etherscan', transactions);
+        return { transactions, providers: ['etherscan'] };
+      } catch (error) {
+        if (EtherscanService.isChainUnsupported(error)) {
+          this.etherscanUnsupportedChains.add(chainId);
+          console.warn(
+            `[ProviderManager] Chain ${chainId} (${this.chainIdToName(chainId) || 'unknown'}) not on Etherscan plan — trying Alchemy for transactions.`,
+          );
+          return this.fetchAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, cacheKey);
+        }
+        // Other failure: try Alchemy if available
+        if (isAlchemyConfigured() && isAlchemyChainSupported(chainId)) {
+          console.warn(
+            `[ProviderManager] Etherscan tx fetch failed for chain ${chainId}, falling back to Alchemy:`,
+            error instanceof Error ? error.message : error,
+          );
+          return this.fetchAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, cacheKey);
+        }
+        this.markProviderError('etherscan', error);
+        throw error instanceof Error
+          ? error
+          : new Error(`Etherscan transaction fetch failed: ${String(error)}`);
+      }
+    }
+
+    return this.fetchAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, cacheKey);
+  }
+
+  private async fetchAlchemyHistoricalTransactions(
+    address: string,
+    chainId: number,
+    pageSize: number,
+    startBlock: number,
+    cacheKey: string,
+  ): Promise<{
+    transactions: WalletTransaction[];
+    providers: ProviderId[];
+  }> {
+    if (!isAlchemyConfigured() || !isAlchemyChainSupported(chainId)) {
+      return { transactions: [], providers: [] };
+    }
+    if (isAlchemyNetworkForbidden(chainId)) {
+      console.warn(
+        `[ProviderManager] Skipping Alchemy txs for chain ${chainId} — network not enabled on API key.`,
+      );
+      return { transactions: [], providers: [] };
+    }
+
     try {
       const start = Date.now();
-      const covalentTx = await this.covalent.getTransactions(chainId, address, page, pageSize);
-      this.markProviderSuccess('covalent', Date.now() - start);
+      let transactions = await fetchAlchemyTransfersAsWalletTxs(address, chainId, {
+        startBlock: startBlock > 0 ? startBlock : undefined,
+        pageSize: Math.min(pageSize, 100),
+        maxPages: startBlock > 0 ? 2 : 5,
+      });
+      this.markProviderSuccess('alchemy', Date.now() - start);
 
-      if (covalentTx.length > 0) {
-        providers.push('covalent');
-        const transactions = covalentTx.map((tx: any) => this.normalizeCovalentTransaction(tx, address, chainId));
-        await this.cache.set(`${address.toLowerCase()}_tx_${chainId}_${page}`, 'transactions', 'covalent', transactions);
-        return { transactions, providers };
+      if (transactions.length === 0) {
+        return { transactions: [], providers: [] };
       }
+
+      transactions = await this.pricing.enrichTransactions(transactions);
+      await this.cache.set(cacheKey, 'transactions', 'alchemy', transactions);
+      return { transactions, providers: ['alchemy'] };
     } catch (error) {
-      this.markProviderError('covalent', error);
-    }
-
-    // Fallback: Alchemy
-    try {
-      const chainName = this.chainIdToNetworkKey(chainId);
-      if (chainName && NETWORKS[chainName]) {
-        const start = Date.now();
-        const result = await fetchAndClassifyTransactions({
-          walletAddress: address,
-          networkKey: chainName,
-          maxCount: pageSize,
-        });
-        this.markProviderSuccess('alchemy', Date.now() - start);
-
-        if (result.transactions.length > 0) {
-          providers.push('alchemy');
-          const transactions = result.transactions.map((tx: any) => this.normalizeAlchemyTransaction(tx, chainId));
-          return { transactions, providers };
-        }
+      if (error instanceof AlchemyNetworkForbiddenError) {
+        console.warn(`[ProviderManager] ${error.message}`);
+        return { transactions: [], providers: [] };
       }
-    } catch (error) {
       this.markProviderError('alchemy', error);
+      console.warn(
+        `[ProviderManager] Alchemy tx fetch failed for chain ${chainId}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return { transactions: [], providers: [] };
     }
-
-    return { transactions: [], providers };
   }
 
   // ────────────────────────────────────────────────────────────
@@ -571,10 +1034,38 @@ export class ProviderManager {
     };
   }
 
-  private normalizeCovalentTransaction(tx: any, address: string, chainId: number): WalletTransaction {
+  private mergeEtherscanTransactions(
+    normal: import('../etherscan/service').EtherscanTransaction[],
+    tokens: import('../etherscan/service').EtherscanTokenTransfer[],
+    address: string,
+    chainId: number,
+  ): WalletTransaction[] {
+    const txMap = new Map<string, WalletTransaction>();
+
+    // Native transactions first
+    for (const tx of normal) {
+      const normalized = this.normalizeEtherscanNativeTransaction(tx, address, chainId);
+      txMap.set(tx.hash.toLowerCase(), normalized);
+    }
+
+    // ERC-20 transfers — create separate entries or enrich existing
+    for (const tt of tokens) {
+      const key = `${tt.hash.toLowerCase()}_${tt.contractAddress.toLowerCase()}`;
+      const normalized = this.normalizeEtherscanTokenTransfer(tt, address, chainId);
+      txMap.set(key, normalized);
+    }
+
+    return Array.from(txMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  private normalizeEtherscanNativeTransaction(
+    tx: import('../etherscan/service').EtherscanTransaction,
+    address: string,
+    chainId: number,
+  ): WalletTransaction {
     const userAddr = address.toLowerCase();
-    const fromAddr = (tx.from_address || '').toLowerCase();
-    const toAddr = (tx.to_address || '').toLowerCase();
+    const fromAddr = (tx.from || '').toLowerCase();
+    const toAddr = (tx.to || '').toLowerCase();
     const isFromUser = fromAddr === userAddr;
     const isToUser = toAddr === userAddr;
 
@@ -583,76 +1074,105 @@ export class ProviderManager {
     else if (isFromUser) direction = 'out';
     else if (isToUser) direction = 'in';
 
+    const valueEth = parseFloat(tx.value || '0') / 1e18;
+    const gasUsed = parseFloat(tx.gasUsed || '0');
+    const gasPrice = parseFloat(tx.gasPrice || '0');
+    const gasFeeEth = (gasUsed * gasPrice) / 1e18;
+    const timestamp = parseInt(tx.timeStamp || '0', 10);
+    const isSuccess = tx.isError === '0' && tx.txreceipt_status !== '0';
+
+    let type: WalletTransaction['type'] = isFromUser ? 'expense' : 'income';
+    if (tx.functionName?.toLowerCase().includes('swap') || tx.methodId === '0x38ed1739') {
+      type = 'trade';
+    } else if (tx.functionName?.toLowerCase().includes('stake')) {
+      type = 'staking';
+    } else if (tx.functionName?.toLowerCase().includes('deposit') || tx.functionName?.toLowerCase().includes('withdraw')) {
+      type = 'defi';
+    }
+
     return {
-      hash: tx.tx_hash,
-      from: tx.from_address || '',
-      to: tx.to_address || '',
+      hash: tx.hash,
+      from: tx.from,
+      to: tx.to || '',
       value: tx.value || '0',
-      valueEth: parseFloat(tx.value || '0') / 1e18,
-      gasFee: tx.gas_spent || '0',
-      gasFeeEth: parseFloat(tx.gas_spent || '0') * parseFloat(tx.gas_price || '0') / 1e18,
-      timestamp: tx.block_height || 0,
-      date: tx.block_signed_at ? new Date(tx.block_signed_at).toISOString().split('T')[0] : '',
-      type: isFromUser ? 'expense' : 'income',
+      valueEth,
+      gasFee: String(gasUsed * gasPrice),
+      gasFeeEth,
+      timestamp,
+      date: timestamp > 0 ? new Date(timestamp * 1000).toISOString().split('T')[0] : '',
+      type,
       direction,
-      status: tx.successful ? 'confirmed' : 'failed',
+      status: isSuccess ? 'confirmed' : 'failed',
       chain: this.chainIdToName(chainId) || 'ethereum',
       chainId,
-      blockNumber: tx.block_height || 0,
-      methodId: null,
-      methodName: null,
+      blockNumber: parseInt(tx.blockNumber || '0', 10),
+      methodId: tx.methodId || null,
+      methodName: tx.functionName || null,
       protocol: null,
-      tokenTransfers: (tx.log_events || [])
-        .filter((e: any) => e.decoded?.name === 'Transfer')
-        .map((e: any) => ({
-          tokenSymbol: e.sender_contract_ticker_symbol || 'UNKNOWN',
-          tokenName: e.sender_contract_name || '',
-          tokenAddress: e.sender_address || '',
-          from: e.decoded?.params?.[0]?.value || '',
-          to: e.decoded?.params?.[1]?.value || '',
-          value: e.decoded?.params?.[2]?.value || '0',
-          decimals: 18,
-          valueFormatted: parseFloat(e.decoded?.params?.[2]?.value || '0') / 1e18,
-          priceUsd: null,
-          valueUsd: null,
-        })),
-      provider: 'covalent',
+      tokenTransfers: [],
+      priceUsd: null,
+      valueUsd: null,
+      provider: 'etherscan',
     };
   }
 
-  private normalizeAlchemyTransaction(tx: any, chainId: number): WalletTransaction {
+  private normalizeEtherscanTokenTransfer(
+    tt: import('../etherscan/service').EtherscanTokenTransfer,
+    address: string,
+    chainId: number,
+  ): WalletTransaction {
+    const userAddr = address.toLowerCase();
+    const fromAddr = (tt.from || '').toLowerCase();
+    const toAddr = (tt.to || '').toLowerCase();
+    const isFromUser = fromAddr === userAddr;
+    const isToUser = toAddr === userAddr;
+
+    let direction: WalletTransaction['direction'] = 'mixed';
+    if (isFromUser && isToUser) direction = 'self';
+    else if (isFromUser) direction = 'out';
+    else if (isToUser) direction = 'in';
+
+    const decimals = parseInt(tt.tokenDecimal || '18', 10);
+    const valueFormatted = parseFloat(tt.value || '0') / Math.pow(10, decimals);
+    const timestamp = parseInt(tt.timeStamp || '0', 10);
+    const gasUsed = parseFloat(tt.gasUsed || '0');
+    const gasPrice = parseFloat(tt.gasPrice || '0');
+    const gasFeeEth = (gasUsed * gasPrice) / 1e18;
+
     return {
-      hash: tx.txHash,
-      from: tx.from || '',
-      to: tx.to || '',
-      value: tx.value || '0',
-      valueEth: tx.valueEth || 0,
-      gasFee: tx.gasPrice || '0',
-      gasFeeEth: tx.gasFeeEth || 0,
-      timestamp: tx.timestamp || Date.now(),
-      date: tx.date || new Date().toISOString().split('T')[0],
-      type: tx.type || 'income',
-      direction: tx.direction || 'in',
-      status: tx.status ? 'confirmed' : 'failed',
-      chain: tx.network || 'ethereum',
+      hash: tt.hash,
+      from: tt.from,
+      to: tt.to,
+      value: '0',
+      valueEth: 0,
+      gasFee: String(gasUsed * gasPrice),
+      gasFeeEth,
+      timestamp,
+      date: timestamp > 0 ? new Date(timestamp * 1000).toISOString().split('T')[0] : '',
+      type: isFromUser ? 'expense' : 'income',
+      direction,
+      status: 'confirmed',
+      chain: this.chainIdToName(chainId) || 'ethereum',
       chainId,
-      blockNumber: tx.blockNumber || 0,
-      methodId: tx.methodId,
-      methodName: tx.methodName,
-      protocol: tx.protocol,
-      tokenTransfers: (tx.tokenTransfers || []).map((t: any) => ({
-        tokenSymbol: t.tokenSymbol || 'UNKNOWN',
-        tokenName: t.tokenName || '',
-        tokenAddress: t.tokenAddress || '',
-        from: t.from || '',
-        to: t.to || '',
-        value: t.value || '0',
-        decimals: t.decimals || 18,
-        valueFormatted: t.valueFormatted || 0,
+      blockNumber: parseInt(tt.blockNumber || '0', 10),
+      methodId: null,
+      methodName: null,
+      protocol: null,
+      tokenTransfers: [{
+        tokenSymbol: tt.tokenSymbol || 'UNKNOWN',
+        tokenName: tt.tokenName || '',
+        tokenAddress: tt.contractAddress || '',
+        from: tt.from,
+        to: tt.to,
+        value: tt.value || '0',
+        decimals,
+        valueFormatted,
         priceUsd: null,
         valueUsd: null,
-      })),
-      provider: 'alchemy',
+      }],
+      priceUsd: null,
+      valueUsd: null,
+      provider: 'etherscan',
     };
   }
 
@@ -674,17 +1194,6 @@ export class ProviderManager {
     return typeMap[detailType || ''] || 'unknown';
   }
 
-  private chainIdToNetworkKey(chainId: number): string | null {
-    const map: Record<number, string> = {
-      1: 'ethereum',
-      8453: 'base',
-      42161: 'arbitrum',
-      10: 'optimism',
-      137: 'polygon',
-    };
-    return map[chainId] || null;
-  }
-
   private chainIdToName(chainId: number): string | null {
     const map: Record<number, string> = {
       1: 'ethereum',
@@ -694,6 +1203,10 @@ export class ProviderManager {
       137: 'polygon',
       43114: 'avalanche',
       56: 'bsc',
+      59144: 'linea',
+      999: 'hyperliquid',
+      143: 'monad',
+      5042002: 'arc',
     };
     return map[chainId] || null;
   }

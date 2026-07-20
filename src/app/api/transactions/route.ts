@@ -7,8 +7,8 @@ import { CHAIN_IDS } from '@/lib/blockchain/types';
  * Fetch transactions for a wallet address using hybrid architecture
  *
  * Routing:
- *   Historical transactions → Covalent (primary)
- *   Recent transactions     → Alchemy (fallback)
+ *   Historical transactions → Etherscan V2 (primary)
+ *   Fallback              → Covalent, then Alchemy
  *   Results cached in Supabase
  *
  * Query params:
@@ -68,6 +68,8 @@ export async function GET(request: NextRequest) {
         from: tx.from,
         to: tx.to,
         value: tx.valueEth,
+        valueUsd: tx.valueUsd ?? null,
+        priceUsd: tx.priceUsd ?? null,
         gasFee: tx.gasFeeEth,
         timestamp: tx.timestamp,
         date: tx.date,

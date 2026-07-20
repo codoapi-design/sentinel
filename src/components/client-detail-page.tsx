@@ -18,10 +18,10 @@ import {
   UserPlus,
 } from 'lucide-react';
 import {
-  generateTransactions,
   type Client,
   type Transaction,
 } from '@/lib/mock-data';
+import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
 import { cn } from '@/lib/utils';
@@ -35,16 +35,17 @@ interface ClientDetailPageProps {
 export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetailPageProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
+  const allTransactions = useActiveTransactions();
 
   // Determine if this is an undefined/auto-generated client
   const isUndefined = client.id.startsWith('addr-0x');
 
   // Get all transactions with this client
   const clientTransactions = useMemo(() => {
-    return generateTransactions().filter(
+    return allTransactions.filter(
       tx => tx.counterparty.toLowerCase() === client.address.toLowerCase()
     );
-  }, [client.address]);
+  }, [allTransactions, client.address]);
 
   // Calculate stats
   const totalRevenue = useMemo(() => {

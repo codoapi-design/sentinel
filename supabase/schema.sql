@@ -125,7 +125,10 @@ CREATE TRIGGER update_email_settings_updated_at
 CREATE TABLE IF NOT EXISTS wallets (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  address TEXT NOT NULL,
+  address TEXT, -- EVM (nullable when only non-EVM addresses are set)
+  solana_address TEXT,
+  tron_address TEXT,
+  bitcoin_address TEXT,
   label TEXT NOT NULL,
   last_synced_block BIGINT DEFAULT NULL,
   last_synced_at TIMESTAMPTZ DEFAULT NULL,
@@ -133,12 +136,25 @@ CREATE TABLE IF NOT EXISTS wallets (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
 
-  UNIQUE(user_id, address)
+  CONSTRAINT wallets_at_least_one_address CHECK (
+    address IS NOT NULL
+    OR solana_address IS NOT NULL
+    OR tron_address IS NOT NULL
+    OR bitcoin_address IS NOT NULL
+  )
 );
 
 -- فهارس المحافظ
 CREATE INDEX IF NOT EXISTS idx_wallets_user_id ON wallets(user_id);
 CREATE INDEX IF NOT EXISTS idx_wallets_address ON wallets(address);
+CREATE UNIQUE INDEX IF NOT EXISTS wallets_user_evm_address_uidx
+  ON wallets (user_id, address) WHERE address IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS wallets_user_solana_address_uidx
+  ON wallets (user_id, solana_address) WHERE solana_address IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS wallets_user_tron_address_uidx
+  ON wallets (user_id, tron_address) WHERE tron_address IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS wallets_user_bitcoin_address_uidx
+  ON wallets (user_id, bitcoin_address) WHERE bitcoin_address IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_wallets_syncing ON wallets(is_syncing) WHERE is_syncing = true;
 
 -- RLS للمحافظ

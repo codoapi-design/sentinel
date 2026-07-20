@@ -29,6 +29,12 @@ export const CHAIN_IDS: Record<string, number> = {
   zksync: 324,
   mantle: 5000,
   blast: 81457,
+  hyperliquid: 999,
+  monad: 143,
+  arc: 5042002,
+  solana: 101,
+  tron: 728126428,
+  bitcoin: 0,
 };
 
 export const CHAIN_NAMES: Record<number, string> = Object.fromEntries(
@@ -39,7 +45,7 @@ export const CHAIN_NAMES: Record<number, string> = Object.fromEntries(
 // Provider identifiers
 // ────────────────────────────────────────────────────────────
 
-export type ProviderId = 'covalent' | 'zerion' | 'alchemy' | 'debank' | 'cache';
+export type ProviderId = 'covalent' | 'zerion' | 'alchemy' | 'debank' | 'etherscan' | 'cache';
 
 export interface ProviderHealth {
   provider: ProviderId;
@@ -147,6 +153,8 @@ export interface WalletTransaction {
   methodName: string | null;
   protocol: string | null;
   tokenTransfers: TokenTransfer[];
+  priceUsd?: number | null;
+  valueUsd?: number | null;
   provider: ProviderId;
 }
 
@@ -213,7 +221,7 @@ export interface NFTAsset {
 // Cache entry types
 // ────────────────────────────────────────────────────────────
 
-export type CacheDataType = 'portfolio' | 'transactions' | 'defi' | 'nfts' | 'pnl';
+export type CacheDataType = 'portfolio' | 'transactions' | 'defi' | 'nfts' | 'pnl' | 'full_sync' | 'solana_sync' | 'tron_sync' | 'bitcoin_sync';
 
 export interface CacheEntry {
   walletAddress: string;
@@ -248,6 +256,8 @@ export interface FullSyncResult {
   totalRecordsSynced: number;
   totalDurationMs: number;
   overallSuccess: boolean;
+  /** True when balances, DeFi, or transactions actually changed vs pre-sync snapshot. */
+  changed?: boolean;
 }
 
 // ────────────────────────────────────────────────────────────

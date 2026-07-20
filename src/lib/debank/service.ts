@@ -79,6 +79,15 @@ export class DeBankService {
     this.useProApi = this.apiKey !== '';
   }
 
+  /**
+   * Only treat DeBank as usable when a paid API key is present. The legacy free
+   * endpoints are unreliable and can hang for the full request timeout, so we
+   * skip them entirely in the Etherscan-only setup.
+   */
+  isConfigured(): boolean {
+    return this.useProApi;
+  }
+
   private getBaseUrl(): string {
     return this.useProApi ? DEBANK_PRO_BASE_URL : DEBANK_FREE_BASE_URL;
   }

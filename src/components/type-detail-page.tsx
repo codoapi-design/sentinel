@@ -19,9 +19,9 @@ import {
   Users,
 } from 'lucide-react';
 import {
-  generateTransactions,
   type Transaction,
 } from '@/lib/mock-data';
+import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
 import { cn } from '@/lib/utils';
@@ -77,6 +77,7 @@ interface TypeDetailPageProps {
 
 export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
+  const allTransactions = useActiveTransactions();
 
   const config = typeConfig[typeId];
   const typeColor = config?.color || '#8a8f98';
@@ -86,10 +87,10 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
 
   // Get all transactions of this type
   const typeTransactions = useMemo(() => {
-    return generateTransactions().filter(
+    return allTransactions.filter(
       tx => tx.type === typeId
     );
-  }, [typeId]);
+  }, [allTransactions, typeId]);
 
   // Calculate stats
   const totalRevenue = useMemo(() => {

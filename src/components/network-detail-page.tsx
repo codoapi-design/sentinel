@@ -18,9 +18,9 @@ import {
 } from 'lucide-react';
 import {
   networks,
-  generateTransactions,
   type Transaction,
 } from '@/lib/mock-data';
+import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
 import { cn } from '@/lib/utils';
@@ -40,6 +40,7 @@ interface NetworkDetailPageProps {
 
 export function NetworkDetailPage({ networkId, onBack }: NetworkDetailPageProps) {
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
+  const allTransactions = useActiveTransactions();
 
   const networkInfo = useMemo(() => {
     return networks.find(n => n.value === networkId);
@@ -50,10 +51,10 @@ export function NetworkDetailPage({ networkId, onBack }: NetworkDetailPageProps)
 
   // Get all transactions on this network
   const networkTransactions = useMemo(() => {
-    return generateTransactions().filter(
+    return allTransactions.filter(
       tx => tx.network === networkId
     );
-  }, [networkId]);
+  }, [allTransactions, networkId]);
 
   // Calculate stats
   const totalRevenue = useMemo(() => {

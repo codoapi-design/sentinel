@@ -22,11 +22,11 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import {
-  assets,
-  generateTransactions,
   type Transaction,
   type Client,
 } from '@/lib/mock-data';
+import { usePortfolio } from '@/hooks/use-portfolio';
+import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
 import { cn } from '@/lib/utils';
@@ -44,16 +44,47 @@ const periodOptions = [
   { label: 'All', days: 0 },
 ];
 
+// Deterministic accent color derived from the token symbol.
+function colorFromSymbol(symbol: string): string {
+  let hash = 0;
+  for (let i = 0; i < symbol.length; i++) {
+    hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return `hsl(${Math.abs(hash) % 360}, 60%, 50%)`;
+}
+
 export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPageProps) {
-  const asset = assets.find(a => a.id === assetId);
   const [activePeriod, setActivePeriod] = useState(30);
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
+
+  const { portfolio } = usePortfolio();
+  const allTransactions = useActiveTransactions();
+
+  // Build the asset view from REAL portfolio holdings (aggregated across chains
+  // for the same symbol). assetId is the token symbol passed from AssetsTable.
+  const asset = useMemo(() => {
+    const matching = (portfolio?.tokens || []).filter(t => t.symbol === assetId);
+    if (matching.length === 0) return undefined;
+    const quantity = matching.reduce((s, t) => s + t.balance, 0);
+    const value = matching.reduce((s, t) => s + t.valueUsd, 0);
+    return {
+      id: assetId,
+      symbol: assetId,
+      name: matching[0].name || assetId,
+      quantity,
+      value,
+      price: matching[0].priceUsd,
+      change24h: matching[0].change24h ?? 0,
+      icon: assetId.slice(0, 2).toUpperCase(),
+      color: colorFromSymbol(assetId),
+    };
+  }, [portfolio, assetId]);
 
   // Get all transactions for this asset
   const assetTransactions = useMemo(() => {
     if (!asset) return [];
-    return generateTransactions().filter(tx => tx.token === asset.symbol);
-  }, [asset]);
+    return allTransactions.filter(tx => tx.token === asset.symbol);
+  }, [asset, allTransactions]);
 
   // Build chart data: quantity movement over time
   const fullChartData = useMemo(() => {

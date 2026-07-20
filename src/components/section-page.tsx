@@ -15,11 +15,10 @@ import {
   BarChart3,
 } from 'lucide-react';
 import {
-  generateTransactions,
-  dashboardSummary,
   type Transaction,
   type Client,
 } from '@/lib/mock-data';
+import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
 
@@ -33,7 +32,6 @@ const sectionConfig = {
   revenue: {
     title: 'Revenue',
     totalLabel: 'Total Revenue',
-    totalValue: dashboardSummary.totalRevenue,
     fixedType: 'income' as const,
     fixedTypeLabel: 'Income',
     color: '#0ecb81',
@@ -45,7 +43,6 @@ const sectionConfig = {
   expenses: {
     title: 'Expenses',
     totalLabel: 'Total Expenses',
-    totalValue: dashboardSummary.totalExpenses,
     fixedType: 'expense' as const,
     fixedTypeLabel: 'Expense',
     color: '#f6465d',
@@ -57,7 +54,6 @@ const sectionConfig = {
   flow: {
     title: 'Net Flow',
     totalLabel: 'Net Flow',
-    totalValue: dashboardSummary.netFlow,
     fixedType: undefined,
     fixedTypeLabel: undefined,
     color: '#0052ff',
@@ -69,7 +65,6 @@ const sectionConfig = {
   gas: {
     title: 'Gas Fees',
     totalLabel: 'Total Gas Fees',
-    totalValue: dashboardSummary.gasFees,
     fixedType: 'gas' as const,
     fixedTypeLabel: 'Gas Fee',
     color: '#f7931a',
@@ -84,7 +79,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
   const config = sectionConfig[sectionType];
   const Icon = config.icon;
 
-  const allTransactions = useMemo(() => generateTransactions(), []);
+  const allTransactions = useActiveTransactions();
 
   // For the "flow" section, we show both income and expense
   const sectionTransactions = useMemo(() => {
@@ -96,6 +91,17 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
     }
     return allTransactions;
   }, [allTransactions, sectionType, config.fixedType]);
+
+  // Total value computed from the real transactions in this section
+  const totalValue = useMemo(() => {
+    if (sectionType === 'flow') {
+      return sectionTransactions.reduce(
+        (sum, tx) => sum + (tx.type === 'income' ? tx.value : -tx.value),
+        0,
+      );
+    }
+    return sectionTransactions.reduce((sum, tx) => sum + tx.value, 0);
+  }, [sectionTransactions, sectionType]);
 
   const [filteredData, setFilteredData] = useState<Transaction[]>(sectionTransactions);
   const [analysisTriggerKey, setAnalysisTriggerKey] = useState(0);
@@ -176,7 +182,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
             <div>
               <p className="text-sm text-[#8a8f98] mb-1">{config.totalLabel}</p>
               <p className="text-3xl sm:text-4xl font-bold font-mono-num" style={{ color: config.color }}>
-                ${config.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </p>
             </div>
           </div>

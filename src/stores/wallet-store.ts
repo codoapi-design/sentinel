@@ -7,7 +7,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { type Transaction, generateTransactions, defaultClients, type Client } from '@/lib/mock-data';
+import { type Transaction, type Client } from '@/lib/mock-data';
 
 // ============================================================
 // Types
@@ -15,11 +15,25 @@ import { type Transaction, generateTransactions, defaultClients, type Client } f
 
 export interface WalletInfo {
   id: string;
-  address: string;
+  /** EVM address (nullable when wallet is non-EVM only) */
+  address: string | null;
+  solanaAddress: string | null;
+  tronAddress: string | null;
+  bitcoinAddress: string | null;
+  /** Primary address for display (EVM → Solana → Tron → Bitcoin) */
+  displayAddress: string;
   label: string;
   lastSyncedAt: string | null;
   isSyncing: boolean;
   transactionCount: number;
+}
+
+export interface AddWalletInput {
+  label: string;
+  evmAddress?: string;
+  solanaAddress?: string;
+  tronAddress?: string;
+  bitcoinAddress?: string;
 }
 
 // Plan limits — aligned with pricing tiers
@@ -88,15 +102,18 @@ interface WalletState {
 
 interface WalletActions {
   // Wallet CRUD
-  addWallet: (address: string, label: string) => Promise<void>;
+  addWallet: (input: AddWalletInput) => Promise<void>;
   removeWallet: (walletId: string) => Promise<void>;
   setActiveWallet: (walletId: string) => void;
   updateWalletLabel: (walletId: string, label: string) => Promise<void>;
 
   // Data operations
-  syncWallet: (walletId: string) => Promise<void>;
+  /** Sync providers → DB. mode 'auto' = full if never synced, else incremental. */
+  syncWallet: (walletId: string, mode?: 'full' | 'incremental' | 'auto') => Promise<void>;
   syncAllWallets: () => Promise<void>;
   loadWalletsFromDB: () => Promise<void>;
+  /** Load transactions for a wallet from Supabase into the local store (UI source of truth). */
+  loadTransactionsFromDB: (walletId: string) => Promise<Transaction[]>;
 
   // Getters
   getActiveWallet: () => WalletInfo | null;
@@ -126,15 +143,6 @@ const initialState: WalletState = {
   error: null,
 };
 
-// Chain name to chainId mapping for API calls
-const NETWORK_TO_CHAIN_ID: Record<string, number> = {
-  ethereum: 1,
-  base: 8453,
-  arbitrum: 42161,
-  optimism: 10,
-  polygon: 137,
-};
-
 export const useWalletStore = create<WalletState & WalletActions>()(
   persist(
     (set, get) => ({
@@ -142,41 +150,66 @@ export const useWalletStore = create<WalletState & WalletActions>()(
 
       // ====== Wallet CRUD ======
 
-      addWallet: async (address: string, label: string) => {
+      addWallet: async (input: AddWalletInput) => {
         const state = get();
 
-        // Check plan limits
         const limit = PLAN_WALLET_LIMITS[state.currentPlan] ?? 1;
         if (state.wallets.length >= limit) {
           set({ error: `You have reached the wallet limit for your plan (${limit} wallets)` });
           return;
         }
 
-        // Check for duplicate
-        const existing = state.wallets.find(
-          w => w.address.toLowerCase() === address.toLowerCase()
-        );
-        if (existing) {
-          set({ error: 'This wallet is already added' });
+        const label = input.label.trim();
+        const evm = input.evmAddress?.trim() || '';
+        const sol = input.solanaAddress?.trim() || '';
+        const tron = input.tronAddress?.trim() || '';
+        const btc = input.bitcoinAddress?.trim() || '';
+
+        if (!label) {
+          set({ error: 'Please enter a wallet name' });
+          return;
+        }
+        if (!evm && !sol && !tron && !btc) {
+          set({ error: 'Enter at least one address (EVM, Solana, Tron, or Bitcoin)' });
+          return;
+        }
+
+        const matchesAny = (w: WalletInfo) =>
+          (evm && w.address?.toLowerCase() === evm.toLowerCase()) ||
+          (sol && w.solanaAddress === sol) ||
+          (tron && w.tronAddress === tron) ||
+          (btc && w.bitcoinAddress === btc);
+
+        if (state.wallets.some(matchesAny)) {
+          set({ error: 'This wallet address is already added' });
           return;
         }
 
         set({ isAddingWallet: true, error: null });
 
         try {
-          // Save to Supabase - MUST succeed to get a valid DB UUID
           let walletId: string | null = null;
+          let created: Partial<WalletInfo> | null = null;
 
           try {
             const response = await fetch('/api/wallets', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ address, label }),
+              body: JSON.stringify({
+                label,
+                evmAddress: evm || undefined,
+                solanaAddress: sol || undefined,
+                tronAddress: tron || undefined,
+                bitcoinAddress: btc || undefined,
+                // backward compat
+                address: evm || undefined,
+              }),
             });
 
             if (response.ok) {
               const result = await response.json();
               walletId = result.data?.id || null;
+              created = result.data;
               console.log('[WalletStore] Wallet created in DB with ID:', walletId);
             } else {
               const errData = await response.json().catch(() => ({}));
@@ -185,7 +218,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
                 isAddingWallet: false,
                 error: `Failed to create wallet: ${errData.error || 'Server error'}`,
               });
-              return; // Don't add locally if DB creation fails - we need the UUID
+              return;
             }
           } catch (err) {
             console.error('[WalletStore] Supabase not available:', err);
@@ -193,7 +226,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               isAddingWallet: false,
               error: 'Cannot connect to server. Please try again.',
             });
-            return; // Don't add locally without a DB UUID
+            return;
           }
 
           if (!walletId) {
@@ -205,8 +238,17 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           }
 
           const newWallet: WalletInfo = {
-            id: walletId, // Always a DB UUID
-            address: address.toLowerCase(),
+            id: walletId,
+            address: created?.address ?? (evm ? evm.toLowerCase() : null),
+            solanaAddress: created?.solanaAddress ?? (sol || null),
+            tronAddress: created?.tronAddress ?? (tron || null),
+            bitcoinAddress: created?.bitcoinAddress ?? (btc || null),
+            displayAddress:
+              created?.displayAddress ||
+              evm ||
+              sol ||
+              tron ||
+              btc,
             label,
             lastSyncedAt: null,
             isSyncing: false,
@@ -219,8 +261,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             isAddingWallet: false,
           }));
 
-          // Trigger initial sync (non-blocking)
-          get().syncWallet(walletId);
+          get().syncWallet(walletId, 'full');
         } catch (error) {
           set({
             isAddingWallet: false,
@@ -267,6 +308,8 @@ export const useWalletStore = create<WalletState & WalletActions>()(
 
       setActiveWallet: (walletId: string) => {
         set({ activeWalletId: walletId });
+        // Hydrate UI from DB immediately when switching wallets
+        void get().loadTransactionsFromDB(walletId);
       },
 
       updateWalletLabel: async (walletId: string, label: string) => {
@@ -296,9 +339,22 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           if (response.ok) {
             const result = await response.json();
             if (result.data && result.data.length > 0) {
-              const dbWallets = result.data.map((w: any) => ({
+              const dbWallets: WalletInfo[] = result.data.map((w: any) => ({
                 id: w.id,
-                address: w.address,
+                address: w.address ?? null,
+                solanaAddress: w.solanaAddress ?? w.solana_address ?? null,
+                tronAddress: w.tronAddress ?? w.tron_address ?? null,
+                bitcoinAddress: w.bitcoinAddress ?? w.bitcoin_address ?? null,
+                displayAddress:
+                  w.displayAddress ||
+                  w.address ||
+                  w.solanaAddress ||
+                  w.solana_address ||
+                  w.tronAddress ||
+                  w.tron_address ||
+                  w.bitcoinAddress ||
+                  w.bitcoin_address ||
+                  '',
                 label: w.label,
                 lastSyncedAt: w.lastSyncedAt || w.last_synced_at,
                 isSyncing: false,
@@ -306,62 +362,70 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               }));
 
               set(state => {
-                // Build a map of DB wallets by address (lowercase for matching)
-                const dbByAddress = new Map<string, typeof dbWallets[0]>();
-                for (const dbW of dbWallets) {
-                  dbByAddress.set(dbW.address.toLowerCase(), dbW);
-                }
-
-                // Track ID migrations for transactionsMap/clientsMap migration
-                const idMigrations: Map<string, string> = new Map(); // oldId -> newId
-
-                // Reconcile: replace stale local wallets (with wallet-XXXXX IDs)
-                // with the real DB wallet (UUID), preserving any local data like transactions
+                // Prefer matching by wallet id; fall back to any shared address family
+                const dbById = new Map(dbWallets.map(w => [w.id, w]));
+                const idMigrations: Map<string, string> = new Map();
                 const merged: WalletInfo[] = [];
                 const usedDbIds = new Set<string>();
 
+                const findDbMatch = (localW: WalletInfo) => {
+                  const byId = dbById.get(localW.id);
+                  if (byId) return byId;
+                  return dbWallets.find(
+                    db =>
+                      (localW.address &&
+                        db.address &&
+                        localW.address.toLowerCase() === db.address.toLowerCase()) ||
+                      (localW.solanaAddress && localW.solanaAddress === db.solanaAddress) ||
+                      (localW.tronAddress && localW.tronAddress === db.tronAddress) ||
+                      (localW.bitcoinAddress && localW.bitcoinAddress === db.bitcoinAddress),
+                  );
+                };
+
                 for (const localW of state.wallets) {
-                  const dbMatch = dbByAddress.get(localW.address.toLowerCase());
+                  const dbMatch = findDbMatch(localW);
                   if (dbMatch) {
-                    // Replace local wallet with DB version (has correct UUID)
                     const reconciled: WalletInfo = {
                       ...dbMatch,
-                      // Preserve local sync state if available
                       lastSyncedAt: localW.lastSyncedAt || dbMatch.lastSyncedAt,
                     };
                     merged.push(reconciled);
                     usedDbIds.add(dbMatch.id);
-
-                    // If ID changed, track migration for transactionsMap/clientsMap
                     if (localW.id !== dbMatch.id) {
                       console.log(`[WalletStore] Reconciling wallet ${localW.id} -> ${dbMatch.id}`);
                       idMigrations.set(localW.id, dbMatch.id);
                     }
-                  } else {
-                    // Local wallet not in DB - keep it only if it has a UUID-like ID
-                    if (localW.id.includes('-') && localW.id.length >= 32) {
-                      merged.push(localW);
-                    }
-                    // Skip stale wallet-XXXXX entries that aren't in DB
+                  } else if (localW.id.includes('-') && localW.id.length >= 32) {
+                    // Normalize legacy local wallets that only had `address`
+                    merged.push({
+                      ...localW,
+                      solanaAddress: localW.solanaAddress ?? null,
+                      tronAddress: localW.tronAddress ?? null,
+                      bitcoinAddress: localW.bitcoinAddress ?? null,
+                      displayAddress:
+                        localW.displayAddress ||
+                        localW.address ||
+                        localW.solanaAddress ||
+                        localW.tronAddress ||
+                        localW.bitcoinAddress ||
+                        '',
+                    });
                   }
                 }
 
-                // Add DB wallets not yet in local state
                 for (const dbW of dbWallets) {
                   if (!usedDbIds.has(dbW.id) && !merged.some(m => m.id === dbW.id)) {
                     merged.push(dbW);
                   }
                 }
 
-                // Fix activeWalletId if it was a stale ID
                 let activeId = state.activeWalletId;
                 if (activeId) {
                   const activeInMerged = merged.find(w => w.id === activeId);
                   if (!activeInMerged) {
-                    // Try to find by matching the old wallet address
                     const oldWallet = state.wallets.find(w => w.id === activeId);
                     if (oldWallet) {
-                      const replacement = merged.find(w => w.address.toLowerCase() === oldWallet.address.toLowerCase());
+                      const replacement = findDbMatch(oldWallet);
                       activeId = replacement?.id || merged[0]?.id || null;
                     } else {
                       activeId = merged[0]?.id || null;
@@ -415,55 +479,104 @@ export const useWalletStore = create<WalletState & WalletActions>()(
 
       // ====== Data Operations ======
 
-      syncWallet: async (walletId: string) => {
+      /**
+       * Load transactions from Supabase into Zustand.
+       * This is the ONLY source the UI should display — never live provider APIs.
+       */
+      loadTransactionsFromDB: async (walletId: string) => {
+        try {
+          const response = await fetch(`/api/wallets/${walletId}/transactions`);
+          if (!response.ok) {
+            console.warn('[WalletStore] DB transactions fetch failed:', response.status);
+            return get().transactionsMap[walletId] || [];
+          }
+          const result = await response.json();
+          const transactions: Transaction[] = result.data || [];
+          get().setTransactions(walletId, transactions);
+
+          set(state => ({
+            wallets: state.wallets.map(w =>
+              w.id === walletId
+                ? { ...w, transactionCount: transactions.length }
+                : w
+            ),
+          }));
+
+          return transactions;
+        } catch (err) {
+          console.warn('[WalletStore] DB transactions fetch error:', err);
+          return get().transactionsMap[walletId] || [];
+        }
+      },
+
+      /**
+       * Sync wallet data from blockchain providers INTO the database.
+       * After sync, the local store is refreshed from the DB only.
+       *
+       * Modes:
+       *   - full: first-time / forced complete ingest
+       *   - incremental: only new txs + refreshed balances
+       *   - auto (default): full if never synced, else incremental
+       */
+      syncWallet: async (walletId: string, mode: 'full' | 'incremental' | 'auto' = 'auto') => {
         const state = get();
-        const wallet = state.wallets.find(w => w.id === walletId);
+        let wallet = state.wallets.find(w => w.id === walletId);
         if (!wallet || wallet.isSyncing) return;
 
         // Validate wallet ID is a proper DB UUID (not a stale wallet-XXXXX ID)
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(walletId);
         if (!isUUID) {
           console.warn('[WalletStore] Wallet ID is not a valid UUID, attempting to resolve from DB...');
-          // Try to reload wallets from DB to get the correct UUID
           await get().loadWalletsFromDB();
           const updatedState = get();
           const resolvedWallet = updatedState.wallets.find(
-            w => w.address.toLowerCase() === wallet.address.toLowerCase()
+            w =>
+              (wallet!.address &&
+                w.address &&
+                w.address.toLowerCase() === wallet!.address.toLowerCase()) ||
+              (wallet!.solanaAddress && w.solanaAddress === wallet!.solanaAddress) ||
+              (wallet!.tronAddress && w.tronAddress === wallet!.tronAddress) ||
+              (wallet!.bitcoinAddress && w.bitcoinAddress === wallet!.bitcoinAddress) ||
+              w.displayAddress === wallet!.displayAddress,
           );
           if (resolvedWallet && resolvedWallet.id !== walletId) {
             console.log(`[WalletStore] Resolved wallet ID: ${walletId} -> ${resolvedWallet.id}`);
             walletId = resolvedWallet.id;
+            wallet = resolvedWallet;
           } else {
             console.error('[WalletStore] Cannot resolve wallet UUID. Skipping sync.');
             return;
           }
         }
 
-        // Set syncing state
+        const resolvedMode: 'full' | 'incremental' =
+          mode === 'auto'
+            ? (wallet.lastSyncedAt ? 'incremental' : 'full')
+            : mode;
+
         set(state => ({
           isSyncing: { ...state.isSyncing, [walletId]: true },
           error: null,
+          wallets: state.wallets.map(w =>
+            w.id === walletId ? { ...w, isSyncing: true } : w
+          ),
         }));
 
         try {
-          let transactions: Transaction[] = [];
-          let clients: Client[] = [];
-          let txCount = 0;
-          const walletAddress = wallet.address;
-
-          // Step 1: Trigger proper sync endpoint (fetches balances + DeFi + transactions from providers)
+          // 1) Providers → DB (only path that talks to Etherscan/CoinGecko)
           try {
             const syncResponse = await fetch(`/api/wallets/${walletId}/sync`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ mode: 'full' }),
+              body: JSON.stringify({ mode: resolvedMode }),
             });
             if (syncResponse.ok) {
               const syncResult = await syncResponse.json();
               console.log('[WalletStore] Sync completed:', {
+                mode: resolvedMode,
                 success: syncResult.success,
+                changed: syncResult.changed,
                 recordsSynced: syncResult.totalRecordsSynced,
-                results: syncResult.results,
               });
             } else {
               const errData = await syncResponse.json().catch(() => ({}));
@@ -473,105 +586,19 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             console.warn('[WalletStore] Sync endpoint error:', syncError);
           }
 
-          // Step 2: Fetch stored transactions from Supabase (populated by sync)
-          try {
-            const dbResponse = await fetch(`/api/wallets/${walletId}/transactions`);
-            if (dbResponse.ok) {
-              const dbResult = await dbResponse.json();
-              if (dbResult.data && dbResult.data.length > 0) {
-                transactions = dbResult.data;
-                txCount = transactions.length;
-                console.log(`[WalletStore] Got ${txCount} transactions from DB`);
-              }
-            } else {
-              console.warn('[WalletStore] DB transactions fetch failed:', dbResponse.status);
-            }
-          } catch (err) {
-            console.warn('[WalletStore] DB transactions fetch error:', err);
-          }
-
-          // Step 3: If still no stored data, fetch from provider APIs directly as fallback
-          if (transactions.length === 0) {
-            console.log('[WalletStore] No DB transactions, trying provider API fallback...');
-            try {
-              const chainIds = [1, 8453, 42161, 10, 137]; // ETH, Base, Arbitrum, Optimism, Polygon
-              const allTransactions: Transaction[] = [];
-
-              for (const chainId of chainIds) {
-                try {
-                  const response = await fetch(
-                    `/api/transactions?wallet=${walletAddress}&chainId=${chainId}&pageSize=50`
-                  );
-                  if (response.ok) {
-                    const result = await response.json();
-                    if (result.data && result.data.length > 0) {
-                      const networkTx = result.data.map(
-                        (apiTx: Record<string, unknown>, i: number) =>
-                          providerApiToAppTransaction(apiTx, i, walletAddress)
-                      );
-                      allTransactions.push(...networkTx);
-                    }
-                  }
-                } catch {
-                  // Skip chain on error
-                }
-              }
-
-              transactions = allTransactions.sort((a, b) => b.timestamp - a.timestamp);
-              txCount = transactions.length;
-
-              console.log(`[WalletStore] Got ${txCount} transactions from provider APIs`);
-
-              // Save to Supabase
-              if (transactions.length > 0) {
-                try {
-                  await fetch(`/api/wallets/${walletId}/transactions`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ transactions }),
-                  });
-                } catch {
-                  // Save failed, continue with local state
-                }
-              }
-            } catch (error) {
-              console.error('[WalletStore] Error fetching from providers:', error);
-              transactions = [];
-              txCount = 0;
-            }
-          }
-
-          // Extract unique clients from transactions
-          const clientMap = new Map<string, Client>();
-          transactions.forEach(tx => {
-            const key = (tx.counterparty || '').toLowerCase();
-            if (!key || !key.startsWith('0x')) return;
-            if (!clientMap.has(key)) {
-              const existingClient = defaultClients.find(
-                c => c.address.toLowerCase() === key
-              );
-              if (existingClient) {
-                clientMap.set(key, existingClient);
-              } else {
-                clientMap.set(key, {
-                  id: `client-auto-${key.slice(2, 8)}`,
-                  name: tx.counterpartyLabel || `${key.slice(0, 6)}...${key.slice(-4)}`,
-                  address: tx.counterparty,
-                  notes: '',
-                  color: '#8a8f98',
-                  createdAt: new Date().toISOString().split('T')[0],
-                });
-              }
-            }
-          });
-          clients = Array.from(clientMap.values());
+          // 2) DB → local store (UI source of truth)
+          const transactions = await get().loadTransactionsFromDB(walletId);
+          const txCount = transactions.length;
 
           set(state => ({
-            transactionsMap: { ...state.transactionsMap, [walletId]: transactions },
-            clientsMap: { ...state.clientsMap, [walletId]: clients },
             wallets: state.wallets.map(w =>
               w.id === walletId
-                ? { ...w, isSyncing: false, lastSyncedAt: new Date().toISOString(), transactionCount: txCount }
+                ? {
+                    ...w,
+                    isSyncing: false,
+                    lastSyncedAt: new Date().toISOString(),
+                    transactionCount: txCount,
+                  }
                 : w
             ),
             isSyncing: { ...state.isSyncing, [walletId]: false },
@@ -580,6 +607,9 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         } catch (error) {
           set(state => ({
             isSyncing: { ...state.isSyncing, [walletId]: false },
+            wallets: state.wallets.map(w =>
+              w.id === walletId ? { ...w, isSyncing: false } : w
+            ),
             error: error instanceof Error ? error.message : 'Failed to sync wallet',
           }));
         }
@@ -589,7 +619,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         const state = get();
         for (const wallet of state.wallets) {
           if (!state.isSyncing[wallet.id]) {
-            await get().syncWallet(wallet.id);
+            await get().syncWallet(wallet.id, 'auto');
           }
         }
       },
@@ -620,16 +650,42 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       },
 
       getWalletByAddress: (address: string) => {
-        return get().wallets.find(
-          w => w.address.toLowerCase() === address.toLowerCase()
-        ) || null;
+        const needle = address.toLowerCase();
+        return (
+          get().wallets.find(
+            w =>
+              w.address?.toLowerCase() === needle ||
+              w.solanaAddress?.toLowerCase() === needle ||
+              w.tronAddress?.toLowerCase() === needle ||
+              w.bitcoinAddress?.toLowerCase() === needle ||
+              w.displayAddress?.toLowerCase() === needle,
+          ) || null
+        );
       },
 
       // ====== Setters ======
 
       setTransactions: (walletId: string, transactions: Transaction[]) => {
+        // Derive counterparties as clients so UI sections stay consistent
+        const clientMap = new Map<string, Client>();
+        for (const tx of transactions) {
+          const key = (tx.counterparty || '').toLowerCase();
+          if (!key || !key.startsWith('0x')) continue;
+          if (!clientMap.has(key)) {
+            clientMap.set(key, {
+              id: `client-auto-${key.slice(2, 8)}`,
+              name: tx.counterpartyLabel || `${key.slice(0, 6)}...${key.slice(-4)}`,
+              address: tx.counterparty,
+              notes: '',
+              color: '#8a8f98',
+              createdAt: new Date().toISOString().split('T')[0],
+            });
+          }
+        }
+
         set(state => ({
           transactionsMap: { ...state.transactionsMap, [walletId]: transactions },
+          clientsMap: { ...state.clientsMap, [walletId]: Array.from(clientMap.values()) },
         }));
       },
 
@@ -714,95 +770,3 @@ export const useWalletStore = create<WalletState & WalletActions>()(
   )
 );
 
-// ============================================================
-// Helper: Convert Provider API transaction to app Transaction format
-// Used when fetching from /api/transactions endpoint
-// ============================================================
-
-function providerApiToAppTransaction(
-  apiTx: Record<string, unknown>,
-  index: number,
-  userAddress: string
-): Transaction {
-  const userAddr = userAddress.toLowerCase();
-  const fromAddr = ((apiTx.from as string) || '').toLowerCase();
-  const toAddr = ((apiTx.to as string) || '').toLowerCase();
-  const isFromUser = fromAddr === userAddr;
-  const isToUser = toAddr === userAddr;
-
-  // Determine type and direction
-  let type: Transaction['type'] = 'income';
-  let direction = 'in';
-  if (isFromUser && isToUser) {
-    direction = 'self';
-    type = 'income';
-  } else if (isFromUser) {
-    direction = 'out';
-    type = 'expense';
-  } else {
-    direction = 'in';
-    type = 'income';
-  }
-
-  // Token info
-  let token = 'ETH';
-  let quantity = (apiTx.value as number) || 0;
-  let price = 0;
-
-  const tokenTransfers = apiTx.tokenTransfers as Array<Record<string, unknown>> | undefined;
-  if (tokenTransfers && tokenTransfers.length > 0) {
-    const mainTransfer = tokenTransfers[0];
-    token = (mainTransfer.symbol as string) || (mainTransfer.tokenSymbol as string) || 'ETH';
-    quantity = (mainTransfer.amount as number) || (mainTransfer.valueFormatted as number) || 0;
-  }
-
-  price = quantity > 0 ? ((apiTx.value as number) || 0) / quantity : 0;
-
-  // Counterparty
-  let counterparty = direction === 'out' ? toAddr : fromAddr;
-  let counterpartyLabel = (apiTx.protocol as string) || '';
-
-  if (!counterpartyLabel && counterparty.startsWith('0x')) {
-    counterpartyLabel = `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`;
-  }
-
-  // Network
-  const chain = (apiTx.chain as string) || 'ethereum';
-  const chainId = (apiTx.chainId as number) || 1;
-
-  const NETWORK_LABELS: Record<string, string> = {
-    ethereum: 'Ethereum',
-    base: 'Base',
-    arbitrum: 'Arbitrum',
-    optimism: 'Optimism',
-    polygon: 'Polygon',
-  };
-
-  const TYPE_LABELS: Record<string, string> = {
-    income: 'Income',
-    expense: 'Expense',
-    trade: 'Trade',
-    defi: 'DeFi',
-    staking: 'Staking',
-    gas: 'Gas Fee',
-    nft: 'NFT',
-    bridge: 'Bridge',
-  };
-
-  return {
-    id: `tx-${(apiTx.hash as string) || index}-${index}`,
-    date: (apiTx.date as string) || new Date().toISOString().split('T')[0],
-    timestamp: (apiTx.timestamp as number) || Date.now(),
-    type,
-    typeLabel: TYPE_LABELS[type] || type,
-    token,
-    quantity,
-    price,
-    value: (apiTx.value as number) || 0,
-    network: chain,
-    networkLabel: NETWORK_LABELS[chain] || chain.charAt(0).toUpperCase() + chain.slice(1),
-    txHash: (apiTx.hash as string) || '',
-    counterparty,
-    counterpartyLabel,
-  };
-}

@@ -72,8 +72,7 @@ export async function POST(request: NextRequest) {
             .ilike('address', addr)
             .maybeSingle();
 
-          if (wallet) {
-            // Trigger real-time sync for this wallet
+          if (wallet?.address) {
             const result = await syncEngine.handleRealtimeEvent(
               wallet.address,
               activity.hash,

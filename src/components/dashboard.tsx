@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './sidebar';
 import { PortfolioOverview } from './portfolio-overview';
 import { PortfolioChart } from './portfolio-chart';
@@ -27,7 +27,7 @@ import { WalletBar } from './wallet-bar';
 import { Button } from '@/components/ui/button';
 import { LogOut, Loader2, RefreshCw, BarChart3, Shield } from 'lucide-react';
 import { toast } from 'sonner';
-import { defaultClients, generateTransactions, networks, type Client } from '@/lib/mock-data';
+import { networks, type Client } from '@/lib/mock-data';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useAIStore } from '@/stores/ai-store';
 import { useWalletAutoSync } from '@/hooks/use-wallet-auto-sync';
@@ -56,14 +56,16 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     wallets,
     activeWalletId,
     isSyncing,
+    isLoadingWallets,
     syncWallet,
+    loadTransactionsFromDB,
     getActiveWallet,
     getActiveTransactions,
     getActiveClients,
     currentPlan,
   } = useWalletStore();
 
-  // Auto-sync hook (checks every 60 seconds)
+  // Auto-sync hook (checks every 60 seconds on Pro)
   const { triggerSync } = useWalletAutoSync();
 
   // AI store
@@ -85,19 +87,30 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const isAnySyncing = Object.values(isSyncing).some(Boolean);
   const hasWallets = wallets.length > 0;
 
-  // Generate mock data when no wallets are connected (or in demo mode)
-  const mockTransactions = useMemo(() => generateTransactions(), []);
+  // No mock data anywhere: always use the real active-wallet data. In demo mode
+  // (no wallet) these are simply empty, so every section shows its empty state.
+  const displayTransactions = transactions;
+  const displayClients = clients;
 
-  // In demo mode, always use mock data; in real mode, use real data when available
-  const displayTransactions = isDemo || !hasWallets ? mockTransactions : transactions;
-  const displayClients = isDemo || !hasWallets ? defaultClients : clients;
-
-  // Sync active wallet on mount if it has no transactions
+  // DB-first: hydrate from Supabase, sync providers only on first-ever sync
   useEffect(() => {
-    if (!isDemo && activeWalletId && transactions.length === 0) {
-      syncWallet(activeWalletId);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (isDemo || !activeWalletId || isLoadingWallets) return;
+
+    let cancelled = false;
+    (async () => {
+      await loadTransactionsFromDB(activeWalletId);
+      if (cancelled) return;
+
+      const wallet = useWalletStore.getState().wallets.find(w => w.id === activeWalletId);
+      if (wallet && !wallet.lastSyncedAt) {
+        await syncWallet(activeWalletId, 'full');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemo, activeWalletId, isLoadingWallets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = () => {
     toast.success('Logged out successfully');
@@ -403,7 +416,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
               transactions={displayTransactions}
               onTypeClick={handleTypeClick}
             />
-            <TransactionsTable clients={displayClients} />
+            <TransactionsTable clients={displayClients} transactions={displayTransactions} />
           </div>
         );
       case 'transactions':
@@ -413,7 +426,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
               <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Transactions</h2>
               <p className="text-sm text-[#8a8f98]">View and filter all your transactions</p>
             </div>
-            <TransactionsTable clients={displayClients} />
+            <TransactionsTable clients={displayClients} transactions={displayTransactions} />
           </div>
         );
       case 'assets':
@@ -537,7 +550,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
       {isDemo && (
         <div className="fixed top-0 left-0 right-0 z-[60] bg-[#f7931a]/10 border-b border-[#f7931a]/20 px-4 py-1.5 text-center">
           <span className="text-xs text-[#f7931a] font-medium">
-            🛡️ Demo Mode — Viewing sample data. <button onClick={onLogout} className="underline hover:text-[#f7931a]/80">Sign in</button> for real data.
+            🛡️ Demo Mode — <button onClick={onLogout} className="underline hover:text-[#f7931a]/80">Sign in</button> and connect a wallet to load your real on-chain data.
           </span>
         </div>
       )}
@@ -588,6 +601,28 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
 
         {/* Content area */}
         <div className={`p-4 lg:p-6 max-w-7xl mx-auto ${isDemo ? 'pt-8' : ''}`}>
+          {/* Demo prompt: no fake data — invite the user to sign in */}
+          {isDemo && (
+            <div className="flex items-center justify-center py-8 mb-6">
+              <div className="flex flex-col items-center gap-3 bg-[#0f1011] border border-white/5 rounded-xl px-8 py-6 max-w-md text-center">
+                <div className="w-12 h-12 rounded-full bg-[#0052ff]/10 flex items-center justify-center">
+                  <Shield className="w-6 h-6 text-[#0052ff]" />
+                </div>
+                <h3 className="text-base font-medium text-[#f7f8f8]">Welcome to the Sentinel preview</h3>
+                <p className="text-sm text-[#8a8f98]">
+                  This is a live preview with no sample data. Sign in and add a wallet
+                  address to automatically fetch and classify your real on-chain transactions.
+                </p>
+                <Button
+                  className="mt-1 rounded-full bg-[#0052ff] hover:bg-[#0047e1] text-white"
+                  onClick={onLogout}
+                >
+                  Sign in to get started
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* No wallets prompt (only in real mode) */}
           {!hasWallets && !isDemo && (
             <div className="flex items-center justify-center py-8 mb-6">

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateTaxReport, getAvailableYears } from '@/lib/tax/engine';
-import { generateTransactions } from '@/lib/mock-data';
 import type { Transaction } from '@/lib/mock-data';
 import type { TaxLotMethod } from '@/lib/tax/types';
 
@@ -43,8 +42,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Use mock transactions for now
-    const transactions = generateTransactions();
+    // Tax reports require real transactions supplied via POST. With no data
+    // provided, return an empty report for the requested year.
+    const transactions: Transaction[] = [];
     const report = calculateTaxReport(transactions, method, year);
     const availableYears = getAvailableYears(transactions);
 
@@ -103,10 +103,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use provided transactions or fall back to mock data
-    const txData = transactions && transactions.length > 0
+    // Use the real transactions supplied by the client (empty if none).
+    const txData: Transaction[] = transactions && transactions.length > 0
       ? transactions
-      : generateTransactions();
+      : [];
 
     const report = calculateTaxReport(txData, taxMethod, year);
     const availableYears = getAvailableYears(txData);

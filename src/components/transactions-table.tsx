@@ -55,7 +55,6 @@ import {
   Receipt,
 } from 'lucide-react';
 import {
-  generateTransactions,
   transactionTypes,
   networks,
   type Transaction,
@@ -561,10 +560,13 @@ function TransactionDetailModal({
 // ────────────────────────────────────────────────
 interface TransactionsTableProps {
   clients?: Client[];
+  transactions?: Transaction[];
 }
 
-export function TransactionsTable({ clients = [] }: TransactionsTableProps) {
-  const allTransactions = useMemo(() => generateTransactions(), []);
+export function TransactionsTable({ clients = [], transactions = [] }: TransactionsTableProps) {
+  // Purely presentational: transactions are supplied by the parent dashboard
+  // (real synced data from the store, or demo mock data). No data is generated here.
+  const allTransactions = transactions;
 
   // Filter state
   const [dateFrom, setDateFrom] = useState('');

@@ -59,6 +59,10 @@ export class ZerionService {
     this.apiKey = apiKey || process.env.ZERION_API_KEY || process.env.ZERION || process.env.NEXT_PUBLIC_ZERION_API_KEY || '';
   }
 
+  isConfigured(): boolean {
+    return this.apiKey.length > 0;
+  }
+
   private getHeaders(): Record<string, string> {
     return {
       'Authorization': `Basic ${Buffer.from(this.apiKey + ':').toString('base64')}`,

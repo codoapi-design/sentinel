@@ -67,6 +67,7 @@ export function RealDashboard() {
     isLoadingWallets,
     syncWallet,
     loadWalletsFromDB,
+    loadTransactionsFromDB,
     getActiveWallet,
     getActiveTransactions,
     getActiveClients,
@@ -79,7 +80,8 @@ export function RealDashboard() {
   // AI store
   const { setCurrentPage, setCurrentPlan: setAIPlan } = useAIStore();
 
-  // Load wallets from DB on mount (so we have the real Supabase UUIDs)
+  // Load wallets from DB, then hydrate transactions from DB.
+  // Only run a provider sync if this wallet has never been synced.
   useEffect(() => {
     loadWalletsFromDB();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -104,16 +106,25 @@ export function RealDashboard() {
   const displayTransactions = transactions;
   const displayClients = clients;
 
-  // Sync active wallet on mount if it has no transactions
-  // Wait for loadWalletsFromDB to complete first (to get real UUIDs)
+  // DB-first hydrate: read stored txs immediately; sync providers only when never synced.
   useEffect(() => {
-    if (activeWalletId && transactions.length === 0 && !isLoadingWallets) {
-      // Small delay to ensure store is fully reconciled
-      const timer = setTimeout(() => {
-        syncWallet(activeWalletId);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
+    if (!activeWalletId || isLoadingWallets) return;
+
+    let cancelled = false;
+    (async () => {
+      await loadTransactionsFromDB(activeWalletId);
+      if (cancelled) return;
+
+      const wallet = useWalletStore.getState().wallets.find(w => w.id === activeWalletId);
+      if (wallet && !wallet.lastSyncedAt) {
+        // First-time ingest into the database
+        await syncWallet(activeWalletId, 'full');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeWalletId, isLoadingWallets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
@@ -470,7 +481,7 @@ export function RealDashboard() {
               transactions={displayTransactions}
               onTypeClick={handleTypeClick}
             />
-            <TransactionsTable clients={displayClients} />
+            <TransactionsTable clients={displayClients} transactions={displayTransactions} />
           </div>
         );
       case 'transactions':
@@ -480,7 +491,7 @@ export function RealDashboard() {
               <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Transactions</h2>
               <p className="text-sm text-[#8a8f98]">View and filter all your transactions</p>
             </div>
-            <TransactionsTable clients={displayClients} />
+            <TransactionsTable clients={displayClients} transactions={displayTransactions} />
           </div>
         );
       case 'assets':

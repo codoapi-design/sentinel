@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { useTaxStore } from '@/stores/tax-store';
 import type { TaxReport, TaxSummary, GainLossEntry, TaxLot, HoldingPeriod } from '@/lib/tax/types';
-import { generateTransactions } from '@/lib/mock-data';
+import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { toast } from 'sonner';
 
 // ============================================================
@@ -360,8 +360,8 @@ export function TaxAnalysis() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [filterPeriod, setFilterPeriod] = useState<'all' | HoldingPeriod>('all');
 
-  // Generate transactions once
-  const [transactions] = useState(() => generateTransactions());
+  // Real transactions from the active wallet
+  const transactions = useActiveTransactions();
 
   // Generate report when method/year changes
   const generateReport = useCallback(() => {

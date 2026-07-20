@@ -123,7 +123,10 @@ export interface Database {
         Row: {
           id: string;
           user_id: string;
-          address: string;
+          address: string | null;
+          solana_address: string | null;
+          tron_address: string | null;
+          bitcoin_address: string | null;
           label: string;
           last_synced_block: number | null;
           last_synced_at: string | null;
@@ -134,7 +137,10 @@ export interface Database {
         Insert: {
           id?: string;
           user_id: string;
-          address: string;
+          address?: string | null;
+          solana_address?: string | null;
+          tron_address?: string | null;
+          bitcoin_address?: string | null;
           label?: string;
           last_synced_block?: number | null;
           last_synced_at?: string | null;
@@ -145,7 +151,10 @@ export interface Database {
         Update: {
           id?: string;
           user_id?: string;
-          address?: string;
+          address?: string | null;
+          solana_address?: string | null;
+          tron_address?: string | null;
+          bitcoin_address?: string | null;
           label?: string;
           last_synced_block?: number | null;
           last_synced_at?: string | null;
@@ -186,6 +195,8 @@ export interface Database {
           token_address: string | null;
           token_value: number;
           token_decimals: number;
+          value_usd: number | null;
+          price_usd: number | null;
           counterparty: string | null;
           counterparty_label: string | null;
           raw_data: Json | null;
@@ -221,6 +232,8 @@ export interface Database {
           token_address?: string | null;
           token_value?: number;
           token_decimals?: number;
+          value_usd?: number | null;
+          price_usd?: number | null;
           counterparty?: string | null;
           counterparty_label?: string | null;
           raw_data?: Json | null;
@@ -256,6 +269,8 @@ export interface Database {
           token_address?: string | null;
           token_value?: number;
           token_decimals?: number;
+          value_usd?: number | null;
+          price_usd?: number | null;
           counterparty?: string | null;
           counterparty_label?: string | null;
           raw_data?: Json | null;
@@ -760,7 +775,7 @@ export interface Database {
           id?: string;
           wallet_id: string;
           user_id: string;
-          chain: string;
+          chain?: string;
           token_address?: string | null;
           token_symbol: string;
           token_name?: string;

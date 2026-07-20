@@ -19,13 +19,24 @@ import {
   Link2,
   Copy,
 } from 'lucide-react';
-import { useWalletStore, PLAN_WALLET_LIMITS } from '@/stores/wallet-store';
+import { useWalletStore, PLAN_WALLET_LIMITS, type WalletInfo } from '@/stores/wallet-store';
 import { toast } from 'sonner';
+import {
+  isValidBitcoinAddress,
+  isValidEvmAddress,
+  isValidSolanaAddress,
+  isValidTronAddress,
+  truncateAddress,
+} from '@/lib/wallet/address-validation';
 
-// ============================================================
-// Wallet Bar Component
-// Shows current wallet + dropdown + add button
-// ============================================================
+function familyBadges(wallet: WalletInfo): string[] {
+  const badges: string[] = [];
+  if (wallet.address) badges.push('EVM');
+  if (wallet.solanaAddress) badges.push('SOL');
+  if (wallet.tronAddress) badges.push('TRX');
+  if (wallet.bitcoinAddress) badges.push('BTC');
+  return badges;
+}
 
 export function WalletBar() {
   const {
@@ -43,15 +54,17 @@ export function WalletBar() {
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newAddress, setNewAddress] = useState('');
   const [newLabel, setNewLabel] = useState('');
+  const [evmAddress, setEvmAddress] = useState('');
+  const [solanaAddress, setSolanaAddress] = useState('');
+  const [tronAddress, setTronAddress] = useState('');
+  const [bitcoinAddress, setBitcoinAddress] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
   const activeWallet = wallets.find(w => w.id === activeWalletId);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -67,23 +80,49 @@ export function WalletBar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const resetForm = () => {
+    setNewLabel('');
+    setEvmAddress('');
+    setSolanaAddress('');
+    setTronAddress('');
+    setBitcoinAddress('');
+  };
+
+  const hasAnyAddress =
+    !!evmAddress.trim() ||
+    !!solanaAddress.trim() ||
+    !!tronAddress.trim() ||
+    !!bitcoinAddress.trim();
+
+  const addressesValid =
+    (!evmAddress.trim() || isValidEvmAddress(evmAddress.trim())) &&
+    (!solanaAddress.trim() || isValidSolanaAddress(solanaAddress.trim())) &&
+    (!tronAddress.trim() || isValidTronAddress(tronAddress.trim())) &&
+    (!bitcoinAddress.trim() || isValidBitcoinAddress(bitcoinAddress.trim()));
+
   const handleAddWallet = async () => {
-    const addr = newAddress.trim();
     const label = newLabel.trim();
-
-    if (!addr.startsWith('0x') || addr.length !== 42) {
-      toast.error('Invalid wallet address');
-      return;
-    }
-
     if (!label) {
       toast.error('Please enter a wallet name');
       return;
     }
+    if (!hasAnyAddress) {
+      toast.error('Enter at least one address');
+      return;
+    }
+    if (!addressesValid) {
+      toast.error('One or more addresses have an invalid format');
+      return;
+    }
 
-    await addWallet(addr, label);
+    await addWallet({
+      label,
+      evmAddress: evmAddress.trim() || undefined,
+      solanaAddress: solanaAddress.trim() || undefined,
+      tronAddress: tronAddress.trim() || undefined,
+      bitcoinAddress: bitcoinAddress.trim() || undefined,
+    });
 
-    // Check if there was an error
     const state = useWalletStore.getState();
     if (state.error) {
       toast.error(state.error);
@@ -92,12 +131,12 @@ export function WalletBar() {
     }
 
     setShowAddModal(false);
-    setNewAddress('');
-    setNewLabel('');
+    resetForm();
     toast.success(`Wallet "${label}" added successfully`);
   };
 
   const handleCopyAddress = (address: string, walletId: string) => {
+    if (!address) return;
     navigator.clipboard.writeText(address);
     setCopiedId(walletId);
     toast.success('Address copied');
@@ -118,13 +157,14 @@ export function WalletBar() {
   return (
     <>
       <div className="flex items-center gap-2">
-        {/* Add Wallet Button */}
         <Button
           size="sm"
           className="bg-[#0052ff] hover:bg-[#0052ff]/80 text-white h-8 gap-1.5"
           onClick={() => {
             if (!canAddWallet()) {
-              toast.error(`You've reached the wallet limit for your plan (${walletLimit} wallets). Upgrade your plan to add more.`);
+              toast.error(
+                `You've reached the wallet limit for your plan (${walletLimit} wallets). Upgrade your plan to add more.`,
+              );
               return;
             }
             setShowAddModal(true);
@@ -134,32 +174,42 @@ export function WalletBar() {
           <span className="hidden sm:inline text-xs">Add Wallet</span>
         </Button>
 
-        {/* Wallet Address Bar */}
         <div ref={barRef} className="relative">
           {wallets.length > 0 && activeWallet ? (
             <button
               onClick={() => setShowDropdown(!showDropdown)}
               className="flex items-center gap-2 bg-[#0f1011] border border-white/10 hover:border-white/20 rounded-lg px-3 py-1.5 transition-all duration-200 cursor-pointer"
             >
-              {/* Sync indicator */}
               {isSyncing[activeWallet.id] ? (
                 <Loader2 className="h-3.5 w-3.5 text-[#0052ff] animate-spin" />
               ) : (
                 <div className="w-2 h-2 rounded-full bg-[#0ecb81]" />
               )}
 
-              {/* Wallet label */}
               <span className="text-xs text-[#d0d6e0] font-medium max-w-[80px] truncate">
                 {activeWallet.label}
               </span>
 
-              {/* Wallet address (truncated) */}
               <span className="text-[10px] text-[#8a8f98] font-mono" dir="ltr">
-                {activeWallet.address.slice(0, 6)}...{activeWallet.address.slice(-4)}
+                {truncateAddress(activeWallet.displayAddress || activeWallet.address || '')}
               </span>
 
-              {/* Chevron */}
-              <ChevronDown className={`h-3.5 w-3.5 text-[#8a8f98] transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
+              <div className="hidden md:flex items-center gap-0.5">
+                {familyBadges(activeWallet).map(b => (
+                  <span
+                    key={b}
+                    className="text-[9px] text-[#8a8f98] bg-white/5 rounded px-1 py-0.5"
+                  >
+                    {b}
+                  </span>
+                ))}
+              </div>
+
+              <ChevronDown
+                className={`h-3.5 w-3.5 text-[#8a8f98] transition-transform duration-200 ${
+                  showDropdown ? 'rotate-180' : ''
+                }`}
+              />
             </button>
           ) : (
             <div className="flex items-center gap-2 bg-[#0f1011]/50 border border-white/5 rounded-lg px-3 py-1.5">
@@ -168,25 +218,23 @@ export function WalletBar() {
             </div>
           )}
 
-          {/* Dropdown */}
           {showDropdown && wallets.length > 0 && (
             <div
               ref={dropdownRef}
-              className="absolute top-full mt-2 left-0 z-50 min-w-[280px] bg-[#0f1011] border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden animate-slide-up"
+              className="absolute top-full mt-2 left-0 z-50 min-w-[300px] bg-[#0f1011] border border-white/10 rounded-xl shadow-2xl shadow-black/50 overflow-hidden animate-slide-up"
               style={{ animationDuration: '150ms' }}
             >
-              {/* Dropdown header */}
               <div className="px-3 py-2 border-b border-white/5">
                 <p className="text-[10px] text-[#8a8f98] uppercase tracking-wider">
                   Wallets ({wallets.length}/{walletLimit === Infinity ? '∞' : walletLimit})
                 </p>
               </div>
 
-              {/* Wallet list */}
               <div className="max-h-[300px] overflow-y-auto py-1">
                 {wallets.map(wallet => {
                   const isActive = wallet.id === activeWalletId;
                   const isCurrentSyncing = isSyncing[wallet.id];
+                  const display = wallet.displayAddress || wallet.address || '';
 
                   return (
                     <button
@@ -198,7 +246,6 @@ export function WalletBar() {
                           : 'hover:bg-white/5'
                       }`}
                     >
-                      {/* Status indicator */}
                       <div className="flex-shrink-0">
                         {isCurrentSyncing ? (
                           <Loader2 className="h-4 w-4 text-[#0052ff] animate-spin" />
@@ -211,39 +258,42 @@ export function WalletBar() {
                         )}
                       </div>
 
-                      {/* Wallet info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-[#f7f8f8] font-medium truncate">
                             {wallet.label}
                           </span>
-                          {wallet.transactionCount > 0 && (
-                            <span className="text-[10px] text-[#8a8f98] bg-white/5 rounded px-1.5 py-0.5">
-                              {wallet.transactionCount} transactions
+                          {familyBadges(wallet).map(b => (
+                            <span
+                              key={b}
+                              className="text-[9px] text-[#8a8f98] bg-white/5 rounded px-1 py-0.5"
+                            >
+                              {b}
                             </span>
-                          )}
+                          ))}
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-[11px] text-[#8a8f98] font-mono" dir="ltr">
-                            {wallet.address.slice(0, 10)}...{wallet.address.slice(-6)}
+                            {truncateAddress(display, 10, 6)}
                           </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCopyAddress(wallet.address, wallet.id);
-                            }}
-                            className="p-0.5 hover:bg-white/10 rounded transition-colors"
-                          >
-                            {copiedId === wallet.id ? (
-                              <Check className="h-3 w-3 text-[#0ecb81]" />
-                            ) : (
-                              <Copy className="h-3 w-3 text-[#8a8f98]" />
-                            )}
-                          </button>
+                          {display && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                handleCopyAddress(display, wallet.id);
+                              }}
+                              className="p-0.5 hover:bg-white/10 rounded transition-colors"
+                            >
+                              {copiedId === wallet.id ? (
+                                <Check className="h-3 w-3 text-[#0ecb81]" />
+                              ) : (
+                                <Copy className="h-3 w-3 text-[#8a8f98]" />
+                              )}
+                            </button>
+                          )}
                         </div>
                       </div>
 
-                      {/* Sync status */}
                       {wallet.lastSyncedAt && !isCurrentSyncing && (
                         <span className="text-[9px] text-[#8a8f98]/60 flex-shrink-0">
                           {new Date(wallet.lastSyncedAt).toLocaleTimeString('en-US', {
@@ -257,16 +307,17 @@ export function WalletBar() {
                 })}
               </div>
 
-              {/* Dropdown footer */}
               <div className="px-3 py-2 border-t border-white/5">
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="w-full h-7 text-xs text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-white/5 gap-1.5"
+                  className="w-full justify-start text-xs text-[#8a8f98] hover:text-[#d0d6e0] gap-1.5 h-8"
                   onClick={() => {
                     setShowDropdown(false);
                     if (!canAddWallet()) {
-                      toast.error('Reached wallet limit for your plan');
+                      toast.error(
+                        `You've reached the wallet limit for your plan (${walletLimit} wallets).`,
+                      );
                       return;
                     }
                     setShowAddModal(true);
@@ -281,9 +332,11 @@ export function WalletBar() {
         </div>
       </div>
 
-      {/* Add Wallet Modal */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent className="bg-[#0f1011] border-white/10 text-[#f7f8f8] max-w-md" dir="ltr">
+        <DialogContent
+          className="bg-[#0f1011] border-white/10 text-[#f7f8f8] max-w-lg max-h-[90vh] overflow-y-auto"
+          dir="ltr"
+        >
           <DialogHeader>
             <DialogTitle className="text-base flex items-center gap-2">
               <Wallet className="h-5 w-5 text-[#0052ff]" />
@@ -292,62 +345,105 @@ export function WalletBar() {
           </DialogHeader>
 
           <div className="space-y-4 mt-2">
-            {/* Wallet Label */}
             <div className="space-y-1.5">
               <label className="text-xs text-[#8a8f98]">Wallet Name</label>
               <Input
                 placeholder="e.g. Main Wallet"
                 value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
+                onChange={e => setNewLabel(e.target.value)}
                 className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10"
                 autoFocus
                 maxLength={30}
               />
-              <p className="text-[10px] text-[#8a8f98]/60">
-                A name to identify this wallet
-              </p>
             </div>
 
-            {/* Wallet Address */}
-            <div className="space-y-1.5">
-              <label className="text-xs text-[#8a8f98]">Wallet Address</label>
-              <Input
-                placeholder="0x..."
-                value={newAddress}
-                onChange={(e) => setNewAddress(e.target.value)}
-                className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
-                dir="ltr"
-              />
-              <p className="text-[10px] text-[#8a8f98]/60">
-                Enter an Ethereum wallet address (starts with 0x, 42 characters)
+            <div className="space-y-3 rounded-lg border border-white/5 bg-[#191a1b]/50 p-3">
+              <p className="text-[11px] text-[#8a8f98]">
+                Enter at least one address. All addresses share this wallet name and dashboard.
               </p>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-[#d0d6e0]">EVM Address</label>
+                <Input
+                  placeholder="0x… (Ethereum, Base, Arb, OP, Polygon, BSC, Linea…)"
+                  value={evmAddress}
+                  onChange={e => setEvmAddress(e.target.value)}
+                  className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-[#d0d6e0]">Solana Address</label>
+                <Input
+                  placeholder="Base58 Solana pubkey"
+                  value={solanaAddress}
+                  onChange={e => setSolanaAddress(e.target.value)}
+                  className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-[#d0d6e0]">Tron Address</label>
+                <Input
+                  placeholder="T… Tron address"
+                  value={tronAddress}
+                  onChange={e => setTronAddress(e.target.value)}
+                  className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-[#d0d6e0]">Bitcoin Address</label>
+                <Input
+                  placeholder="bc1… / 1… / 3…"
+                  value={bitcoinAddress}
+                  onChange={e => setBitcoinAddress(e.target.value)}
+                  className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                />
+              </div>
             </div>
 
-            {/* Supported networks */}
             <div className="bg-[#191a1b] rounded-lg p-3 space-y-2">
               <div className="flex items-center gap-2">
                 <Link2 className="h-4 w-4 text-[#0052ff]" />
-                <span className="text-xs text-[#d0d6e0] font-medium">Supported Networks</span>
+                <span className="text-xs text-[#d0d6e0] font-medium">Synced networks</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {['Ethereum', 'Base', 'Arbitrum', 'Optimism', 'Polygon'].map(n => (
-                  <span key={n} className="text-[10px] text-[#8a8f98] bg-[#28282c] rounded px-2 py-0.5">
+                {[
+                  'Ethereum',
+                  'Base',
+                  'Arbitrum',
+                  'OP',
+                  'Polygon',
+                  'BSC',
+                  'Linea',
+                  'HyperEVM',
+                  'Monad',
+                  'Solana',
+                  'Tron',
+                  'Bitcoin',
+                ].map(n => (
+                  <span
+                    key={n}
+                    className="text-[10px] text-[#8a8f98] bg-[#28282c] rounded px-2 py-0.5"
+                  >
                     {n}
                   </span>
                 ))}
               </div>
             </div>
 
-            {/* Plan limit info */}
             <div className="flex items-center gap-2 bg-[#0052ff]/5 border border-[#0052ff]/10 rounded-lg p-2.5">
               <AlertCircle className="h-4 w-4 text-[#0052ff] flex-shrink-0" />
               <p className="text-[11px] text-[#d0d6e0]">
-                Your current plan supports up to <span className="text-[#0052ff] font-medium">{walletLimit === Infinity ? 'unlimited' : walletLimit}</span> wallets
-                ({wallets.length} currently added)
+                Your current plan supports up to{' '}
+                <span className="text-[#0052ff] font-medium">
+                  {walletLimit === Infinity ? 'unlimited' : walletLimit}
+                </span>{' '}
+                wallets ({wallets.length} currently added). Address-family limits by plan come later.
               </p>
             </div>
 
-            {/* Error message */}
             {error && (
               <div className="flex items-center gap-2 bg-[#f6465d]/10 border border-[#f6465d]/20 rounded-lg p-2.5">
                 <AlertCircle className="h-4 w-4 text-[#f6465d] flex-shrink-0" />
@@ -355,17 +451,12 @@ export function WalletBar() {
               </div>
             )}
 
-            {/* Actions */}
             <div className="flex items-center gap-2 pt-2">
               <Button
                 className="flex-1 bg-[#0052ff] hover:bg-[#0052ff]/80 text-white"
                 onClick={handleAddWallet}
                 disabled={
-                  isAddingWallet ||
-                  !newAddress.trim() ||
-                  !newAddress.startsWith('0x') ||
-                  newAddress.length !== 42 ||
-                  !newLabel.trim()
+                  isAddingWallet || !newLabel.trim() || !hasAnyAddress || !addressesValid
                 }
               >
                 {isAddingWallet ? (
@@ -385,8 +476,7 @@ export function WalletBar() {
                 className="bg-[#191a1b] border-white/10 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
                 onClick={() => {
                   setShowAddModal(false);
-                  setNewAddress('');
-                  setNewLabel('');
+                  resetForm();
                   setError(null);
                 }}
               >

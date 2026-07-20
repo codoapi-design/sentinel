@@ -1,22 +1,24 @@
 /**
  * GET /api/portfolio
  *
- * Internal portfolio endpoint (cookie-based auth).
- * Returns real blockchain data for the active wallet.
+ * DB-first portfolio endpoint (cookie-based auth).
+ *
+ * Normal reads ALWAYS serve from Supabase tables populated by the sync engine.
+ * External providers are never hit for display — only the sync endpoint talks
+ * to Etherscan/CoinGecko and writes results into the DB.
  *
  * Query params:
  * - walletId: UUID of the wallet (optional, uses first wallet if not specified)
- * - refresh: Force refresh from providers (default: false)
+ * - refresh: If true, runs an incremental sync then returns the fresh DB snapshot
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
-import { getProviderManager } from '@/lib/blockchain/provider-manager';
-import { getBlockchainCache } from '@/lib/blockchain/cache';
+import { getSyncEngine } from '@/lib/blockchain/sync-engine';
+import { primaryDisplayAddress } from '@/lib/wallet/address-validation';
 
 export async function GET(request: NextRequest) {
   try {
-    // ── Authenticate via cookie session ──
     const cookieClient = await createCookieServerClient();
     const { data: { user }, error: authError } = await cookieClient.auth.getUser();
 
@@ -27,7 +29,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Use service role client for data operations
     const supabase = createServerClient();
 
     const { searchParams } = new URL(request.url);
@@ -48,7 +49,6 @@ export async function GET(request: NextRequest) {
       }
       wallet = data;
     } else {
-      // Use first wallet
       const { data, error } = await supabase
         .from('wallets')
         .select('*')
@@ -62,129 +62,62 @@ export async function GET(request: NextRequest) {
       wallet = data;
     }
 
-    const address = wallet.address;
+    const address = primaryDisplayAddress(wallet);
 
-    // ── Try to get data from Supabase tables first (populated by sync) ──
-    if (!forceRefresh) {
-      // Check asset_positions
-      const { data: tokenPositions } = await supabase
-        .from('asset_positions')
-        .select('*')
-        .eq('wallet_id', wallet.id)
-        .gt('value_usd', 0)
-        .order('value_usd', { ascending: false });
-
-      // Check defi_positions
-      const { data: defiPositions } = await supabase
-        .from('defi_positions')
-        .select('*')
-        .eq('wallet_id', wallet.id);
-
-      // If we have data from previous sync, use it
-      if (tokenPositions && tokenPositions.length > 0) {
-        const tokenValueUsd = tokenPositions.reduce((sum, t) => sum + (t.value_usd || 0), 0);
-        const defiValueUsd = (defiPositions || []).reduce((sum, p) => sum + (p.net_value_usd || 0), 0);
-
-        // Build chain breakdown
-        const chainMap = new Map<string, { value: number; tokens: number; defi: number }>();
-        for (const t of tokenPositions) {
-          const existing = chainMap.get(t.chain) || { value: 0, tokens: 0, defi: 0 };
-          existing.value += t.value_usd || 0;
-          existing.tokens++;
-          chainMap.set(t.chain, existing);
+    // Optional: refresh DB from providers via the sync engine, then read DB.
+    // Never return live provider payloads directly to the UI.
+    if (forceRefresh && !wallet.is_syncing) {
+      try {
+        const syncEngine = getSyncEngine();
+        const mode = wallet.last_synced_at ? 'incremental' : 'full';
+        if (mode === 'full') {
+          await syncEngine.fullSync(wallet.id);
+        } else {
+          await syncEngine.incrementalSync(wallet.id);
         }
-        for (const p of defiPositions || []) {
-          const existing = chainMap.get(p.chain) || { value: 0, tokens: 0, defi: 0 };
-          existing.value += p.net_value_usd || 0;
-          existing.defi++;
-          chainMap.set(p.chain, existing);
-        }
-
-        // Calculate revenue/expense from transactions
-        const { data: transactions } = await supabase
-          .from('transactions')
-          .select('type, value_eth, gas_fee_eth')
-          .eq('wallet_id', wallet.id);
-
-        let totalRevenue = 0;
-        let totalExpenses = 0;
-        let gasFees = 0;
-        for (const tx of transactions || []) {
-          if (tx.type === 'income') totalRevenue += tx.value_eth || 0;
-          else if (tx.type === 'expense') totalExpenses += tx.value_eth || 0;
-          gasFees += tx.gas_fee_eth || 0;
-        }
-
-        return NextResponse.json({
-          success: true,
-          source: 'cache',
-          data: {
-            walletId: wallet.id,
-            address,
-            totalValueUsd: tokenValueUsd + defiValueUsd,
-            tokenValueUsd,
-            defiValueUsd,
-            tokens: tokenPositions.map(t => ({
-              id: t.id,
-              symbol: t.token_symbol,
-              name: t.token_name,
-              address: t.token_address,
-              decimals: t.token_decimals,
-              balance: Number(t.balance),
-              priceUsd: t.price_usd,
-              valueUsd: t.value_usd,
-              change24h: t.change_24h,
-              chain: t.chain,
-              chainId: t.chain_id || 1,
-              logoUrl: t.logo_url,
-              isSpam: t.is_spam || false,
-              isVerified: t.is_verified || false,
-              provider: t.source || 'cache',
-            })),
-            defiPositions: (defiPositions || []).map(p => ({
-              id: p.id,
-              protocol: p.protocol_name,
-              protocolId: p.protocol_id || '',
-              chain: p.chain,
-              type: p.position_type || 'unknown',
-              netValueUsd: p.net_value_usd || 0,
-              assetValueUsd: p.asset_value_usd || 0,
-              debtValueUsd: p.debt_value_usd || 0,
-              apy: p.apy,
-              healthFactor: p.health_factor,
-              logoUrl: p.protocol_logo,
-              provider: p.source || 'cache',
-            })),
-            chainBreakdown: Array.from(chainMap.entries()).map(([chain, data]) => ({
-              chain,
-              valueUsd: data.value,
-              tokenCount: data.tokens,
-              defiPositionCount: data.defi,
-            })),
-            transactionSummary: {
-              totalRevenue,
-              totalExpenses,
-              netFlow: totalRevenue - totalExpenses,
-              gasFees,
-              transactionCount: transactions?.length || 0,
-            },
-            lastSyncedAt: wallet.last_synced_at,
-            isSyncing: wallet.is_syncing || false,
-          },
-        });
+        // Re-read wallet flags after sync
+        const { data: refreshed } = await supabase
+          .from('wallets')
+          .select('*')
+          .eq('id', wallet.id)
+          .single();
+        if (refreshed) wallet = refreshed;
+      } catch (syncError) {
+        console.warn('[Portfolio API] Refresh sync failed, serving DB snapshot:', syncError);
       }
     }
 
-    // ── No cached data or force refresh: fetch from providers ──
-    const cache = getBlockchainCache();
-    if (forceRefresh) {
-      await cache.invalidate(address, 'portfolio');
+    // ── Always serve from Supabase ──
+    const { data: tokenPositions } = await supabase
+      .from('asset_positions')
+      .select('*')
+      .eq('wallet_id', wallet.id)
+      .gt('value_usd', 0)
+      .order('value_usd', { ascending: false });
+
+    const { data: defiPositions } = await supabase
+      .from('defi_positions')
+      .select('*')
+      .eq('wallet_id', wallet.id);
+
+    const tokenValueUsd = (tokenPositions || []).reduce((sum, t) => sum + (t.value_usd || 0), 0);
+    const defiValueUsd = (defiPositions || []).reduce((sum, p) => sum + (p.net_value_usd || 0), 0);
+
+    const chainMap = new Map<string, { value: number; tokens: number; defi: number }>();
+    for (const t of tokenPositions || []) {
+      const chainName = (t as { network?: string; chain?: string }).network || (t as { chain?: string }).chain || 'ethereum';
+      const existing = chainMap.get(chainName) || { value: 0, tokens: 0, defi: 0 };
+      existing.value += t.value_usd || 0;
+      existing.tokens++;
+      chainMap.set(chainName, existing);
+    }
+    for (const p of defiPositions || []) {
+      const existing = chainMap.get(p.chain) || { value: 0, tokens: 0, defi: 0 };
+      existing.value += p.net_value_usd || 0;
+      existing.defi++;
+      chainMap.set(p.chain, existing);
     }
 
-    const providerManager = getProviderManager();
-    const portfolio = await providerManager.getPortfolio(address);
-
-    // Also fetch stored transactions for summary
     const { data: transactions } = await supabase
       .from('transactions')
       .select('type, value_eth, gas_fee_eth')
@@ -201,44 +134,50 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      source: 'providers',
+      source: 'database',
       data: {
         walletId: wallet.id,
         address,
-        totalValueUsd: portfolio.totalValueUsd,
-        tokenValueUsd: portfolio.tokenValueUsd,
-        defiValueUsd: portfolio.defiValueUsd,
-        tokens: portfolio.tokens.map(t => ({
-          symbol: t.symbol,
-          name: t.name,
-          address: t.address,
-          decimals: t.decimals,
-          balance: t.balance,
-          priceUsd: t.priceUsd,
-          valueUsd: t.valueUsd,
-          change24h: t.change24h,
-          chain: t.chain,
-          chainId: t.chainId,
-          logoUrl: t.logoUrl,
-          isSpam: t.isSpam,
-          isVerified: t.isVerified,
-          provider: t.provider,
+        totalValueUsd: tokenValueUsd + defiValueUsd,
+        tokenValueUsd,
+        defiValueUsd,
+        tokens: (tokenPositions || []).map(t => ({
+          id: t.id,
+          symbol: t.token_symbol,
+          name: t.token_name,
+          address: t.token_address,
+          decimals: t.token_decimals,
+          balance: Number(t.balance),
+          priceUsd: t.price_usd,
+          valueUsd: t.value_usd,
+          change24h: t.change_24h,
+          chain: (t as { network?: string; chain?: string }).network || (t as { chain?: string }).chain || 'ethereum',
+          chainId: t.chain_id || 1,
+          logoUrl: t.logo_url,
+          isSpam: t.is_spam || false,
+          isVerified: t.is_verified || false,
+          provider: t.source || 'database',
         })),
-        defiPositions: portfolio.defiPositions.map(p => ({
+        defiPositions: (defiPositions || []).map(p => ({
           id: p.id,
-          protocol: p.protocol,
-          protocolId: p.protocolId,
+          protocol: p.protocol_name,
+          protocolId: p.protocol_id || '',
           chain: p.chain,
-          type: p.type,
-          netValueUsd: p.netValueUsd,
-          assetValueUsd: p.assetValueUsd,
-          debtValueUsd: p.debtValueUsd,
+          type: p.position_type || 'unknown',
+          netValueUsd: p.net_value_usd || 0,
+          assetValueUsd: p.asset_value_usd || 0,
+          debtValueUsd: p.debt_value_usd || 0,
           apy: p.apy,
-          healthFactor: p.healthFactor,
-          logoUrl: p.logoUrl,
-          provider: p.provider,
+          healthFactor: p.health_factor,
+          logoUrl: p.protocol_logo,
+          provider: p.source || 'database',
         })),
-        chainBreakdown: portfolio.chainBreakdown,
+        chainBreakdown: Array.from(chainMap.entries()).map(([chain, data]) => ({
+          chain,
+          valueUsd: data.value,
+          tokenCount: data.tokens,
+          defiPositionCount: data.defi,
+        })),
         transactionSummary: {
           totalRevenue,
           totalExpenses,
@@ -246,7 +185,6 @@ export async function GET(request: NextRequest) {
           gasFees,
           transactionCount: transactions?.length || 0,
         },
-        providers: portfolio.providers,
         lastSyncedAt: wallet.last_synced_at,
         isSyncing: wallet.is_syncing || false,
       },

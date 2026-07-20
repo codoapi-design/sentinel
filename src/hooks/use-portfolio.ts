@@ -1,13 +1,14 @@
 /**
  * usePortfolio Hook
  *
- * Fetches real blockchain portfolio data from the /api/portfolio endpoint.
- * Used by dashboard components to display real wallet data instead of mock data.
+ * Fetches portfolio data from /api/portfolio, which ALWAYS reads from Supabase.
+ * Re-fetches whenever the wallet store reports a completed sync (lastSyncAt),
+ * so the UI stays in lockstep with the database without hitting external APIs.
  */
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWalletStore } from '@/stores/wallet-store';
 
 export interface PortfolioToken {
@@ -77,6 +78,7 @@ interface UsePortfolioReturn {
   portfolio: PortfolioData | null;
   isLoading: boolean;
   error: string | null;
+  /** Pass true only for an explicit user-triggered refresh (runs sync then reads DB). */
   refetch: (refresh?: boolean) => Promise<void>;
   source: string | null;
 }
@@ -86,22 +88,32 @@ export function usePortfolio(): UsePortfolioReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
+  const fetchGen = useRef(0);
+  const hasLoadedOnce = useRef(false);
 
-  const { activeWalletId, wallets } = useWalletStore();
+  const activeWalletId = useWalletStore(s => s.activeWalletId);
+  const wallets = useWalletStore(s => s.wallets);
+  const lastSyncAt = useWalletStore(s =>
+    activeWalletId ? s.lastSyncAt[activeWalletId] || 0 : 0,
+  );
 
   const fetchPortfolio = useCallback(async (forceRefresh = false) => {
     const activeWallet = wallets.find(w => w.id === activeWalletId);
     if (!activeWallet) {
       setPortfolio(null);
+      hasLoadedOnce.current = false;
       return;
     }
 
-    setIsLoading(true);
+    const gen = ++fetchGen.current;
+    // Soft loading only on first load or explicit refresh — silent refresh after sync
+    if (!hasLoadedOnce.current || forceRefresh) setIsLoading(true);
     setError(null);
 
     try {
       const params = new URLSearchParams();
       params.set('walletId', activeWallet.id);
+      // forceRefresh triggers sync-then-DB on the server; routine polls never set it
       if (forceRefresh) params.set('refresh', 'true');
 
       const response = await fetch(`/api/portfolio?${params.toString()}`);
@@ -112,30 +124,47 @@ export function usePortfolio(): UsePortfolioReturn {
       }
 
       const result = await response.json();
+      if (gen !== fetchGen.current) return; // stale
+
       if (result.success && result.data) {
         setPortfolio(result.data);
-        setSource(result.source || 'unknown');
+        setSource(result.source || 'database');
+        hasLoadedOnce.current = true;
       } else {
         throw new Error(result.error || 'No data returned');
       }
     } catch (err) {
+      if (gen !== fetchGen.current) return;
       console.error('[usePortfolio] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load portfolio');
     } finally {
-      setIsLoading(false);
+      if (gen === fetchGen.current) setIsLoading(false);
     }
   }, [activeWalletId, wallets]);
 
-  // Auto-fetch on mount and when wallet changes
+  // Initial load + wallet switch
   useEffect(() => {
-    fetchPortfolio();
-  }, [fetchPortfolio]);
+    hasLoadedOnce.current = false;
+    fetchPortfolio(false);
+  }, [activeWalletId, fetchPortfolio]);
+
+  // After any completed sync, re-read portfolio from the DB (no external APIs)
+  const prevSyncAt = useRef(0);
+  useEffect(() => {
+    if (!activeWalletId || !lastSyncAt) return;
+    if (lastSyncAt === prevSyncAt.current) return;
+    prevSyncAt.current = lastSyncAt;
+    // Skip the very first lastSyncAt=0→N if we just did the initial fetch
+    if (hasLoadedOnce.current) {
+      fetchPortfolio(false);
+    }
+  }, [lastSyncAt, activeWalletId, fetchPortfolio]);
 
   return {
     portfolio,
     isLoading,
     error,
-    refetch: (refresh?: boolean) => fetchPortfolio(refresh),
+    refetch: (refresh?: boolean) => fetchPortfolio(Boolean(refresh)),
     source,
   };
 }

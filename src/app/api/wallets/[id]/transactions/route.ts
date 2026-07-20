@@ -163,10 +163,16 @@ export async function GET(
         counterpartyLabel = `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`;
       }
 
-      // Safely compute price (avoid division by zero)
+      // Safely compute USD price and value
       const tokenValue = row.token_value || 0;
-      const valueEth = row.value_eth || 0;
-      const price = tokenValue > 0 ? valueEth / tokenValue : 0;
+      const valueUsd = row.value_usd || 0;
+      const priceUsd = row.price_usd || 0;
+
+      // Fallback for rows synced before USD columns existed
+      const price = priceUsd > 0
+        ? priceUsd
+        : (tokenValue > 0 && valueUsd > 0 ? valueUsd / tokenValue : 0);
+      const value = valueUsd > 0 ? valueUsd : (row.value_eth || 0);
 
       return {
         id: row.id || `tx-${i}`,
@@ -175,9 +181,9 @@ export async function GET(
         type: txType || 'income',
         typeLabel: row.type_ar || TYPE_LABELS[txType] || txType,
         token: row.token_symbol || 'ETH',
-        quantity: tokenValue || valueEth,
+        quantity: tokenValue || (row.value_eth || 0),
         price,
-        value: valueEth,
+        value,
         network,
         networkLabel: row.network_ar || NETWORK_LABELS[network] || network.charAt(0).toUpperCase() + network.slice(1),
         txHash: row.tx_hash || '',
@@ -255,6 +261,8 @@ export async function POST(
       from_addr: '',
       to_addr: '',
       value_eth: tx.value,
+      value_usd: tx.value,
+      price_usd: tx.price,
       type: tx.type,
       type_ar: tx.typeLabel,
       direction: 'in',

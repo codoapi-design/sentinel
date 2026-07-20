@@ -158,7 +158,7 @@ export class DataIngestionService {
     // Get cache stats
     let cacheStats = {};
     if (wallet) {
-      cacheStats = await cache.getStats(wallet.address);
+      cacheStats = await cache.getStats(wallet.address || walletId);
     }
 
     return {

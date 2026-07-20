@@ -107,7 +107,7 @@ export async function POST(
       );
     }
 
-    console.log(`[WalletSync] Starting ${mode} sync for ${wallet.address} (ID: ${resolvedWalletId})`);
+    console.log(`[WalletSync] Starting ${mode} sync for ${wallet.address || wallet.id} (ID: ${resolvedWalletId})`);
 
     const syncEngine = getSyncEngine();
 
@@ -116,7 +116,7 @@ export async function POST(
       ? await syncEngine.fullSync(resolvedWalletId)
       : await syncEngine.incrementalSync(resolvedWalletId);
 
-    console.log(`[WalletSync] ${mode} sync completed for ${wallet.address}:`, {
+    console.log(`[WalletSync] ${mode} sync completed for ${wallet.address || wallet.id}:`, {
       success: result.overallSuccess,
       records: result.totalRecordsSynced,
       durationMs: result.totalDurationMs,
@@ -136,6 +136,8 @@ export async function POST(
       address: result.address,
       totalRecordsSynced: result.totalRecordsSynced,
       durationMs: result.totalDurationMs,
+      /** True when DB contents changed — UI should re-read from Supabase. */
+      changed: result.changed ?? result.totalRecordsSynced > 0,
       results: result.results.map(r => ({
         provider: r.provider,
         dataType: r.dataType,

@@ -4,7 +4,7 @@
  * Manages the full data ingestion lifecycle:
  *
  *   Phase 1: Initial Sync
- *     - Covalent: Full historical transactions (from first block)
+ *   Phase 3: Historical Transactions (Etherscan V2 primary, Covalent fallback)
  *     - Zerion: Current balances + DeFi positions
  *     - DeBank: Complex DeFi protocol details
  *     - Results stored in Supabase cache
@@ -24,16 +24,27 @@
  */
 
 import { createServerClient } from '@/lib/supabase/server';
-import { getProviderManager } from './provider-manager';
+import { getProviderManager, SYNC_CHAIN_IDS } from './provider-manager';
 import { getBlockchainCache } from './cache';
-import { fetchAndClassifyTransactions, NETWORKS } from '../alchemy/service';
 import type {
   FullSyncResult,
   SyncResult,
-  SyncStatus,
   ProviderId,
-  CHAIN_IDS,
 } from './types';
+import { fetchSolanaBalances, fetchSolanaTransactions } from '@/lib/solana/service';
+import { fetchTronBalances, fetchTronTransactions } from '@/lib/tron/service';
+import { fetchBitcoinBalances, fetchBitcoinTransactions } from '@/lib/bitcoin/service';
+import { primaryDisplayAddress } from '@/lib/wallet/address-validation';
+
+type WalletRow = {
+  id: string;
+  user_id: string;
+  address: string | null;
+  solana_address?: string | null;
+  tron_address?: string | null;
+  bitcoin_address?: string | null;
+  last_synced_block?: number | null;
+};
 
 // ────────────────────────────────────────────────────────────
 // Sync Engine
@@ -78,7 +89,8 @@ export class SyncEngine {
         };
       }
 
-      const address = wallet.address;
+      const evmAddress = wallet.address || null;
+      const displayAddress = primaryDisplayAddress(wallet);
 
       // Mark as syncing
       await supabase
@@ -87,23 +99,23 @@ export class SyncEngine {
         .eq('id', walletId);
 
       try {
-        // ── Phase 1: Current Balances (Zerion) ──
-        const balancesResult = await this.syncCurrentBalances(walletId, wallet.user_id, address);
-        results.push(balancesResult);
+        if (evmAddress) {
+          const balancesResult = await this.syncCurrentBalances(walletId, wallet.user_id, evmAddress);
+          results.push(balancesResult);
 
-        // ── Phase 2: DeFi Positions (DeBank) ──
-        const defiResult = await this.syncDeFiPositions(walletId, wallet.user_id, address);
-        results.push(defiResult);
+          const defiResult = await this.syncDeFiPositions(walletId, wallet.user_id, evmAddress);
+          results.push(defiResult);
 
-        // ── Phase 3: Historical Transactions (Covalent) ──
-        const txResult = await this.syncHistoricalTransactions(walletId, wallet.user_id, address);
-        results.push(txResult);
+          const txResult = await this.syncHistoricalTransactions(walletId, wallet.user_id, evmAddress);
+          results.push(txResult);
 
-        // ── Phase 4: PnL Data (Zerion) ──
-        const pnlResult = await this.syncPnL(walletId, address);
-        results.push(pnlResult);
+          const pnlResult = await this.syncPnL(walletId, evmAddress);
+          results.push(pnlResult);
+        }
 
-        // Update sync_status
+        const nonEvm = await this.syncNonEvmFamilies(walletId, wallet.user_id, wallet as WalletRow);
+        results.push(...nonEvm);
+
         await supabase.from('sync_status').upsert({
           wallet_id: walletId,
           provider: 'hybrid',
@@ -131,11 +143,12 @@ export class SyncEngine {
 
       return {
         walletId,
-        address,
+        address: displayAddress,
         results,
         totalRecordsSynced,
         totalDurationMs,
         overallSuccess: errors.length === 0 && results.every(r => r.success),
+        changed: totalRecordsSynced > 0 || results.some(r => r.success),
       };
     } catch (error) {
       return {
@@ -145,12 +158,15 @@ export class SyncEngine {
         totalRecordsSynced: 0,
         totalDurationMs: Date.now() - startTime,
         overallSuccess: false,
+        changed: false,
       };
     }
   }
 
   /**
-   * Incremental sync - fetch only new data since last sync
+   * Incremental sync - fetch only new data since last sync.
+   * Compares a pre/post DB fingerprint so callers can skip UI refreshes
+   * when nothing actually changed.
    */
   async incrementalSync(walletId: string): Promise<FullSyncResult> {
     const startTime = Date.now();
@@ -173,10 +189,13 @@ export class SyncEngine {
           totalRecordsSynced: 0,
           totalDurationMs: Date.now() - startTime,
           overallSuccess: false,
+          changed: false,
         };
       }
 
-      const address = wallet.address;
+      const evmAddress = wallet.address || null;
+      const displayAddress = primaryDisplayAddress(wallet);
+      const before = await this.snapshotWalletData(walletId);
 
       // Mark as syncing
       await supabase
@@ -185,25 +204,30 @@ export class SyncEngine {
         .eq('id', walletId);
 
       try {
-        // 1. Invalidate stale cache entries
-        await this.cache.invalidate(address, 'portfolio');
-        await this.cache.invalidate(address, 'pnl');
+        if (evmAddress) {
+          await this.cache.invalidate(evmAddress, 'portfolio');
+          await this.cache.invalidate(evmAddress, 'pnl');
 
-        // 2. Re-fetch current balances (Zerion)
-        const balancesResult = await this.syncCurrentBalances(walletId, wallet.user_id, address);
-        results.push(balancesResult);
+          const balancesResult = await this.syncCurrentBalances(walletId, wallet.user_id, evmAddress);
+          results.push(balancesResult);
 
-        // 3. Re-fetch DeFi positions (DeBank)
-        const defiResult = await this.syncDeFiPositions(walletId, wallet.user_id, address);
-        results.push(defiResult);
+          const defiResult = await this.syncDeFiPositions(walletId, wallet.user_id, evmAddress);
+          results.push(defiResult);
 
-        // 4. Fetch new transactions via Alchemy (from last synced block)
-        const txResult = await this.syncNewTransactions(walletId, wallet.user_id, address, wallet.last_synced_block);
-        results.push(txResult);
+          const txResult = await this.syncNewTransactions(
+            walletId,
+            wallet.user_id,
+            evmAddress,
+            wallet.last_synced_block,
+          );
+          results.push(txResult);
 
-        // 5. Update PnL
-        const pnlResult = await this.syncPnL(walletId, address);
-        results.push(pnlResult);
+          const pnlResult = await this.syncPnL(walletId, evmAddress);
+          results.push(pnlResult);
+        }
+
+        const nonEvm = await this.syncNonEvmFamilies(walletId, wallet.user_id, wallet as WalletRow);
+        results.push(...nonEvm);
 
       } catch (syncError) {
         console.error('[SyncEngine] Incremental sync error:', syncError);
@@ -218,13 +242,17 @@ export class SyncEngine {
         })
         .eq('id', walletId);
 
+      const after = await this.snapshotWalletData(walletId);
+      const changed = !this.areWalletSnapshotsEqual(before, after);
+
       return {
         walletId,
-        address,
+        address: displayAddress,
         results,
         totalRecordsSynced: results.reduce((sum, r) => sum + r.recordsSynced, 0),
         totalDurationMs: Date.now() - startTime,
         overallSuccess: results.every(r => r.success),
+        changed,
       };
     } catch (error) {
       return {
@@ -234,15 +262,68 @@ export class SyncEngine {
         totalRecordsSynced: 0,
         totalDurationMs: Date.now() - startTime,
         overallSuccess: false,
+        changed: false,
       };
     }
+  }
+
+  /** Lightweight fingerprint of DB-backed wallet data for change detection. */
+  private async snapshotWalletData(walletId: string): Promise<{
+    txCount: number;
+    tokenValueUsd: number;
+    tokenCount: number;
+    defiValueUsd: number;
+  }> {
+    const empty = { txCount: 0, tokenValueUsd: 0, tokenCount: 0, defiValueUsd: 0 };
+    try {
+      const supabase = createServerClient();
+      const [{ count: txCount }, { data: tokens }, { data: defi }] = await Promise.all([
+        supabase
+          .from('transactions')
+          .select('*', { count: 'exact', head: true })
+          .eq('wallet_id', walletId),
+        supabase
+          .from('asset_positions')
+          .select('value_usd')
+          .eq('wallet_id', walletId),
+        supabase
+          .from('defi_positions')
+          .select('net_value_usd')
+          .eq('wallet_id', walletId),
+      ]);
+
+      return {
+        txCount: txCount || 0,
+        tokenCount: tokens?.length || 0,
+        tokenValueUsd: Math.round(
+          (tokens || []).reduce((s, t) => s + (t.value_usd || 0), 0) * 100,
+        ) / 100,
+        defiValueUsd: Math.round(
+          (defi || []).reduce((s, p) => s + (p.net_value_usd || 0), 0) * 100,
+        ) / 100,
+      };
+    } catch {
+      return empty;
+    }
+  }
+
+  private areWalletSnapshotsEqual(
+    a: { txCount: number; tokenValueUsd: number; tokenCount: number; defiValueUsd: number },
+    b: { txCount: number; tokenValueUsd: number; tokenCount: number; defiValueUsd: number },
+  ): boolean {
+    return (
+      a.txCount === b.txCount &&
+      a.tokenCount === b.tokenCount &&
+      a.tokenValueUsd === b.tokenValueUsd &&
+      a.defiValueUsd === b.defiValueUsd
+    );
   }
 
   /**
    * Real-time webhook handler
    * Called when Alchemy Notify sends an address activity event
    */
-  async handleRealtimeEvent(address: string, txHash: string, chainId: number): Promise<SyncResult> {
+  async handleRealtimeEvent(address: string, _txHash: string, chainId: number): Promise<SyncResult> {
     const startTime = Date.now();
 
     try {
@@ -251,82 +332,54 @@ export class SyncEngine {
       await this.cache.invalidate(address, 'transactions');
       await this.cache.invalidate(address, 'pnl');
 
-      // Fetch the specific transaction details
-      const chainName = this.chainIdToNetworkKey(chainId);
-      if (!chainName || !NETWORKS[chainName]) {
+      const supabase = createServerClient();
+      const { data: wallet } = await supabase
+        .from('wallets')
+        .select('id, user_id, last_synced_block')
+        .ilike('address', address)
+        .maybeSingle();
+
+      if (!wallet) {
         return {
           success: false,
-          provider: 'alchemy',
+          provider: 'etherscan',
           dataType: 'transactions',
           recordsSynced: 0,
           durationMs: Date.now() - startTime,
-          errors: [`Unsupported chain: ${chainId}`],
+          errors: [`Wallet not found for address ${address}`],
           fromCache: false,
         };
       }
 
-      const result = await fetchAndClassifyTransactions({
-        walletAddress: address,
-        networkKey: chainName,
-        maxCount: 1,
-      });
+      // Re-fetch the latest transactions for this chain from Etherscan (only source)
+      const { transactions } = await this.providerManager.fetchHistoricalTransactions(
+        address,
+        chainId,
+        0,
+        25,
+      );
 
-      if (result.transactions.length > 0) {
-        // Store in Supabase
-        const supabase = createServerClient();
-        const { data: wallet } = await supabase
+      let stored = 0;
+      if (transactions.length > 0) {
+        stored = await this.cache.upsertTransactions(
+          wallet.id,
+          wallet.user_id,
+          transactions,
+          'etherscan',
+        );
+
+        const maxBlock = Math.max(...transactions.map(tx => tx.blockNumber));
+        await supabase
           .from('wallets')
-          .select('id, user_id, last_synced_block')
-          .ilike('address', address)
-          .maybeSingle();
-
-        if (wallet) {
-          const tx = result.transactions[0];
-          await supabase.from('transactions').upsert({
-            wallet_id: wallet.id,
-            tx_hash: tx.txHash,
-            block_number: tx.blockNumber,
-            timestamp: tx.timestamp,
-            date: tx.date,
-            from_addr: tx.from,
-            to_addr: tx.to,
-            value_wei: tx.value,
-            value_eth: tx.valueEth,
-            gas_used: tx.gasUsed,
-            gas_price_wei: tx.gasPrice,
-            gas_fee_eth: tx.gasFeeEth,
-            status: tx.status,
-            type: tx.type,
-            type_ar: tx.typeAr,
-            direction: tx.direction,
-            method_id: tx.methodId,
-            method_name: tx.methodName,
-            protocol: tx.protocol,
-            protocol_ar: tx.protocolAr,
-            network: chainName,
-            network_ar: tx.networkAr,
-            token_symbol: tx.tokenTransfers[0]?.tokenSymbol || null,
-            token_name: tx.tokenTransfers[0]?.tokenName || null,
-            token_address: tx.tokenTransfers[0]?.tokenAddress || null,
-            token_value: tx.tokenTransfers[0]?.valueFormatted || 0,
-            token_decimals: tx.tokenTransfers[0]?.decimals || 18,
-            counterparty: tx.direction === 'in' ? tx.from : tx.to,
-            counterparty_label: tx.protocol || null,
-          }, { onConflict: 'tx_hash,wallet_id,network', ignoreDuplicates: true });
-
-          // Update last synced block
-          await supabase
-            .from('wallets')
-            .update({ last_synced_block: Math.max(wallet.last_synced_block || 0, tx.blockNumber) })
-            .eq('id', wallet.id);
-        }
+          .update({ last_synced_block: Math.max(wallet.last_synced_block || 0, maxBlock) })
+          .eq('id', wallet.id);
       }
 
       return {
         success: true,
-        provider: 'alchemy',
+        provider: 'etherscan',
         dataType: 'transactions',
-        recordsSynced: result.transactions.length,
+        recordsSynced: stored,
         durationMs: Date.now() - startTime,
         errors: [],
         fromCache: false,
@@ -334,7 +387,7 @@ export class SyncEngine {
     } catch (error) {
       return {
         success: false,
-        provider: 'alchemy',
+        provider: 'etherscan',
         dataType: 'transactions',
         recordsSynced: 0,
         durationMs: Date.now() - startTime,
@@ -348,6 +401,106 @@ export class SyncEngine {
   // Individual sync operations
   // ────────────────────────────────────────────────────────────
 
+  private async syncNonEvmFamilies(
+    walletId: string,
+    userId: string,
+    wallet: WalletRow,
+  ): Promise<SyncResult[]> {
+    const results: SyncResult[] = [];
+
+    if (wallet.solana_address) {
+      results.push(
+        await this.syncFamilyBalancesAndTxs(
+          walletId,
+          userId,
+          'solana',
+          () => fetchSolanaBalances(wallet.solana_address!),
+          () => fetchSolanaTransactions(wallet.solana_address!),
+        ),
+      );
+    }
+    if (wallet.tron_address) {
+      results.push(
+        await this.syncFamilyBalancesAndTxs(
+          walletId,
+          userId,
+          'tron',
+          () => fetchTronBalances(wallet.tron_address!),
+          () => fetchTronTransactions(wallet.tron_address!),
+        ),
+      );
+    }
+    if (wallet.bitcoin_address) {
+      results.push(
+        await this.syncFamilyBalancesAndTxs(
+          walletId,
+          userId,
+          'bitcoin',
+          () => fetchBitcoinBalances(wallet.bitcoin_address!),
+          () => fetchBitcoinTransactions(wallet.bitcoin_address!),
+        ),
+      );
+    }
+
+    return results;
+  }
+
+  private async syncFamilyBalancesAndTxs(
+    walletId: string,
+    userId: string,
+    family: string,
+    fetchBalances: () => Promise<import('./types').TokenBalance[]>,
+    fetchTxs: () => Promise<import('./types').WalletTransaction[]>,
+  ): Promise<SyncResult> {
+    const startTime = Date.now();
+    const errors: string[] = [];
+    let recordsSynced = 0;
+
+    try {
+      const tokens = await fetchBalances();
+      // Keep positions with balance even if USD is 0 (unpriced tokens)
+      const keepable = tokens.filter(t => t.balance > 0);
+      if (keepable.length > 0) {
+        // Temporarily bump dust so 0-priced holdings still store (use tiny valueUsd)
+        const forUpsert = keepable.map(t =>
+          t.valueUsd >= 0.01 ? t : { ...t, valueUsd: Math.max(t.valueUsd, 0.01) },
+        );
+        recordsSynced += await this.cache.upsertTokenPositions(
+          walletId,
+          userId,
+          forUpsert,
+          'alchemy',
+        );
+      }
+    } catch (err) {
+      errors.push(`${family} balances: ${err}`);
+    }
+
+    try {
+      const txs = await fetchTxs();
+      if (txs.length > 0) {
+        recordsSynced += await this.cache.upsertTransactions(
+          walletId,
+          userId,
+          txs,
+          'alchemy',
+        );
+      }
+    } catch (err) {
+      errors.push(`${family} txs: ${err}`);
+    }
+
+    return {
+      success: errors.length === 0,
+      provider: 'alchemy',
+      dataType: `${family}_sync` as import('./types').CacheDataType,
+      recordsSynced,
+      durationMs: Date.now() - startTime,
+      errors,
+      fromCache: false,
+    };
+  }
+
   private async syncCurrentBalances(
     walletId: string,
     userId: string,
@@ -357,16 +510,43 @@ export class SyncEngine {
     try {
       const { tokens, providers } = await this.providerManager.fetchCurrentBalances(address);
 
-      // Store in Supabase asset_positions
+      // Store in Supabase asset_positions (per-token provider when available)
       const recordsSynced = await this.cache.upsertTokenPositions(
         walletId,
         userId,
         tokens,
-        providers[0] || 'zerion',
+        providers[0] || tokens[0]?.provider || 'etherscan',
       );
 
-      // Cache the data
-      await this.cache.set(address, 'portfolio', providers[0] || 'zerion', { tokens });
+      // Cache a well-formed portfolio snapshot so `getPortfolio` can serve it
+      // directly (must match the WalletPortfolio shape — a partial `{ tokens }`
+      // object would break consumers that spread `providers`).
+      const tokenValueUsd = tokens.reduce((sum, t) => sum + (t.valueUsd || 0), 0);
+      const chainMap = new Map<string, { value: number; tokens: number; defi: number }>();
+      for (const t of tokens) {
+        const existing = chainMap.get(t.chain) || { value: 0, tokens: 0, defi: 0 };
+        existing.value += t.valueUsd || 0;
+        existing.tokens++;
+        chainMap.set(t.chain, existing);
+      }
+      const portfolioSnapshot = {
+        address,
+        totalValueUsd: tokenValueUsd,
+        tokenValueUsd,
+        defiValueUsd: 0,
+        tokens,
+        defiPositions: [],
+        chainBreakdown: Array.from(chainMap.entries()).map(([chain, data]) => ({
+          chain,
+          chainId: 1,
+          valueUsd: data.value,
+          tokenCount: data.tokens,
+          defiPositionCount: data.defi,
+        })),
+        providers,
+        lastUpdated: Date.now(),
+      };
+      await this.cache.set(address, 'portfolio', providers[0] || 'etherscan', portfolioSnapshot);
 
       return {
         success: true,
@@ -438,35 +618,38 @@ export class SyncEngine {
     const errors: string[] = [];
 
     try {
-      // Fetch from Covalent for each supported chain
-      const chainIds = [1, 8453, 42161, 10, 137]; // ETH, Base, Arbitrum, Optimism, Polygon
+      // Fetch from Etherscan V2 (via provider manager) for each supported chain,
+      // in parallel so one chain never blocks the others. Chains not covered by
+      // the current API plan are skipped quietly by the provider manager.
+      const chainIds = SYNC_CHAIN_IDS;
 
-      for (const chainId of chainIds) {
-        try {
-          const { transactions, providers } = await this.providerManager.fetchHistoricalTransactions(
-            address,
-            chainId,
-            0,
-            100,
-          );
+      const chainResults = await Promise.allSettled(
+        chainIds.map(chainId =>
+          this.providerManager
+            .fetchHistoricalTransactions(address, chainId, 0, 100)
+            .then(async ({ transactions, providers }) => {
+              if (transactions.length === 0) return 0;
+              return this.cache.upsertTransactions(
+                walletId,
+                userId,
+                transactions,
+                providers[0] || 'etherscan',
+              );
+            }),
+        ),
+      );
 
-          if (transactions.length > 0) {
-            const stored = await this.cache.upsertTransactions(
-              walletId,
-              userId,
-              transactions,
-              providers[0] || 'covalent',
-            );
-            totalRecords += stored;
-          }
-        } catch (chainError) {
-          errors.push(`Chain ${chainId}: ${chainError}`);
+      chainResults.forEach((result, i) => {
+        if (result.status === 'fulfilled') {
+          totalRecords += result.value;
+        } else {
+          errors.push(`Chain ${chainIds[i]}: ${result.reason}`);
         }
-      }
+      });
 
       return {
         success: errors.length < chainIds.length,
-        provider: 'covalent',
+        provider: 'etherscan',
         dataType: 'transactions',
         recordsSynced: totalRecords,
         durationMs: Date.now() - startTime,
@@ -476,7 +659,7 @@ export class SyncEngine {
     } catch (error) {
       return {
         success: false,
-        provider: 'covalent',
+        provider: 'etherscan',
         dataType: 'transactions',
         recordsSynced: totalRecords,
         durationMs: Date.now() - startTime,
@@ -495,74 +678,43 @@ export class SyncEngine {
     const startTime = Date.now();
     let totalRecords = 0;
     let maxBlock = lastSyncedBlock || 0;
+    const errors: string[] = [];
+    const chainIds = SYNC_CHAIN_IDS;
+    const startBlock = lastSyncedBlock ? lastSyncedBlock + 1 : 0;
 
     try {
-      const supabase = createServerClient();
+      // Fetch new transactions from every chain in parallel; unsupported chains
+      // are skipped quietly by the provider manager.
+      const chainResults = await Promise.allSettled(
+        chainIds.map(chainId =>
+          this.providerManager
+            .fetchHistoricalTransactions(address, chainId, 0, 100, startBlock)
+            .then(async ({ transactions }) => {
+              if (transactions.length === 0) return { stored: 0, chainMax: 0 };
+              const stored = await this.cache.upsertTransactions(
+                walletId,
+                userId,
+                transactions,
+                'etherscan',
+              );
+              const chainMax = Math.max(...transactions.map(tx => tx.blockNumber));
+              return { stored, chainMax };
+            }),
+        ),
+      );
 
-      for (const [networkKey] of Object.entries(NETWORKS)) {
-        try {
-          const fromBlock = lastSyncedBlock
-            ? `0x${(lastSyncedBlock + 1).toString(16)}`
-            : undefined;
-
-          const result = await fetchAndClassifyTransactions({
-            walletAddress: address,
-            networkKey,
-            fromBlock,
-            maxCount: 100,
-          });
-
-          if (result.transactions.length > 0) {
-            // Store in Supabase
-            const dbRows = result.transactions.map(tx => ({
-              wallet_id: walletId,
-              tx_hash: tx.txHash,
-              block_number: tx.blockNumber,
-              timestamp: tx.timestamp,
-              date: tx.date,
-              from_addr: tx.from,
-              to_addr: tx.to,
-              value_wei: tx.value,
-              value_eth: tx.valueEth,
-              gas_used: tx.gasUsed,
-              gas_price_wei: tx.gasPrice,
-              gas_fee_eth: tx.gasFeeEth,
-              status: tx.status,
-              type: tx.type,
-              type_ar: tx.typeAr,
-              direction: tx.direction,
-              method_id: tx.methodId,
-              method_name: tx.methodName,
-              protocol: tx.protocol,
-              protocol_ar: tx.protocolAr,
-              network: networkKey,
-              network_ar: tx.networkAr,
-              token_symbol: tx.tokenTransfers[0]?.tokenSymbol || null,
-              token_name: tx.tokenTransfers[0]?.tokenName || null,
-              token_address: tx.tokenTransfers[0]?.tokenAddress || null,
-              token_value: tx.tokenTransfers[0]?.valueFormatted || 0,
-              token_decimals: tx.tokenTransfers[0]?.decimals || 18,
-              counterparty: tx.direction === 'in' ? tx.from : tx.to,
-              counterparty_label: tx.protocol || null,
-            }));
-
-            await supabase
-              .from('transactions')
-              .upsert(dbRows, { onConflict: 'tx_hash,wallet_id,network', ignoreDuplicates: true });
-
-            totalRecords += result.transactions.length;
-
-            // Track max block
-            const chainMax = Math.max(...result.transactions.map(tx => tx.blockNumber));
-            if (chainMax > maxBlock) maxBlock = chainMax;
-          }
-        } catch (networkError) {
-          console.warn(`[SyncEngine] Alchemy ${networkKey} error:`, networkError);
+      chainResults.forEach((result, i) => {
+        if (result.status === 'fulfilled') {
+          totalRecords += result.value.stored;
+          if (result.value.chainMax > maxBlock) maxBlock = result.value.chainMax;
+        } else {
+          errors.push(`Chain ${chainIds[i]}: ${result.reason}`);
         }
-      }
+      });
 
       // Update last synced block
       if (maxBlock > (lastSyncedBlock || 0)) {
+        const supabase = createServerClient();
         await supabase
           .from('wallets')
           .update({ last_synced_block: maxBlock })
@@ -570,18 +722,18 @@ export class SyncEngine {
       }
 
       return {
-        success: true,
-        provider: 'alchemy',
+        success: errors.length < chainIds.length,
+        provider: 'etherscan',
         dataType: 'transactions',
         recordsSynced: totalRecords,
         durationMs: Date.now() - startTime,
-        errors: [],
+        errors,
         fromCache: false,
       };
     } catch (error) {
       return {
         success: false,
-        provider: 'alchemy',
+        provider: 'etherscan',
         dataType: 'transactions',
         recordsSynced: totalRecords,
         durationMs: Date.now() - startTime,
@@ -620,17 +772,6 @@ export class SyncEngine {
         fromCache: false,
       };
     }
-  }
-
-  private chainIdToNetworkKey(chainId: number): string | null {
-    const map: Record<number, string> = {
-      1: 'ethereum',
-      8453: 'base',
-      42161: 'arbitrum',
-      10: 'optimism',
-      137: 'polygon',
-    };
-    return map[chainId] || null;
   }
 }
 

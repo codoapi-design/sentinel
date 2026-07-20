@@ -27,6 +27,14 @@ const API_KEY_CONFIG: Record<string, EnvKeyConfig> = {
     primary: 'DEBANK_API_KEY',
     fallbacks: ['DEBANK', 'NEXT_PUBLIC_DEBANK_API_KEY'],
   },
+  etherscan: {
+    primary: 'ETHERSCAN_API_KEY',
+    fallbacks: ['ETHERSCAN', 'NEXT_PUBLIC_ETHERSCAN_API_KEY'],
+  },
+  coingecko: {
+    primary: 'COINGECKO_API_KEY',
+    fallbacks: ['COINGECKO', 'NEXT_PUBLIC_COINGECKO_API_KEY'],
+  },
   alchemy_webhook_secret: {
     primary: 'ALCHEMY_WEBHOOK_SECRET',
     fallbacks: ['ALCHEMY_WEBHOOK_SIGNING_KEY'],
@@ -87,7 +95,7 @@ export function getProviderEnvStatus(): Record<string, {
   envKey: string;
   resolvedKey: string;
 }> {
-  const providers = ['covalent', 'zerion', 'alchemy', 'debank'];
+  const providers = ['covalent', 'zerion', 'alchemy', 'debank', 'etherscan', 'coingecko'];
   const result: Record<string, {
     configured: boolean;
     masked: string | null;

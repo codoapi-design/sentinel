@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
 
     // ── Get cache stats ──
     const cache = getBlockchainCache();
-    const cacheStats = await cache.getStats(wallet.address);
+    const cacheStats = await cache.getStats(wallet.address || wallet.id);
 
     return NextResponse.json({
       success: true,

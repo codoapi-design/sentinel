@@ -41,6 +41,10 @@ const CACHE_TTL: Record<CacheDataType, number> = {
   defi: 10 * 60 * 1000,          // 10 minutes
   nfts: 60 * 60 * 1000,          // 60 minutes
   pnl: 15 * 60 * 1000,           // 15 minutes
+  full_sync: 5 * 60 * 1000,      // 5 minutes
+  solana_sync: 5 * 60 * 1000,    // 5 minutes
+  tron_sync: 5 * 60 * 1000,      // 5 minutes
+  bitcoin_sync: 5 * 60 * 1000,   // 5 minutes
 };
 
 // ────────────────────────────────────────────────────────────
@@ -139,7 +143,7 @@ export class BlockchainCache {
    */
   async getStats(address: string): Promise<Record<CacheDataType, { cached: boolean; age: number; provider: ProviderId | null }>> {
     const result: Record<string, { cached: boolean; age: number; provider: ProviderId | null }> = {};
-    const types: CacheDataType[] = ['portfolio', 'transactions', 'defi', 'nfts', 'pnl'];
+    const types: CacheDataType[] = ['portfolio', 'transactions', 'defi', 'nfts', 'pnl', 'full_sync', 'solana_sync', 'tron_sync', 'bitcoin_sync'];
 
     try {
       const supabase = createServerClient();
@@ -190,7 +194,6 @@ export class BlockchainCache {
         .map(t => ({
           wallet_id: walletId,
           user_id: userId,
-          chain: t.chain,
           token_symbol: t.symbol,
           token_name: t.name,
           token_address: t.address,
@@ -204,7 +207,7 @@ export class BlockchainCache {
           change_24h: t.change24h,
           is_spam: t.isSpam,
           is_verified: t.isVerified,
-          source: provider,
+          source: t.provider || provider,
           logo_url: t.logoUrl,
         }));
 
@@ -323,6 +326,8 @@ export class BlockchainCache {
         token_address: tx.tokenTransfers[0]?.tokenAddress || null,
         token_value: tx.tokenTransfers[0]?.valueFormatted || 0,
         token_decimals: tx.tokenTransfers[0]?.decimals || 18,
+        value_usd: tx.valueUsd ?? (tx.tokenTransfers[0]?.valueUsd ?? 0),
+        price_usd: tx.priceUsd ?? (tx.tokenTransfers[0]?.priceUsd ?? 0),
         counterparty: tx.direction === 'in' ? tx.from : tx.to,
         counterparty_label: tx.protocol || null,
         raw_data: { tokenTransfers: tx.tokenTransfers, provider } as unknown as Json,
