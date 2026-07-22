@@ -25,6 +25,7 @@ import {
   type Transaction,
   type Client,
 } from '@/lib/mock-data';
+import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import { usePortfolio } from '@/hooks/use-portfolio';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
@@ -106,18 +107,14 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
       dailyMap[key] = { inflow: 0, outflow: 0 };
     }
 
-    // Sum inflows and outflows per day
+    // Cash-flow only: revenue / expense types. Trades, DeFi, bridge, NFT, gas excluded.
     assetTransactions.forEach(tx => {
       const key = tx.date;
       if (!dailyMap[key]) dailyMap[key] = { inflow: 0, outflow: 0 };
-      if (tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi') {
+      if (isRevenueType(tx.type)) {
         dailyMap[key].inflow += tx.quantity;
-      } else if (tx.type === 'expense' || tx.type === 'gas') {
+      } else if (isExpenseType(tx.type)) {
         dailyMap[key].outflow += tx.quantity;
-      } else {
-        // trade - split half in / half out for visual
-        dailyMap[key].inflow += tx.quantity * 0.5;
-        dailyMap[key].outflow += tx.quantity * 0.5;
       }
     });
 
@@ -171,12 +168,11 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
 
   const isPositive = asset.change24h >= 0;
 
-  // Calculate total inflow/outflow
   const totalInflow = assetTransactions
-    .filter(tx => tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi')
+    .filter(tx => isRevenueType(tx.type))
     .reduce((s, tx) => s + tx.quantity, 0);
   const totalOutflow = assetTransactions
-    .filter(tx => tx.type === 'expense' || tx.type === 'gas')
+    .filter(tx => isExpenseType(tx.type))
     .reduce((s, tx) => s + tx.quantity, 0);
 
   const formatQty = (value: number) => {

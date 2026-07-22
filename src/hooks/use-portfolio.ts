@@ -56,7 +56,12 @@ export interface TransactionSummary {
   totalExpenses: number;
   netFlow: number;
   gasFees: number;
+  tradingVolume?: number;
   transactionCount: number;
+  pricedCashflowCount?: number;
+  unpricedCount?: number;
+  excludedActivityCount?: number;
+  methodology?: string;
 }
 
 export interface PortfolioData {

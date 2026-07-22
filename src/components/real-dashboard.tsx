@@ -32,6 +32,8 @@ import { useWalletStore } from '@/stores/wallet-store';
 import { useAIStore } from '@/stores/ai-store';
 import { useWalletAutoSync } from '@/hooks/use-wallet-auto-sync';
 import { useAuth } from '@/lib/auth-context';
+import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
+import { filterVisibleTransactions } from '@/lib/finance/visibility';
 
 /**
  * RealDashboard - Dashboard for authenticated users.
@@ -100,10 +102,15 @@ export function RealDashboard() {
   const clients = getActiveClients();
   const isAnySyncing = Object.values(isSyncing).some(Boolean);
   const hasWallets = wallets.length > 0;
+  const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
 
   // IMPORTANT: Real dashboard NEVER uses mock data.
   // If no wallets, show empty state. If wallet exists but no transactions, show loading or empty.
-  const displayTransactions = transactions;
+  // Spam / $0 dust hidden by default (toggle shared with Assets & Transactions headers).
+  const displayTransactions = useMemo(
+    () => filterVisibleTransactions(transactions, showSpamAndDust),
+    [transactions, showSpamAndDust],
+  );
   const displayClients = clients;
 
   // DB-first hydrate: read stored txs immediately; sync providers only when never synced.
@@ -407,11 +414,11 @@ export function RealDashboard() {
           <Button
             variant="outline"
             className="rounded-full border-white/10 text-[#d0d6e0] hover:bg-[#191a1b]"
-            onClick={triggerSync}
+            onClick={() => void triggerSync()}
             disabled={isAnySyncing}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isAnySyncing ? 'animate-spin' : ''}`} />
-            Refresh
+            Sync
           </Button>
         </div>
       );
@@ -633,9 +640,9 @@ export function RealDashboard() {
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 p-0 text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-white/5"
-                onClick={triggerSync}
+                onClick={() => void triggerSync()}
                 disabled={isAnySyncing}
-                title="Refresh data"
+                title="Sync from blockchain"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isAnySyncing ? 'animate-spin' : ''}`} />
               </Button>

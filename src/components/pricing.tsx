@@ -29,6 +29,7 @@ function PlanIcon({ planId }: { planId: string }) {
     case 'pro':
       return <Sparkles className="h-5 w-5 text-[#0052ff]" />;
     case 'enterprise':
+    case 'business':
       return <Building2 className="h-5 w-5 text-[#f7931a]" />;
     default:
       return <Wallet className="h-5 w-5 text-[#8a8f98]" />;

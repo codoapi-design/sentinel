@@ -20,6 +20,7 @@ import {
   networks,
   type Transaction,
 } from '@/lib/mock-data';
+import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
@@ -59,17 +60,18 @@ export function NetworkDetailPage({ networkId, onBack }: NetworkDetailPageProps)
   // Calculate stats
   const totalRevenue = useMemo(() => {
     return networkTransactions
-      .filter(tx => tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi')
+      .filter(tx => isRevenueType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
   }, [networkTransactions]);
 
   const totalExpenses = useMemo(() => {
     return networkTransactions
-      .filter(tx => tx.type === 'expense')
+      .filter(tx => isExpenseType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
   }, [networkTransactions]);
 
   const gasFees = useMemo(() => {
+    // Prefer dedicated gas-type rows; otherwise 0 on UI tx model (full gas USD is on portfolio cards)
     return networkTransactions
       .filter(tx => tx.type === 'gas')
       .reduce((sum, tx) => sum + tx.value, 0);
@@ -79,7 +81,7 @@ export function NetworkDetailPage({ networkId, onBack }: NetworkDetailPageProps)
     return networkTransactions.reduce((sum, tx) => sum + tx.value, 0);
   }, [networkTransactions]);
 
-  const netFlow = totalRevenue - totalExpenses - gasFees;
+  const netFlow = totalRevenue - totalExpenses;
   const isNetPositive = netFlow >= 0;
 
   // Most used token

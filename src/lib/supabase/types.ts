@@ -828,6 +828,47 @@ export interface Database {
         Relationships: [];
       };
 
+      // ─── Portfolio Snapshots (daily value for performance chart) ───
+      portfolio_snapshots: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          user_id: string;
+          snapshot_date: string;
+          total_value_usd: number;
+          token_value_usd: number;
+          defi_value_usd: number;
+          source: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          user_id: string;
+          snapshot_date: string;
+          total_value_usd?: number;
+          token_value_usd?: number;
+          defi_value_usd?: number;
+          source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          wallet_id?: string;
+          user_id?: string;
+          snapshot_date?: string;
+          total_value_usd?: number;
+          token_value_usd?: number;
+          defi_value_usd?: number;
+          source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
       // ─── DeFi Positions ───
       defi_positions: {
         Row: {

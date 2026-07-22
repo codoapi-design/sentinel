@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './sidebar';
 import { PortfolioOverview } from './portfolio-overview';
 import { PortfolioChart } from './portfolio-chart';
@@ -31,6 +31,8 @@ import { networks, type Client } from '@/lib/mock-data';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useAIStore } from '@/stores/ai-store';
 import { useWalletAutoSync } from '@/hooks/use-wallet-auto-sync';
+import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
+import { filterVisibleTransactions } from '@/lib/finance/visibility';
 
 interface DashboardProps {
   onLogout: () => void;
@@ -86,10 +88,15 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const clients = getActiveClients();
   const isAnySyncing = Object.values(isSyncing).some(Boolean);
   const hasWallets = wallets.length > 0;
+  const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
 
   // No mock data anywhere: always use the real active-wallet data. In demo mode
   // (no wallet) these are simply empty, so every section shows its empty state.
-  const displayTransactions = transactions;
+  // Spam / $0 dust hidden by default (toggle shared with Assets & Transactions headers).
+  const displayTransactions = useMemo(
+    () => filterVisibleTransactions(transactions, showSpamAndDust),
+    [transactions, showSpamAndDust],
+  );
   const displayClients = clients;
 
   // DB-first: hydrate from Supabase, sync providers only on first-ever sync
@@ -577,9 +584,9 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 p-0 text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-white/5"
-                onClick={triggerSync}
+                onClick={() => void triggerSync()}
                 disabled={isAnySyncing}
-                title="Refresh data"
+                title="Sync from blockchain"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isAnySyncing ? 'animate-spin' : ''}`} />
               </Button>

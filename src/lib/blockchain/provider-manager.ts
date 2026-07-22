@@ -26,6 +26,7 @@ import {
   fetchAlchemyTransfersAsWalletTxs,
 } from '../alchemy/service';
 import { getPricingService } from '../pricing/service';
+import { classifySyncedTransaction } from '@/lib/finance/classify';
 import { getBlockchainCache } from './cache';
 import type {
   DataCategory,
@@ -692,6 +693,9 @@ export class ProviderManager {
   // Historical Transactions (Etherscan V2 primary)
   // ────────────────────────────────────────────────────────────
 
+  /** Safety cap per chain — prevents infinite loops if a provider misbehaves. */
+  private static readonly TX_HISTORY_MAX_PAGES = 10_000;
+
   async fetchHistoricalTransactions(
     address: string,
     chainId: number = 1,
@@ -768,6 +772,158 @@ export class ProviderManager {
     return this.fetchAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, cacheKey);
   }
 
+  /**
+   * Fetch ALL historical transactions for one chain by paginating until exhausted.
+   * Pages are sequential (rate-limit friendly). Optional `onBatch` upserts each page
+   * immediately so large wallets need not hold the full history in memory.
+   *
+   * Etherscan: 0-based page loop → 1-indexed API; stop when both normal and token
+   * responses return fewer than pageSize rows.
+   * Alchemy: cursor (pageKey) until exhausted, fromBlock 0x0 (or startBlock).
+   */
+  async fetchAllHistoricalTransactions(
+    address: string,
+    chainId: number = 1,
+    options: {
+      pageSize?: number;
+      startBlock?: number;
+      onBatch?: (
+        transactions: WalletTransaction[],
+        providers: ProviderId[],
+      ) => Promise<void>;
+    } = {},
+  ): Promise<{
+    totalFetched: number;
+    providers: ProviderId[];
+    maxBlock: number;
+  }> {
+    if (!this.etherscan.isConfigured() && !isAlchemyConfigured()) {
+      throw new Error(
+        'Neither ETHERSCAN_API_KEY nor ALCHEMY_API_KEY is configured — transactions cannot be fetched.',
+      );
+    }
+
+    const pageSize = options.pageSize ?? 100;
+    const startBlock = options.startBlock ?? 0;
+    const onBatch = options.onBatch;
+    const providers: ProviderId[] = [];
+    let totalFetched = 0;
+    let maxBlock = 0;
+
+    const emit = async (txs: WalletTransaction[], provider: ProviderId) => {
+      if (txs.length === 0) return;
+      if (!providers.includes(provider)) providers.push(provider);
+      totalFetched += txs.length;
+      for (const tx of txs) {
+        if (tx.blockNumber > maxBlock) maxBlock = tx.blockNumber;
+      }
+      if (onBatch) await onBatch(txs, [provider]);
+    };
+
+    // Known Etherscan-unsupported → Alchemy full history
+    if (this.etherscanUnsupportedChains.has(chainId)) {
+      await this.fetchAllAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, emit);
+      return { totalFetched, providers, maxBlock };
+    }
+
+    if (this.etherscan.isConfigured()) {
+      try {
+        for (let page = 0; page < ProviderManager.TX_HISTORY_MAX_PAGES; page++) {
+          const start = Date.now();
+          const { normal, tokens } = await this.etherscan.getTransactionsForAddress(
+            address,
+            chainId,
+            page + 1, // Etherscan pages are 1-indexed
+            pageSize,
+            startBlock,
+          );
+          this.markProviderSuccess('etherscan', Date.now() - start);
+
+          if (normal.length === 0 && tokens.length === 0) break;
+
+          let transactions = this.mergeEtherscanTransactions(normal, tokens, address, chainId);
+          transactions = await this.pricing.enrichTransactions(transactions);
+          await emit(transactions, 'etherscan');
+
+          // Continue while either endpoint may still have another full page
+          if (normal.length < pageSize && tokens.length < pageSize) break;
+        }
+        return { totalFetched, providers, maxBlock };
+      } catch (error) {
+        if (EtherscanService.isChainUnsupported(error)) {
+          this.etherscanUnsupportedChains.add(chainId);
+          console.warn(
+            `[ProviderManager] Chain ${chainId} (${this.chainIdToName(chainId) || 'unknown'}) not on Etherscan plan — trying Alchemy for full tx history.`,
+          );
+          await this.fetchAllAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, emit);
+          return { totalFetched, providers, maxBlock };
+        }
+        if (isAlchemyConfigured() && isAlchemyChainSupported(chainId)) {
+          console.warn(
+            `[ProviderManager] Etherscan full tx fetch failed for chain ${chainId}, falling back to Alchemy:`,
+            error instanceof Error ? error.message : error,
+          );
+          await this.fetchAllAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, emit);
+          return { totalFetched, providers, maxBlock };
+        }
+        this.markProviderError('etherscan', error);
+        throw error instanceof Error
+          ? error
+          : new Error(`Etherscan full transaction fetch failed: ${String(error)}`);
+      }
+    }
+
+    await this.fetchAllAlchemyHistoricalTransactions(address, chainId, pageSize, startBlock, emit);
+    return { totalFetched, providers, maxBlock };
+  }
+
+  private async fetchAllAlchemyHistoricalTransactions(
+    address: string,
+    chainId: number,
+    pageSize: number,
+    startBlock: number,
+    emit: (txs: WalletTransaction[], provider: ProviderId) => Promise<void>,
+  ): Promise<void> {
+    if (!isAlchemyConfigured() || !isAlchemyChainSupported(chainId)) return;
+    if (isAlchemyNetworkForbidden(chainId)) {
+      console.warn(
+        `[ProviderManager] Skipping Alchemy full txs for chain ${chainId} — network not enabled on API key.`,
+      );
+      return;
+    }
+
+    try {
+      const start = Date.now();
+      let transactions = await fetchAlchemyTransfersAsWalletTxs(address, chainId, {
+        startBlock: startBlock > 0 ? startBlock : undefined,
+        pageSize: Math.min(pageSize, 1000),
+        exhaustAll: true,
+        maxPages: ProviderManager.TX_HISTORY_MAX_PAGES,
+      });
+      this.markProviderSuccess('alchemy', Date.now() - start);
+
+      if (transactions.length === 0) return;
+
+      transactions = await this.pricing.enrichTransactions(transactions);
+
+      // Emit in pageSize chunks so callers can upsert without one giant batch
+      const chunkSize = Math.max(1, pageSize);
+      for (let i = 0; i < transactions.length; i += chunkSize) {
+        await emit(transactions.slice(i, i + chunkSize), 'alchemy');
+      }
+    } catch (error) {
+      if (error instanceof AlchemyNetworkForbiddenError) {
+        console.warn(`[ProviderManager] ${error.message}`);
+        return;
+      }
+      this.markProviderError('alchemy', error);
+      console.warn(
+        `[ProviderManager] Alchemy full tx fetch failed for chain ${chainId}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
   private async fetchAlchemyHistoricalTransactions(
     address: string,
     chainId: number,
@@ -790,9 +946,11 @@ export class ProviderManager {
 
     try {
       const start = Date.now();
+      // Single-page / light UI fetch — keep lookback + page caps. Full history uses
+      // fetchAllHistoricalTransactions → exhaustAll.
       let transactions = await fetchAlchemyTransfersAsWalletTxs(address, chainId, {
         startBlock: startBlock > 0 ? startBlock : undefined,
-        pageSize: Math.min(pageSize, 100),
+        pageSize: Math.min(pageSize, 1000),
         maxPages: startBlock > 0 ? 2 : 5,
       });
       this.markProviderSuccess('alchemy', Date.now() - start);
@@ -1082,7 +1240,9 @@ export class ProviderManager {
     const isSuccess = tx.isError === '0' && tx.txreceipt_status !== '0';
 
     let type: WalletTransaction['type'] = isFromUser ? 'expense' : 'income';
-    if (tx.functionName?.toLowerCase().includes('swap') || tx.methodId === '0x38ed1739') {
+    if (!isSuccess) {
+      type = 'gas';
+    } else if (tx.functionName?.toLowerCase().includes('swap') || tx.methodId === '0x38ed1739') {
       type = 'trade';
     } else if (tx.functionName?.toLowerCase().includes('stake')) {
       type = 'staking';
@@ -1090,7 +1250,7 @@ export class ProviderManager {
       type = 'defi';
     }
 
-    return {
+    const base: WalletTransaction = {
       hash: tx.hash,
       from: tx.from,
       to: tx.to || '',
@@ -1114,6 +1274,9 @@ export class ProviderManager {
       valueUsd: null,
       provider: 'etherscan',
     };
+
+    const classified = classifySyncedTransaction(base, { statusFailed: !isSuccess });
+    return classified;
   }
 
   private normalizeEtherscanTokenTransfer(
@@ -1139,7 +1302,7 @@ export class ProviderManager {
     const gasPrice = parseFloat(tt.gasPrice || '0');
     const gasFeeEth = (gasUsed * gasPrice) / 1e18;
 
-    return {
+    const base: WalletTransaction = {
       hash: tt.hash,
       from: tt.from,
       to: tt.to,
@@ -1174,6 +1337,7 @@ export class ProviderManager {
       valueUsd: null,
       provider: 'etherscan',
     };
+    return classifySyncedTransaction(base);
   }
 
   // ────────────────────────────────────────────────────────────

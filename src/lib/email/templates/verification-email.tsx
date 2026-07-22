@@ -14,13 +14,13 @@ import {
 import * as React from 'react';
 
 /**
- * قالب رمز التحقق من البريد الإلكتروني
+ * قالب Verification code من البريد الإلكتروني
  */
 export function VerificationEmail({ code }: { code: string }) {
   return (
-    <Html dir="rtl" lang="ar">
+    <Html dir="ltr" lang="en">
       <Head />
-      <Preview>رمز التحقق الخاص بك في CryptoBooks</Preview>
+      <Preview>Verification code الخاص بك في CryptoBooks</Preview>
       <Body style={mainStyle}>
         <Container style={containerStyle}>
           {/* Header */}
@@ -33,10 +33,10 @@ export function VerificationEmail({ code }: { code: string }) {
 
           {/* Content */}
           <Section style={contentStyle}>
-            <Heading style={headingStyle}>تحقق من بريدك الإلكتروني</Heading>
+            <Heading style={headingStyle}>Verify your email الإلكتروني</Heading>
             <Text style={paragraphStyle}>
-              شكراً لتسجيلك في CryptoBooks! لإكمال تفعيل تنبيهات البريد الإلكتروني،
-              يرجى إدخال رمز التحقق التالي:
+              شكراً لتسجيلك في CryptoBooks! لإكمال تفعيل Alertات البريد الإلكتروني،
+              يرجى إدخال Verification code التالي:
             </Text>
 
             {/* Verification Code Box */}

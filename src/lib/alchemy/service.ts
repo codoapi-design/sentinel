@@ -18,6 +18,7 @@ import type {
   TransactionType,
   TransactionDirection,
 } from '@/lib/blockchain/types';
+import { classifySyncedTransaction } from '@/lib/finance/classify';
 
 // ============================================================
 // Network Configuration
@@ -35,70 +36,70 @@ export const NETWORKS: Record<string, NetworkConfig> = {
   ethereum: {
     alchemyNetwork: Network.ETH_MAINNET,
     name: 'Ethereum',
-    nameAr: 'إيثريوم',
+    nameAr: 'Ethereum',
     nativeCurrency: 'ETH',
     chainId: 1,
   },
   base: {
     alchemyNetwork: Network.BASE_MAINNET,
     name: 'Base',
-    nameAr: 'بيس',
+    nameAr: 'Base',
     nativeCurrency: 'ETH',
     chainId: 8453,
   },
   arbitrum: {
     alchemyNetwork: Network.ARB_MAINNET,
     name: 'Arbitrum',
-    nameAr: 'أربيتروم',
+    nameAr: 'Arbitrum',
     nativeCurrency: 'ETH',
     chainId: 42161,
   },
   optimism: {
     alchemyNetwork: Network.OPT_MAINNET,
     name: 'OP Mainnet',
-    nameAr: 'أوبتيميزم',
+    nameAr: 'Optimism',
     nativeCurrency: 'ETH',
     chainId: 10,
   },
   polygon: {
     alchemyNetwork: Network.MATIC_MAINNET,
     name: 'Polygon',
-    nameAr: 'بوليغون',
+    nameAr: 'Polygon',
     nativeCurrency: 'MATIC',
     chainId: 137,
   },
   bsc: {
     alchemyNetwork: Network.BNB_MAINNET,
     name: 'BNB Smart Chain',
-    nameAr: 'بي إن بي',
+    nameAr: 'BNB Chain',
     nativeCurrency: 'BNB',
     chainId: 56,
   },
   linea: {
     alchemyNetwork: Network.LINEA_MAINNET,
     name: 'Linea',
-    nameAr: 'لينيا',
+    nameAr: 'Linea',
     nativeCurrency: 'ETH',
     chainId: 59144,
   },
   hyperliquid: {
     alchemyNetwork: Network.HYPERLIQUID_MAINNET,
     name: 'HyperEVM',
-    nameAr: 'هايبريفي إم',
+    nameAr: 'HyperEVM',
     nativeCurrency: 'HYPE',
     chainId: 999,
   },
   monad: {
     alchemyNetwork: null,
     name: 'Monad',
-    nameAr: 'موناد',
+    nameAr: 'Monad',
     nativeCurrency: 'MON',
     chainId: 143,
   },
   arc: {
     alchemyNetwork: null,
     name: 'Arc Testnet',
-    nameAr: 'آرك',
+    nameAr: 'Arc',
     nativeCurrency: 'USDC',
     chainId: 5042002,
   },
@@ -542,14 +543,14 @@ function createFallbackClassification(
     : 0;
 
   const TYPE_LABELS_AR: Record<string, string> = {
-    income: 'إيراد',
-    expense: 'مصروف',
-    trade: 'تداول',
+    income: 'Income',
+    expense: 'Expense',
+    trade: 'Trade',
     defi: 'DeFi',
     staking: 'Staking Reward',
-    gas: 'رسوم غاز',
+    gas: 'Gas Fees',
     nft: 'NFT',
-    bridge: 'جسر',
+    bridge: 'Bridge',
   };
 
   return {
@@ -818,7 +819,12 @@ export async function fetchAlchemyChainBalances(
 
 /**
  * Fetch asset transfers via Alchemy JSON-RPC and normalize to WalletTransaction[].
- * Paginates up to maxPages for in+out to stay within sync route timeouts.
+ *
+ * By default paginates up to `maxPages` (5) with a ~1M-block lookback for light UI
+ * fetches. Pass `exhaustAll: true` to walk every pageKey until exhausted and start
+ * from block 0 (or `startBlock`) for full wallet history sync.
+ *
+ * Alchemy `maxCount` per request is capped at 1000.
  */
 export async function fetchAlchemyTransfersAsWalletTxs(
   walletAddress: string,
@@ -827,18 +833,26 @@ export async function fetchAlchemyTransfersAsWalletTxs(
     startBlock?: number;
     pageSize?: number;
     maxPages?: number;
+    /** Walk all pages / full fromBlock range (full history sync). */
+    exhaustAll?: boolean;
   } = {},
 ): Promise<WalletTransaction[]> {
   const networkKeyRaw = chainIdToAlchemyNetworkKey(chainId);
   if (!networkKeyRaw || !isAlchemyConfigured()) return [];
   const networkKey: string = networkKeyRaw;
 
-  const pageSize = options.pageSize ?? 100;
-  const maxPages = options.maxPages ?? 5;
+  const exhaustAll = options.exhaustAll === true;
+  // Alchemy getAssetTransfers maxCount max is 1000
+  const pageSize = Math.min(options.pageSize ?? 100, 1000);
+  const maxPages = exhaustAll
+    ? (options.maxPages ?? 10_000) // safety valve against infinite pageKey loops
+    : (options.maxPages ?? 5);
 
   let fromBlock: string;
   if (options.startBlock && options.startBlock > 0) {
     fromBlock = `0x${options.startBlock.toString(16)}`;
+  } else if (exhaustAll) {
+    fromBlock = '0x0';
   } else {
     try {
       const blockHex = await alchemyRpc<string>(networkKey, 'eth_blockNumber', []);
@@ -888,8 +902,9 @@ export async function fetchAlchemyTransfersAsWalletTxs(
           'alchemy_getAssetTransfers',
           [filter],
         );
-        allTransfers.push(...(result?.transfers || []));
-        if (!result?.pageKey) break;
+        const batch = result?.transfers || [];
+        allTransfers.push(...batch);
+        if (!result?.pageKey || batch.length === 0) break;
         pageKey = result.pageKey;
       } catch (err) {
         console.warn(`[Alchemy] getAssetTransfers ${direction} failed:`, err);
@@ -984,30 +999,32 @@ export async function fetchAlchemyTransfersAsWalletTxs(
     const blockNumber =
       typeof primary.blockNum === 'string' ? parseInt(primary.blockNum, 16) : 0;
 
-    transactions.push({
-      hash,
-      from: primary.from || '',
-      to: primary.to || '',
-      value: nativeValueWei,
-      valueEth: nativeValueEth,
-      gasFee: '0',
-      gasFeeEth: 0,
-      timestamp: ts > 1e12 ? Math.floor(ts / 1000) : ts,
-      date,
-      type,
-      direction,
-      status: 'confirmed',
-      chain: networkKey,
-      chainId,
-      blockNumber,
-      methodId: null,
-      methodName: null,
-      protocol: null,
-      tokenTransfers,
-      priceUsd: null,
-      valueUsd: null,
-      provider: 'alchemy',
-    });
+    transactions.push(
+      classifySyncedTransaction({
+        hash,
+        from: primary.from || '',
+        to: primary.to || '',
+        value: nativeValueWei,
+        valueEth: nativeValueEth,
+        gasFee: '0',
+        gasFeeEth: 0,
+        timestamp: ts > 1e12 ? Math.floor(ts / 1000) : ts,
+        date,
+        type,
+        direction,
+        status: 'confirmed',
+        chain: networkKey,
+        chainId,
+        blockNumber,
+        methodId: null,
+        methodName: null,
+        protocol: null,
+        tokenTransfers,
+        priceUsd: null,
+        valueUsd: null,
+        provider: 'alchemy',
+      }),
+    );
   }
 
   transactions.sort((a, b) => b.timestamp - a.timestamp);

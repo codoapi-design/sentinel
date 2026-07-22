@@ -24,60 +24,60 @@ export interface ProtocolInfo {
 // Mainnet contract addresses (lowercase for matching)
 const PROTOCOL_DB: Record<string, ProtocolInfo> = {
   // Uniswap
-  '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45': { name: 'Uniswap V3 Router', nameAr: 'يونيسواب V3', type: 'trade' },
-  '0xe592427a0aece92de3edee1f18e0157c05861564': { name: 'Uniswap V3 SwapRouter', nameAr: 'يونيسواب V3', type: 'trade' },
-  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad': { name: 'Uniswap Universal Router', nameAr: 'يونيسواب', type: 'trade' },
+  '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45': { name: 'Uniswap V3 Router', nameAr: 'Uniswap V3 Router', type: 'trade' },
+  '0xe592427a0aece92de3edee1f18e0157c05861564': { name: 'Uniswap V3 SwapRouter', nameAr: 'Uniswap V3 SwapRouter', type: 'trade' },
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad': { name: 'Uniswap Universal Router', nameAr: 'Uniswap Universal Router', type: 'trade' },
 
   // SushiSwap
-  '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f': { name: 'SushiSwap Router', nameAr: 'سوشي سواب', type: 'trade' },
-  '0x1b02da8cb0d097eb8d57a175b8817e87f2e0f5d3': { name: 'SushiSwap Router V2', nameAr: 'سوشي سواب', type: 'trade' },
+  '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f': { name: 'SushiSwap Router', nameAr: 'SushiSwap Router', type: 'trade' },
+  '0x1b02da8cb0d097eb8d57a175b8817e87f2e0f5d3': { name: 'SushiSwap Router V2', nameAr: 'SushiSwap Router V2', type: 'trade' },
 
   // 1inch
-  '0x1111111254eeb25477b68fb85ed929f73a960582': { name: '1inch Router', nameAr: '1إنش', type: 'trade' },
-  '0x111111125421ca6dc452d289314280a0f8842a65': { name: '1inch Router V5', nameAr: '1إنش', type: 'trade' },
+  '0x1111111254eeb25477b68fb85ed929f73a960582': { name: '1inch Router', nameAr: '1inch Router', type: 'trade' },
+  '0x111111125421ca6dc452d289314280a0f8842a65': { name: '1inch Router V5', nameAr: '1inch Router V5', type: 'trade' },
 
   // Curve
-  '0x7a250d5630b4cf539739df2c5dacb4c659f2488d': { name: 'Curve Registry', nameAr: 'كيرف', type: 'trade' },
-  '0x99a58482bd75cbab83b27ec03ca68ff489b5788f': { name: 'Curve Address Provider', nameAr: 'كيرف', type: 'trade' },
+  '0x7a250d5630b4cf539739df2c5dacb4c659f2488d': { name: 'Curve Registry', nameAr: 'Curve Registry', type: 'trade' },
+  '0x99a58482bd75cbab83b27ec03ca68ff489b5788f': { name: 'Curve Address Provider', nameAr: 'Curve Address Provider', type: 'trade' },
 
   // Paraswap
-  '0xdef171fe48cf0115b1d80b88dc8eab59176fee57': { name: 'ParaSwap Router', nameAr: 'باراسواب', type: 'trade' },
+  '0xdef171fe48cf0115b1d80b88dc8eab59176fee57': { name: 'ParaSwap Router', nameAr: 'ParaSwap Router', type: 'trade' },
 
   // Aave
-  '0x7d2768de32b0b80b7a3454c06bdac94a69ddc7a9': { name: 'Aave Lending Pool V2', nameAr: 'آيف', type: 'defi' },
-  '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2': { name: 'Aave Pool V3', nameAr: 'آيف V3', type: 'defi' },
-  '0x8164cc65827dcfe994ab23944cbc90e0aa80bfcb': { name: 'Aave WETH Gateway', nameAr: 'آيف', type: 'defi' },
+  '0x7d2768de32b0b80b7a3454c06bdac94a69ddc7a9': { name: 'Aave Lending Pool V2', nameAr: 'Aave Lending Pool V2', type: 'defi' },
+  '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2': { name: 'Aave Pool V3', nameAr: 'Aave Pool V3', type: 'defi' },
+  '0x8164cc65827dcfe994ab23944cbc90e0aa80bfcb': { name: 'Aave WETH Gateway', nameAr: 'Aave WETH Gateway', type: 'defi' },
 
   // Compound
-  '0x3d9819210a31b4961b30ef54be2aed79b9c9cd3b': { name: 'Comptroller', nameAr: 'كومباوند', type: 'defi' },
-  '0x39aa39c021dfbae8fac545936693ac917d5e7563': { name: 'cUSDC', nameAr: 'كومباوند', type: 'defi' },
-  '0x5d3a536e4d6dbd6114cc1ead35777bab948e3643': { name: 'cDAI', nameAr: 'كومباوند', type: 'defi' },
-  '0x4ddc2d193948926d02f9b1fe9e1daa0718270ed5': { name: 'cETH', nameAr: 'كومباوند', type: 'defi' },
+  '0x3d9819210a31b4961b30ef54be2aed79b9c9cd3b': { name: 'Comptroller', nameAr: 'Comptroller', type: 'defi' },
+  '0x39aa39c021dfbae8fac545936693ac917d5e7563': { name: 'cUSDC', nameAr: 'cUSDC', type: 'defi' },
+  '0x5d3a536e4d6dbd6114cc1ead35777bab948e3643': { name: 'cDAI', nameAr: 'cDAI', type: 'defi' },
+  '0x4ddc2d193948926d02f9b1fe9e1daa0718270ed5': { name: 'cETH', nameAr: 'cETH', type: 'defi' },
 
   // Lido
-  '0xae7ab96520de3a18e5e111b5eaab095312d7fe84': { name: 'Lido StETH', nameAr: 'ليدو', type: 'staking' },
-  '0x1719b35ac1e0f2e2443b4e6b3e7e5c5d5e7f8e9a': { name: 'Lido Withdrawal', nameAr: 'ليدو', type: 'staking' },
+  '0xae7ab96520de3a18e5e111b5eaab095312d7fe84': { name: 'Lido StETH', nameAr: 'Lido StETH', type: 'staking' },
+  '0x1719b35ac1e0f2e2443b4e6b3e7e5c5d5e7f8e9a': { name: 'Lido Withdrawal', nameAr: 'Lido Withdrawal', type: 'staking' },
 
   // MakerDAO
-  '0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2': { name: 'MKR Token', nameAr: 'ميكر داو', type: 'defi' },
+  '0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2': { name: 'MKR Token', nameAr: 'MKR Token', type: 'defi' },
 
   // Balancer
-  '0xba12222222228d8ba445958a75a0704d566bf2c8': { name: 'Balancer Vault', nameAr: 'بالانسر', type: 'defi' },
+  '0xba12222222228d8ba445958a75a0704d566bf2c8': { name: 'Balancer Vault', nameAr: 'Balancer Vault', type: 'defi' },
 
   // Rocket Pool
-  '0xdd32650c4ca425e13d2e17e6f3e5f95e5886c0fd': { name: 'Rocket Pool Deposit', nameAr: 'روكيت بول', type: 'staking' },
+  '0xdd32650c4ca425e13d2e17e6f3e5f95e5886c0fd': { name: 'Rocket Pool Deposit', nameAr: 'Rocket Pool Deposit', type: 'staking' },
 
   // Yearn
-  '0x0000000022d53366457f9d5e68ec105046fc4383': { name: 'Yearn Registry', nameAr: 'ييرن', type: 'defi' },
+  '0x0000000022d53366457f9d5e68ec105046fc4383': { name: 'Yearn Registry', nameAr: 'Yearn Registry', type: 'defi' },
 
   // USDC / USDT / DAI contracts (often interacted with for approvals/transfers)
-  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { name: 'USDC', nameAr: 'خزينة USDC', type: 'trade' },
-  '0xdac17f958d2ee523a2206206994597c13d831ec7': { name: 'USDT', nameAr: 'خزينة USDT', type: 'trade' },
-  '0x6b175474e89094c44da98b954eedeac495271d0f': { name: 'DAI', nameAr: 'عقد DAI', type: 'trade' },
+  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { name: 'USDC', nameAr: 'USDC', type: 'trade' },
+  '0xdac17f958d2ee523a2206206994597c13d831ec7': { name: 'USDT', nameAr: 'USDT', type: 'trade' },
+  '0x6b175474e89094c44da98b954eedeac495271d0f': { name: 'DAI', nameAr: 'DAI', type: 'trade' },
 
   // NFT marketplaces
-  '0x7be8076f4ea4a4ad08075c2508e481d6c946d12b': { name: 'OpenSea Seaport', nameAr: 'أوبن سي', type: 'nft' },
-  '0x00000000006c3852cbef3e08e8df289169ede581': { name: 'Seaport 1.1', nameAr: 'سيبورت', type: 'nft' },
+  '0x7be8076f4ea4a4ad08075c2508e481d6c946d12b': { name: 'OpenSea Seaport', nameAr: 'OpenSea Seaport', type: 'nft' },
+  '0x00000000006c3852cbef3e08e8df289169ede581': { name: 'Seaport 1.1', nameAr: 'Seaport 1.1', type: 'nft' },
 };
 
 // ============================================================
@@ -201,18 +201,18 @@ export interface TokenTransfer {
 }
 
 // ============================================================
-// Arabic Labels
+// Type labels (English)
 // ============================================================
 
 const TYPE_LABELS_AR: Record<TransactionType, string> = {
-  income: 'إيراد',
-  expense: 'مصروف',
-  trade: 'تداول',
+  income: 'Income',
+  expense: 'Expense',
+  trade: 'Trade',
   defi: 'DeFi',
   staking: 'Staking Reward',
-  gas: 'رسوم غاز',
+  gas: 'Gas Fees',
   nft: 'NFT',
-  bridge: 'جسر',
+  bridge: 'Bridge',
 };
 
 // ============================================================
@@ -250,7 +250,7 @@ export function classifyTransaction(params: {
   network?: string;
   networkAr?: string;
 }): ClassifiedTransaction {
-  const { tx, receipt, assetTransfers, userAddress, network = 'ethereum', networkAr = 'إيثريوم' } = params;
+  const { tx, receipt, assetTransfers, userAddress, network = 'ethereum', networkAr = 'Ethereum' } = params;
   const userAddr = userAddress.toLowerCase();
   const txFrom = tx.from.toLowerCase();
   const txTo = (tx.to || '').toLowerCase();
@@ -327,7 +327,7 @@ export function classifyTransaction(params: {
   if (topics0.includes(SWAP_EVENT_SIG) || topics0.includes(SWAP_V3_EVENT_SIG)) {
     classifiedType = 'trade';
     if (!protocol) protocol = 'DEX Swap';
-    if (!protocolAr) protocolAr = 'تداول لامركزي';
+    if (!protocolAr) protocolAr = 'DEX';
   } else if (topics0.includes(DEPOSIT_EVENT_SIG) || topics0.includes(WITHDRAW_EVENT_SIG)) {
     if (!classifiedType || classifiedType === 'trade') {
       classifiedType = 'defi';

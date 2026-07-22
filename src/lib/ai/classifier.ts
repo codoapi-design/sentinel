@@ -1,36 +1,36 @@
 /**
- * خدمة التصنيف بالذكاء الاصطناعي — CryptoBooks Enterprise
+ *     — CryptoBooks Enterprise
  *
- * تستخدم نماذج اللغة الكبيرة (LLM) عبر z-ai-web-dev-sdk لتصنيف
- * المعاملات غير المصنفة بدقة عالية. تشمل تصنيفات متقدمة مثل:
+ *     (LLM)  z-ai-web-dev-sdk 
+ *     .    :
  * NFT mint/sale, Bridge, Airdrop, Governance, Liquidation,
- * Flash Loan, Rebase, Multi-sig, وغيرها.
- * تتضمن نظام احتياطي (fallback) للتصنيف القائم على القواعد.
+ * Flash Loan, Rebase, Multi-sig, .
+ *    (fallback)    .
  */
 
 import ZAI from 'z-ai-web-dev-sdk';
 
 // ============================================================
-// أنواع البيانات
+//  
 // ============================================================
 
 /**
- * معاملة غير مصنفة — بيانات خام من البلوكتشين
+ *    —    
  */
 export interface UnclassifiedTransaction {
-  /** تجزئة المعاملة */
+  /**   */
   txHash: string;
-  /** عنوان المرسل */
+  /**   */
   from: string;
-  /** عنوان المستقبل */
+  /**   */
   to: string;
-  /** القيمة (بالـ wei أو الوحدة الأصلية) */
+  /**  ( wei   ) */
   value: string;
-  /** بيانات المعاملة (calldata) */
+  /**   (calldata) */
   data: string;
-  /** الشبكة */
+  /**  */
   network: string;
-  /** سجلات الأحداث (logs) */
+  /**   (logs) */
   logs?: Array<{
     address: string;
     topics: string[];
@@ -39,82 +39,82 @@ export interface UnclassifiedTransaction {
 }
 
 /**
- * نتيجة التصنيف بالذكاء الاصطناعي
+ *    
  */
 export interface AIClassificationResult {
-  /** نوع المعاملة بالإنجليزية */
+  /**    */
   type: string;
-  /** نوع المعاملة بالعربية */
+  /**    */
   typeAr: string;
-  /** النوع الفرعي بالإنجليزية */
+  /**    */
   subType: string | null;
-  /** النوع الفرعي بالعربية */
+  /**    */
   subTypeAr: string | null;
-  /** البروتوكول بالإنجليزية */
+  /**   */
   protocol: string | null;
-  /** البروتوكول بالعربية */
+  /**   */
   protocolAr: string | null;
-  /** درجة الثقة (0-1) */
+  /**   (0-1) */
   confidence: number;
-  /** التفسير بالإنجليزية */
+  /**   */
   explanation: string;
-  /** التفسير بالعربية */
+  /**   */
   explanationAr: string;
 }
 
 // ============================================================
-// ثوابت — أنواع التصنيف المدعومة
+//  —   
 // ============================================================
 
-/** أنواع التصنيف القياسية */
+/**    */
 const STANDARD_TYPES: Record<string, { en: string; ar: string }> = {
-  income: { en: 'income', ar: 'إيراد' },
-  expense: { en: 'expense', ar: 'مصروف' },
-  trade: { en: 'trade', ar: 'تداول' },
+  income: { en: 'income', ar: 'Income' },
+  expense: { en: 'expense', ar: 'Expense' },
+  trade: { en: 'trade', ar: 'Trade' },
   defi: { en: 'defi', ar: 'DeFi' },
   staking: { en: 'staking', ar: 'Staking Reward' },
-  gas: { en: 'gas', ar: 'رسوم غاز' },
+  gas: { en: 'gas', ar: 'Gas Fees' },
 };
 
-/** أنواع التصنيف المتقدمة (Enterprise) */
+/**    (Enterprise) */
 const ADVANCED_TYPES: Record<string, { en: string; ar: string }> = {
-  nft_mint: { en: 'nft_mint', ar: 'سك NFT' },
-  nft_sale: { en: 'nft_sale', ar: 'بيع NFT' },
-  bridge: { en: 'bridge', ar: 'جسر' },
-  airdrop: { en: 'airdrop', ar: 'إيردروب' },
-  governance: { en: 'governance', ar: 'حوكمة' },
-  liquidation: { en: 'liquidation', ar: 'تصفية' },
-  flash_loan: { en: 'flash_loan', ar: 'قرض فلاش' },
-  rebase: { en: 'rebase', ar: 'ريبيس' },
-  multi_sig: { en: 'multi_sig', ar: 'توقيع متعدد' },
-  contract_interaction: { en: 'contract_interaction', ar: 'تفاعل مع عقد' },
+  nft_mint: { en: 'nft_mint', ar: 'nft_mint' },
+  nft_sale: { en: 'nft_sale', ar: 'nft_sale' },
+  bridge: { en: 'bridge', ar: 'Bridge' },
+  airdrop: { en: 'airdrop', ar: 'airdrop' },
+  governance: { en: 'governance', ar: 'governance' },
+  liquidation: { en: 'liquidation', ar: 'liquidation' },
+  flash_loan: { en: 'flash_loan', ar: 'flash_loan' },
+  rebase: { en: 'rebase', ar: 'rebase' },
+  multi_sig: { en: 'multi_sig', ar: 'multi_sig' },
+  contract_interaction: { en: 'contract_interaction', ar: 'contract_interaction' },
 };
 
-/** دمج جميع الأنواع */
+/**    */
 const ALL_TYPES = { ...STANDARD_TYPES, ...ADVANCED_TYPES };
 
 // ============================================================
-// دالة التحقق من توفر الذكاء الاصطناعي
+//      
 // ============================================================
 
 /**
- * التحقق من أن خدمة تصنيف الذكاء الاصطناعي متاحة
- * @returns true إذا كان مفتاح API متاحاً
+ *        
+ * @returns true    API 
  */
 export function isAIClassificationAvailable(): boolean {
-  // في بيئة الخادم، يمكننا دائماً إنشاء مثيل z-ai-web-dev-sdk
-  // لأنه لا يتطلب مفتاح API صريح
+  //        z-ai-web-dev-sdk
+  //     API 
   return true;
 }
 
 // ============================================================
-// التصنيف بالذكاء الاصطناعي
+//   
 // ============================================================
 
 /**
- * تصنيف معاملة واحدة باستخدام الذكاء الاصطناعي
- * @param transaction المعاملة غير المصنفة
- * @returns نتيجة التصنيف
+ *      
+ * @param transaction   
+ * @returns  
  */
 export async function classifyWithAI(
   transaction: UnclassifiedTransaction,
@@ -122,7 +122,7 @@ export async function classifyWithAI(
   try {
     const zai = await ZAI.create();
 
-    // بناء الرسالة النظامية
+    //   
     const systemPrompt = `You are a blockchain transaction classifier for a crypto accounting platform. 
 Classify the given transaction into one of these categories:
 - income: Incoming transfer (native or ERC-20)
@@ -153,7 +153,7 @@ Respond in JSON format only:
   "explanation": "brief explanation in English"
 }`;
 
-    // بناء رسالة المستخدم مع بيانات المعاملة
+    //      
     const userPrompt = `Classify this blockchain transaction:
 
 Transaction Hash: ${transaction.txHash}
@@ -179,18 +179,18 @@ ${transaction.logs.slice(0, 5).map((log, i) =>
       max_tokens: 500,
     });
 
-    // تحليل الاستجابة
+    //  
     const content = completion.choices?.[0]?.message?.content || '';
 
-    // محاولة استخراج JSON من الاستجابة
+    //   JSON  
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return fallbackClassification(transaction, 'فشل تحليل استجابة الذكاء الاصطناعي');
+      return fallbackClassification(transaction, '    ');
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // الحصول على التسمية العربية
+    //    
     const typeInfo = ALL_TYPES[parsed.type] || ALL_TYPES.contract_interaction;
 
     return {
@@ -205,25 +205,25 @@ ${transaction.logs.slice(0, 5).map((log, i) =>
       explanationAr: translateExplanation(parsed.explanation || ''),
     };
   } catch (error) {
-    console.error('خطأ في تصنيف الذكاء الاصطناعي:', error);
+    console.error('    :', error);
     return fallbackClassification(
       transaction,
-      error instanceof Error ? error.message : 'خطأ غير معروف',
+      error instanceof Error ? error.message : '  ',
     );
   }
 }
 
 /**
- * تصنيف مجموعة معاملات دفعة واحدة باستخدام الذكاء الاصطناعي
- * @param transactions قائمة المعاملات غير المصنفة
- * @returns قائمة نتائج التصنيف
+ *        
+ * @param transactions    
+ * @returns   
  */
 export async function batchClassifyWithAI(
   transactions: UnclassifiedTransaction[],
 ): Promise<AIClassificationResult[]> {
   const results: AIClassificationResult[] = [];
 
-  // معالجة كل معاملة على حدة (يمكن تحسينها بالمعالجة المتوازية لاحقاً)
+  //      (    )
   for (const tx of transactions) {
     const result = await classifyWithAI(tx);
     results.push(result);
@@ -233,14 +233,14 @@ export async function batchClassifyWithAI(
 }
 
 // ============================================================
-// التصنيف الاحتياطي (Rule-based Fallback)
+//   (Rule-based Fallback)
 // ============================================================
 
 /**
- * تصنيف احتياطي قائم على القواعد عند فشل الذكاء الاصطناعي
- * @param transaction المعاملة غير المصنفة
- * @param errorReason سبب فشل التصنيف بالذكاء الاصطناعي
- * @returns نتيجة التصنيف الاحتياطية
+ *         
+ * @param transaction   
+ * @param errorReason     
+ * @returns   
  */
 function fallbackClassification(
   transaction: UnclassifiedTransaction,
@@ -250,12 +250,12 @@ function fallbackClassification(
   let confidence = 0.3;
   let explanation = `Rule-based classification (AI fallback: ${errorReason})`;
 
-  // قواعد بسيطة للتصنيف
+  //   
   const dataLower = (transaction.data || '').toLowerCase();
 
-  // التحقق من وجود بيانات معاملة
+  //     
   if (!transaction.data || transaction.data === '0x' || dataLower === '0x') {
-    // تحويل بسيط بدون بيانات → إيراد أو مصروف
+    //     →   
     if (transaction.value && transaction.value !== '0' && transaction.value !== '0x0') {
       type = 'expense';
       confidence = 0.5;
@@ -296,7 +296,7 @@ function fallbackClassification(
     confidence = 0.5;
     explanation = 'Possible contract deployment or complex interaction';
   } else {
-    // تحقق من السجلات
+    //   
     if (transaction.logs && transaction.logs.length > 0) {
       const hasTransferLog = transaction.logs.some(
         log => log.topics[0]?.toLowerCase() === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
@@ -316,7 +316,7 @@ function fallbackClassification(
       }
     }
 
-    // إذا لم يتم التعرف، صنف كتفاعل مع عقد
+    //        
     if (type === 'contract_interaction' && confidence < 0.4) {
       explanation = 'Unclassified contract interaction (fallback classification)';
     }
@@ -338,77 +338,77 @@ function fallbackClassification(
 }
 
 // ============================================================
-// دوال الترجمة
+//  
 // ============================================================
 
-/** ترجمة الأنواع الفرعية */
+/**    */
 function translateSubType(subType: string): string {
   const translations: Record<string, string> = {
-    'swap': 'مبادلة',
-    'deposit': 'إيداع',
-    'withdraw': 'سحب',
-    'borrow': 'اقتراض',
-    'repay': 'سداد',
-    'stake': 'تخزين',
-    'unstake': 'إلغاء التخزين',
-    'claim': 'استلام',
-    'mint': 'سك',
-    'burn': 'حرق',
-    'approve': 'اعتماد',
-    'delegate': 'تفويض',
-    'vote': 'تصويت',
-    'execute': 'تنفيذ',
-    'propose': 'اقتراح',
+    'swap': '',
+    'deposit': '',
+    'withdraw': '',
+    'borrow': '',
+    'repay': '',
+    'stake': '',
+    'unstake': ' ',
+    'claim': '',
+    'mint': '',
+    'burn': '',
+    'approve': '',
+    'delegate': '',
+    'vote': '',
+    'execute': '',
+    'propose': '',
   };
   return translations[subType.toLowerCase()] || subType;
 }
 
-/** ترجمة أسماء البروتوكولات */
+/**    */
 function translateProtocol(protocol: string): string {
   const translations: Record<string, string> = {
-    'uniswap': 'يونيسواب',
-    'uniswap v2': 'يونيسواب V2',
-    'uniswap v3': 'يونيسواب V3',
-    'sushiswap': 'سوشي سواب',
-    '1inch': '1إنش',
-    'curve': 'كيرف',
-    'aave': 'آيف',
-    'compound': 'كومباوند',
-    'lido': 'ليدو',
-    'makerdao': 'ميكر داو',
-    'balancer': 'بالانسر',
-    'yearn': 'ييرن',
-    'opensea': 'أوبن سي',
-    'looksRare': 'لوكس رير',
-    'blur': 'بلر',
-    'paraswap': 'باراسواب',
-    'rocket pool': 'روكيت بول',
-    'arbitrum bridge': 'جسر أربيتروم',
-    'optimism bridge': 'جسر أوبتيميزم',
+    'uniswap': '',
+    'uniswap v2': ' V2',
+    'uniswap v3': ' V3',
+    'sushiswap': ' ',
+    '1inch': '1',
+    'curve': '',
+    'aave': '',
+    'compound': '',
+    'lido': '',
+    'makerdao': ' ',
+    'balancer': '',
+    'yearn': '',
+    'opensea': ' ',
+    'looksRare': ' ',
+    'blur': '',
+    'paraswap': '',
+    'rocket pool': ' ',
+    'arbitrum bridge': ' ',
+    'optimism bridge': ' ',
   };
   return translations[protocol.toLowerCase()] || protocol;
 }
 
-/** ترجمة التفسير من الإنجليزية للعربية (تبسيط) */
+/**      () */
 function translateExplanation(explanation: string): string {
-  if (!explanation) return 'لا يوجد تفسير متاح';
+  if (!explanation) return '   ';
 
-  // ترجمات بسيطة للمصطلحات الشائعة
+  //    
   const replacements: Array<[string, string]> = [
-    ['transaction', 'معاملة'],
-    ['swap', 'مبادلة'],
-    ['transfer', 'تحويل'],
-    ['deposit', 'إيداع'],
-    ['withdraw', 'سحب'],
-    ['staking', 'تخزين'],
-    ['bridge', 'جسر'],
-    ['airdrop', 'إيردروب'],
-    ['NFT', 'رمز غير قابل للاستبدال'],
-    ['detected', 'تم الكشف عن'],
-    ['classified as', 'تم تصنيفها كـ'],
-    ['No explanation', 'لا يوجد تفسير'],
-    ['fallback', 'احتياطي'],
-    ['rule-based', 'قائم على القواعد'],
+    ['transaction', ''],
+    ['swap', ''],
+    ['transfer', ''],
+    ['deposit', ''],
+    ['withdraw', ''],
+    ['staking', ''],
+    ['bridge', ''],
+    ['airdrop', ''],
+    ['NFT', '   '],
+    ['detected', '  '],
+    ['classified as', '  '],
+    ['No explanation', '  '],
+    ['fallback', ''],
+    ['rule-based', '  '],
   ];
 
   let translated = explanation;

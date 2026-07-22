@@ -16,6 +16,8 @@
  */
 
 import { createServerClient } from '@/lib/supabase/server';
+import { classifySyncedTransaction } from '@/lib/finance/classify';
+import { resolveTypeLabelAr } from '@/lib/finance/summary';
 import type {
   CacheDataType,
   CacheEntry,
@@ -298,40 +300,43 @@ export class BlockchainCache {
     try {
       const supabase = createServerClient();
 
-      const rows = transactions.map(tx => ({
-        wallet_id: walletId,
-        tx_hash: tx.hash,
-        block_number: tx.blockNumber,
-        timestamp: tx.timestamp,
-        date: tx.date,
-        from_addr: tx.from,
-        to_addr: tx.to,
-        value_wei: tx.value,
-        value_eth: tx.valueEth,
-        gas_used: 0,
-        gas_price_wei: tx.gasFee,
-        gas_fee_eth: tx.gasFeeEth,
-        status: tx.status === 'confirmed',
-        type: tx.type,
-        type_ar: tx.type,
-        direction: tx.direction,
-        method_id: tx.methodId,
-        method_name: tx.methodName,
-        protocol: tx.protocol,
-        protocol_ar: null,
-        network: tx.chain,
-        network_ar: tx.chain,
-        token_symbol: tx.tokenTransfers[0]?.tokenSymbol || null,
-        token_name: tx.tokenTransfers[0]?.tokenName || null,
-        token_address: tx.tokenTransfers[0]?.tokenAddress || null,
-        token_value: tx.tokenTransfers[0]?.valueFormatted || 0,
-        token_decimals: tx.tokenTransfers[0]?.decimals || 18,
-        value_usd: tx.valueUsd ?? (tx.tokenTransfers[0]?.valueUsd ?? 0),
-        price_usd: tx.priceUsd ?? (tx.tokenTransfers[0]?.priceUsd ?? 0),
-        counterparty: tx.direction === 'in' ? tx.from : tx.to,
-        counterparty_label: tx.protocol || null,
-        raw_data: { tokenTransfers: tx.tokenTransfers, provider } as unknown as Json,
-      }));
+      const rows = transactions.map(tx => {
+        const classified = classifySyncedTransaction(tx);
+        return {
+          wallet_id: walletId,
+          tx_hash: classified.hash,
+          block_number: classified.blockNumber,
+          timestamp: classified.timestamp,
+          date: classified.date,
+          from_addr: classified.from,
+          to_addr: classified.to,
+          value_wei: classified.value,
+          value_eth: classified.valueEth,
+          gas_used: 0,
+          gas_price_wei: classified.gasFee,
+          gas_fee_eth: classified.gasFeeEth,
+          status: classified.status === 'confirmed',
+          type: classified.type,
+          type_ar: classified.typeAr || resolveTypeLabelAr(classified.type),
+          direction: classified.direction,
+          method_id: classified.methodId,
+          method_name: classified.methodName,
+          protocol: classified.protocol,
+          protocol_ar: classified.protocolAr,
+          network: classified.chain,
+          network_ar: classified.chain,
+          token_symbol: classified.tokenTransfers[0]?.tokenSymbol || null,
+          token_name: classified.tokenTransfers[0]?.tokenName || null,
+          token_address: classified.tokenTransfers[0]?.tokenAddress || null,
+          token_value: classified.tokenTransfers[0]?.valueFormatted || 0,
+          token_decimals: classified.tokenTransfers[0]?.decimals || 18,
+          value_usd: classified.valueUsd ?? (classified.tokenTransfers[0]?.valueUsd ?? 0),
+          price_usd: classified.priceUsd ?? (classified.tokenTransfers[0]?.priceUsd ?? 0),
+          counterparty: classified.direction === 'in' ? classified.from : classified.to,
+          counterparty_label: classified.protocol || classified.protocolAr || null,
+          raw_data: { tokenTransfers: classified.tokenTransfers, provider } as unknown as Json,
+        };
+      });
 
       const batchSize = 50;
       for (let i = 0; i < rows.length; i += batchSize) {

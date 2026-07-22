@@ -14,6 +14,11 @@ import {
   type Transaction,
 } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import {
+  computeFinancialSummary,
+} from '@/lib/finance/summary';
+import { TablePagination } from '@/components/table-pagination';
+import { useTablePagination } from '@/hooks/use-table-pagination';
 
 interface NetworksSectionProps {
   transactions: Transaction[];
@@ -43,66 +48,53 @@ const networkColors: Record<string, string> = {
 };
 
 export function NetworksSection({ transactions, onNetworkClick }: NetworksSectionProps) {
-  // Build network stats from transactions
   const networkStats = useMemo((): NetworkStats[] => {
-    const statsMap = new Map<string, NetworkStats & { tokenCounts: Record<string, number> }>();
+    const byNetwork = new Map<string, Transaction[]>();
+    for (const tx of transactions) {
+      const list = byNetwork.get(tx.network) || [];
+      list.push(tx);
+      byNetwork.set(tx.network, list);
+    }
 
-    transactions.forEach(tx => {
-      const key = tx.network;
-      const existing = statsMap.get(key);
-
-      if (existing) {
-        existing.txCount++;
-        existing.totalVolume += tx.value;
-        if (tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi') {
-          existing.totalRevenue += tx.value;
-        }
-        if (tx.type === 'expense') {
-          existing.totalExpenses += tx.value;
-        }
-        if (tx.type === 'gas') {
-          existing.gasFees += tx.value;
-          existing.totalExpenses += tx.value;
-        }
-        existing.netFlow = existing.totalRevenue - existing.totalExpenses;
-        if (!existing.lastTxDate || tx.date > existing.lastTxDate) {
-          existing.lastTxDate = tx.date;
-        }
-        existing.tokenCounts[tx.token] = (existing.tokenCounts[tx.token] || 0) + 1;
-      } else {
-        const networkInfo = networks.find(n => n.value === key);
-        const revenue = (tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi') ? tx.value : 0;
-        const expenses = tx.type === 'expense' ? tx.value : 0;
-        const gas = tx.type === 'gas' ? tx.value : 0;
-        statsMap.set(key, {
-          networkId: key,
-          networkLabel: networkInfo?.label || key,
-          totalRevenue: revenue,
-          totalExpenses: expenses + gas,
-          totalVolume: tx.value,
-          txCount: 1,
-          netFlow: revenue - expenses - gas,
-          gasFees: gas,
-          lastTxDate: tx.date,
-          topToken: null,
-          color: networkColors[key] || '#8a8f98',
-          tokenCounts: { [tx.token]: 1 },
-        });
+    const result: NetworkStats[] = [];
+    for (const [key, txs] of byNetwork) {
+      const summary = computeFinancialSummary(txs);
+      const networkInfo = networks.find(n => n.value === key);
+      const tokenCounts: Record<string, number> = {};
+      let lastTxDate: string | null = null;
+      for (const tx of txs) {
+        tokenCounts[tx.token] = (tokenCounts[tx.token] || 0) + 1;
+        if (!lastTxDate || tx.date > lastTxDate) lastTxDate = tx.date;
       }
-    });
+      const topToken =
+        Object.entries(tokenCounts).sort(([, a], [, b]) => b - a)[0]?.[0] || null;
 
-    // Resolve topToken
-    statsMap.forEach(stats => {
-      const sorted = Object.entries(stats.tokenCounts).sort(([, a], [, b]) => b - a);
-      stats.topToken = sorted[0]?.[0] || null;
-    });
+      result.push({
+        networkId: key,
+        networkLabel: networkInfo?.label || key,
+        totalRevenue: summary.totalRevenue,
+        totalExpenses: summary.totalExpenses,
+        totalVolume: txs.reduce((s, t) => s + (t.value || 0), 0),
+        txCount: txs.length,
+        netFlow: summary.netFlow,
+        gasFees: summary.gasFees,
+        lastTxDate,
+        topToken,
+        color: networkColors[key] || '#8a8f98',
+      });
+    }
 
-    // Sort by tx count
-    const result = Array.from(statsMap.values()).map(({ tokenCounts, ...rest }) => rest);
     result.sort((a, b) => b.txCount - a.txCount);
-
     return result;
   }, [transactions]);
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    pageItems: pagedNetworks,
+    totalItems,
+  } = useTablePagination(networkStats);
 
   if (networkStats.length === 0) {
     return (
@@ -149,7 +141,7 @@ export function NetworksSection({ transactions, onNetworkClick }: NetworksSectio
               </tr>
             </thead>
             <tbody>
-              {networkStats.map((ns) => {
+              {pagedNetworks.map((ns) => {
                 const isNetPositive = ns.netFlow >= 0;
 
                 return (
@@ -219,6 +211,12 @@ export function NetworksSection({ transactions, onNetworkClick }: NetworksSectio
             </tbody>
           </table>
         </div>
+        <TablePagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+        />
       </CardContent>
     </Card>
   );

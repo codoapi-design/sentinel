@@ -546,11 +546,18 @@ export function ColumnFilterTable({
                 </div>
               </TableHead>
 
-              {/* Type column (conditional) */}
+              {/* On-chain activity (explorer-style) */}
+              <TableHead className="text-xs font-medium p-2">
+                <div className="flex items-center gap-1 text-[#8a8f98]">
+                  <span>Activity</span>
+                </div>
+              </TableHead>
+
+              {/* Accounting classification */}
               {showTypeColumn && (
                 <TableHead className="text-xs font-medium p-2">
                   <div className="flex items-center gap-1 text-[#8a8f98]">
-                    <span>{fixedTypeLabel || 'Type'}</span>
+                    <span>{fixedTypeLabel || 'Classification'}</span>
                   </div>
                 </TableHead>
               )}
@@ -672,7 +679,7 @@ export function ColumnFilterTable({
           <TableBody>
             {paginatedTransactions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={showTypeColumn ? 9 : 8} className="text-center py-12">
+                <TableCell colSpan={showTypeColumn ? 10 : 9} className="text-center py-12">
                   <div className="text-[#8a8f98]">
                     <p className="text-sm">No transactions found</p>
                     <p className="text-xs mt-1">Try changing the filters</p>
@@ -687,6 +694,14 @@ export function ColumnFilterTable({
                 >
                   <TableCell className="text-xs text-[#d0d6e0] font-mono-num p-2.5">
                     {tx.date}
+                  </TableCell>
+                  <TableCell className="p-2.5">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-2 py-0 border font-medium border-white/15 text-[#d0d6e0] bg-white/5"
+                    >
+                      {tx.activity || 'Transfer'}
+                    </Badge>
                   </TableCell>
                   {showTypeColumn && (
                     <TableCell className="p-2.5">

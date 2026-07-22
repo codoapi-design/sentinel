@@ -18,9 +18,12 @@ import {
   type Transaction,
   type Client,
 } from '@/lib/mock-data';
+import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
+import { CashflowChart } from './cashflow-chart';
+import type { CashflowMetric } from '@/lib/finance/cashflow-history';
 
 interface SectionPageProps {
   sectionType: 'revenue' | 'expenses' | 'flow' | 'gas';
@@ -32,47 +35,46 @@ const sectionConfig = {
   revenue: {
     title: 'Revenue',
     totalLabel: 'Total Revenue',
-    fixedType: 'income' as const,
-    fixedTypeLabel: 'Income',
     color: '#0ecb81',
     bgColor: 'rgba(14, 203, 129, 0.1)',
     icon: TrendingUp,
     gradient: 'from-[#0ecb81] to-[#0a9e65]',
-    description: 'All incoming transactions to your wallet',
+    description: 'Income and staking rewards (USD cash in)',
   },
   expenses: {
     title: 'Expenses',
     totalLabel: 'Total Expenses',
-    fixedType: 'expense' as const,
-    fixedTypeLabel: 'Expense',
     color: '#f6465d',
     bgColor: 'rgba(246, 70, 93, 0.1)',
     icon: TrendingDown,
     gradient: 'from-[#f6465d] to-[#c73048]',
-    description: 'All outgoing transactions from your wallet',
+    description: 'Outgoing transfers classified as expenses (trades/gas excluded)',
   },
   flow: {
     title: 'Net Flow',
     totalLabel: 'Net Flow',
-    fixedType: undefined,
-    fixedTypeLabel: undefined,
     color: '#0052ff',
     bgColor: 'rgba(0, 82, 255, 0.1)',
     icon: Wallet,
     gradient: 'from-[#0052ff] to-[#0036cc]',
-    description: 'Net flow of funds in and out of your wallet',
+    description: 'Revenue − Expenses (gas not deducted)',
   },
   gas: {
     title: 'Gas Fees',
     totalLabel: 'Total Gas Fees',
-    fixedType: 'gas' as const,
-    fixedTypeLabel: 'Gas Fee',
     color: '#f7931a',
     bgColor: 'rgba(247, 147, 26, 0.1)',
     icon: Fuel,
     gradient: 'from-[#f7931a] to-[#d07812]',
-    description: 'All network fees paid on your transactions',
+    description: 'Network fees paid (shown separately from cash flow)',
   },
+};
+
+const SECTION_TO_METRIC: Record<SectionPageProps['sectionType'], CashflowMetric> = {
+  revenue: 'revenue',
+  expenses: 'expenses',
+  flow: 'netFlow',
+  gas: 'gas',
 };
 
 export function SectionPage({ sectionType, onBack, clients = [] }: SectionPageProps) {
@@ -81,22 +83,26 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
 
   const allTransactions = useActiveTransactions();
 
-  // For the "flow" section, we show both income and expense
   const sectionTransactions = useMemo(() => {
-    if (sectionType === 'flow') {
-      return allTransactions.filter(tx => tx.type === 'income' || tx.type === 'expense');
+    if (sectionType === 'revenue') {
+      return allTransactions.filter(tx => isRevenueType(tx.type));
     }
-    if (config.fixedType) {
-      return allTransactions.filter(tx => tx.type === config.fixedType);
+    if (sectionType === 'expenses') {
+      return allTransactions.filter(tx => isExpenseType(tx.type));
+    }
+    if (sectionType === 'flow') {
+      return allTransactions.filter(tx => isRevenueType(tx.type) || isExpenseType(tx.type));
+    }
+    if (sectionType === 'gas') {
+      return allTransactions.filter(tx => tx.type === 'gas');
     }
     return allTransactions;
-  }, [allTransactions, sectionType, config.fixedType]);
+  }, [allTransactions, sectionType]);
 
-  // Total value computed from the real transactions in this section
   const totalValue = useMemo(() => {
     if (sectionType === 'flow') {
       return sectionTransactions.reduce(
-        (sum, tx) => sum + (tx.type === 'income' ? tx.value : -tx.value),
+        (sum, tx) => sum + (isRevenueType(tx.type) ? tx.value : -tx.value),
         0,
       );
     }
@@ -189,14 +195,15 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
         </CardContent>
       </Card>
 
+      {/* Period cash-flow movement (classified txs, not market revaluation) */}
+      <CashflowChart metric={SECTION_TO_METRIC[sectionType]} />
+
       {/* Transactions Table with Column Filters */}
       <Card className="bg-[#0f1011] border-white/5">
         <CardContent className="p-0">
           <ColumnFilterTable
             transactions={sectionTransactions}
-            fixedType={config.fixedType}
-            fixedTypeLabel={config.fixedTypeLabel}
-            showTypeColumn={sectionType === 'flow'}
+            showTypeColumn={true}
             onFilteredDataChange={handleFilteredDataChange}
             clients={clients}
           />

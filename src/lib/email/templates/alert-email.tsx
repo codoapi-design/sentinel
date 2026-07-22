@@ -27,7 +27,7 @@ interface AlertEmailProps {
 }
 
 /**
- * قالب تنبيه فوري
+ * قالب Alert فوري
  */
 export function AlertEmail({ title, message, details, timestamp, dashboardUrl }: AlertEmailProps) {
   const isInbound = title.includes('وارد') || title.includes('استلام');
@@ -35,7 +35,7 @@ export function AlertEmail({ title, message, details, timestamp, dashboardUrl }:
   const accentColor = isInbound ? '#0ecb81' : isOutbound ? '#f6465d' : '#0052ff';
 
   return (
-    <Html dir="rtl" lang="ar">
+    <Html dir="ltr" lang="en">
       <Head />
       <Preview>{title} - CryptoBooks</Preview>
       <Body style={mainStyle}>
@@ -43,7 +43,7 @@ export function AlertEmail({ title, message, details, timestamp, dashboardUrl }:
           {/* Header */}
           <Section style={{ ...headerStyle, borderBottom: `2px solid ${accentColor}` }}>
             <Heading style={logoStyle}>CryptoBooks</Heading>
-            <Text style={subtitleStyle}>تنبيه فوري</Text>
+            <Text style={subtitleStyle}>Alert فوري</Text>
           </Section>
 
           {/* Alert Badge */}
@@ -82,10 +82,10 @@ export function AlertEmail({ title, message, details, timestamp, dashboardUrl }:
           {/* Footer */}
           <Section style={footerStyle}>
             <Text style={footerTextStyle}>
-              تم إرسال هذا التنبيه بناءً على إعداداتك في CryptoBooks
+              تم إرسال هذا الAlert بناءً على إعداداتك في CryptoBooks
             </Text>
             <Text style={{ ...footerTextStyle, color: '#8a8f98' }}>
-              لإدارة إعدادات التنبيهات، قم بزيارة صفحة الإعدادات
+              لإدارة إعدادات الAlertات، قم بزيارة صفحة الإعدادات
             </Text>
           </Section>
         </Container>

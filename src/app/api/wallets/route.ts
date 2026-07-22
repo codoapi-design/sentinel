@@ -14,6 +14,31 @@ import {
   primaryDisplayAddress,
   validateWalletAddresses,
 } from '@/lib/wallet/address-validation';
+import {
+  assertAddressesAllowedForPlan,
+  assertPlanAddressRequirements,
+  filterAddressesByPlan,
+  normalizePlanId,
+} from '@/lib/plans/address-families';
+
+const PLAN_WALLET_COUNT: Record<string, number> = {
+  starter: 1,
+  pro: 5,
+  business: 25,
+  enterprise: 25,
+};
+
+async function resolveUserPlan(
+  supabase: ReturnType<typeof createServerClient>,
+  userId: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('plan')
+    .eq('user_id', userId)
+    .maybeSingle();
+  return normalizePlanId(data?.plan || 'starter');
+}
 
 function mapWalletRow(w: {
   id: string;
@@ -68,8 +93,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch wallets' }, { status: 500 });
     }
 
+    const plan = await resolveUserPlan(supabase, userId);
+
     return NextResponse.json({
       success: true,
+      plan,
       data: (data || []).map(mapWalletRow),
     });
   } catch (error) {
@@ -96,7 +124,25 @@ export async function POST(request: NextRequest) {
     if (!validated.ok) {
       return NextResponse.json({ error: validated.error }, { status: 400 });
     }
-    const { label, evmAddress, solanaAddress, tronAddress, bitcoinAddress } = validated.data;
+
+    const userPlan = await resolveUserPlan(supabase, userId);
+
+    const planGate = assertAddressesAllowedForPlan(userPlan, validated.data);
+    if (!planGate.ok) {
+      return NextResponse.json({ error: planGate.error }, { status: 403 });
+    }
+
+    const filtered = filterAddressesByPlan(userPlan, validated.data);
+    const req = assertPlanAddressRequirements(userPlan, filtered);
+    if (!req.ok) {
+      return NextResponse.json({ error: req.error }, { status: 400 });
+    }
+
+    const { label } = validated.data;
+    const evmAddress = filtered.evmAddress;
+    const solanaAddress = filtered.solanaAddress;
+    const tronAddress = filtered.tronAddress;
+    const bitcoinAddress = filtered.bitcoinAddress;
 
     // Duplicate checks per family
     if (evmAddress) {
@@ -149,13 +195,7 @@ export async function POST(request: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
 
-    const PLAN_LIMITS: Record<string, number> = {
-      basic: 1,
-      pro: 5,
-      enterprise: 100,
-    };
-    const userPlan = 'pro';
-    const limit = PLAN_LIMITS[userPlan] ?? 1;
+    const limit = PLAN_WALLET_COUNT[userPlan] ?? PLAN_WALLET_COUNT.starter;
 
     if ((count || 0) >= limit) {
       return NextResponse.json(

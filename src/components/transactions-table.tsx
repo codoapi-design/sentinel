@@ -62,6 +62,12 @@ import {
   getClientNameByAddress,
 } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
+import {
+  filterVisibleTransactions,
+  isHiddenSpamOrDustTx,
+} from '@/lib/finance/visibility';
+import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
 
 const typeColors: Record<string, string> = {
   income: 'bg-[#0ecb81]/10 text-[#0ecb81] border-[#0ecb81]/20',
@@ -116,7 +122,7 @@ function ColumnFilterPopup({
       <PopoverContent
         className="w-auto bg-[#191a1b] border-white/10 p-3 shadow-xl"
         align="start"
-        dir="rtl"
+        dir="ltr"
         sideOffset={4}
       >
         {filterContent}
@@ -446,7 +452,8 @@ function TransactionDetailModal({
 
   const detailItems = [
     { icon: <Calendar className="h-4 w-4 text-[#8a8f98]" />, label: 'Date', value: tx.date },
-    { icon: typeIcons[tx.type], label: 'Type', value: tx.typeLabel, badge: true },
+    { icon: <Hash className="h-4 w-4 text-[#8a8f98]" />, label: 'Activity', value: tx.activity || 'Transfer' },
+    { icon: typeIcons[tx.type], label: 'Classification', value: tx.typeLabel, badge: true },
     { icon: <Coins className="h-4 w-4 text-[#8a8f98]" />, label: 'Token', value: tx.token },
     { icon: <Hash className="h-4 w-4 text-[#8a8f98]" />, label: 'Quantity', value: tx.token === 'WBTC' ? formatNumber(tx.quantity, 6) : formatNumber(tx.quantity) },
     { icon: <Receipt className="h-4 w-4 text-[#8a8f98]" />, label: 'Price', value: `$${formatNumber(tx.price)}` },
@@ -456,7 +463,7 @@ function TransactionDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-[#0f1011] border-white/10 text-[#f7f8f8] max-w-lg" dir="rtl">
+      <DialogContent className="bg-[#0f1011] border-white/10 text-[#f7f8f8] max-w-lg" dir="ltr">
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
             <Receipt className="h-5 w-5 text-[#0052ff]" />
@@ -566,7 +573,15 @@ interface TransactionsTableProps {
 export function TransactionsTable({ clients = [], transactions = [] }: TransactionsTableProps) {
   // Purely presentational: transactions are supplied by the parent dashboard
   // (real synced data from the store, or demo mock data). No data is generated here.
-  const allTransactions = transactions;
+  const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
+  const hasHiddenItems = useMemo(
+    () => transactions.some((tx) => isHiddenSpamOrDustTx(tx, false)),
+    [transactions],
+  );
+  const allTransactions = useMemo(
+    () => filterVisibleTransactions(transactions, showSpamAndDust),
+    [transactions, showSpamAndDust],
+  );
 
   // Filter state
   const [dateFrom, setDateFrom] = useState('');
@@ -757,9 +772,11 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
               <CardTitle className="text-[#f7f8f8] text-base">Transactions</CardTitle>
               <p className="text-xs text-[#8a8f98] mt-1">
                 {filteredTransactions.length} transactions
+                {hasHiddenItems && !showSpamAndDust ? ' · spam & $0 hidden' : ''}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <ShowSpamDustToggle compact />
               <Button
                 variant="outline"
                 size="sm"
@@ -793,7 +810,7 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
               )}
               {typeFilterActive && (
                 <Badge variant="outline" className="text-[10px] bg-[#0052ff]/5 text-[#0052ff] border-[#0052ff]/20 px-2 py-0.5">
-                  Type: {typeFilter.map(t => transactionTypes.find(tt => tt.value === t)?.label).join(', ')}
+                  Classification: {typeFilter.map(t => transactionTypes.find(tt => tt.value === t)?.label).join(', ')}
                   <X className="h-2.5 w-2.5 mr-1 cursor-pointer" onClick={() => { setTypeFilter([]); setCurrentPage(1); }} />
                 </Badge>
               )}
@@ -860,7 +877,14 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
                     </div>
                   </TableHead>
 
-                  {/* Type column */}
+                  {/* On-chain activity */}
+                  <TableHead className="text-xs font-medium p-2">
+                    <div className="flex items-center gap-1 text-[#8a8f98]">
+                      <span>Activity</span>
+                    </div>
+                  </TableHead>
+
+                  {/* Accounting classification */}
                   <TableHead className="text-xs font-medium p-2">
                     <div className="group">
                       <ColumnFilterPopup
@@ -874,7 +898,7 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
                         }
                       >
                         <div className="flex items-center gap-1" onClick={() => toggleSort('type')}>
-                          <span>Type</span>
+                          <span>Classification</span>
                           <ArrowUpDown className="h-3 w-3" />
                         </div>
                       </ColumnFilterPopup>
@@ -1000,10 +1024,16 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
               <TableBody>
                 {paginatedTransactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-12">
+                    <TableCell colSpan={10} className="text-center py-12">
                       <div className="text-[#8a8f98]">
                         <p className="text-sm">No transactions found</p>
-                        <p className="text-xs mt-1">Try changing the filters</p>
+                        {hasHiddenItems && !showSpamAndDust && allTransactions.length === 0 ? (
+                          <p className="text-xs mt-1">
+                            Enable Show spam & $0 if you expect dust
+                          </p>
+                        ) : (
+                          <p className="text-xs mt-1">Try changing the filters</p>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1015,6 +1045,14 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
                     >
                       <TableCell className="text-xs text-[#d0d6e0] font-mono-num p-2.5">
                         {tx.date}
+                      </TableCell>
+                      <TableCell className="p-2.5">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-2 py-0 border font-medium border-white/15 text-[#d0d6e0] bg-white/5"
+                        >
+                          {tx.activity || 'Transfer'}
+                        </Badge>
                       </TableCell>
                       <TableCell className="p-2.5">
                         <Badge

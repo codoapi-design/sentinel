@@ -8,6 +8,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { type Transaction, type Client } from '@/lib/mock-data';
+import { resolveOnChainActivity } from '@/lib/finance/activity';
+import { resolveTypeLabel } from '@/lib/finance/summary';
+import {
+  assertAddressesAllowedForPlan,
+  assertPlanAddressRequirements,
+  filterAddressesByPlan,
+  planAllowsAddressFamily,
+} from '@/lib/plans/address-families';
 
 // ============================================================
 // Types
@@ -46,7 +54,7 @@ export const PLAN_LIMITS: Record<string, {
 }> = {
   starter: {
     wallets: 1,
-    networks: 1, // Ethereum only
+    networks: 1, // EVM address family only
     transactions: 500,
     aiChats: 50,
     syncIntervalMs: 600_000, // 10 minutes
@@ -58,12 +66,20 @@ export const PLAN_LIMITS: Record<string, {
     aiChats: 300,
     syncIntervalMs: 60_000, // 1 minute
   },
-  enterprise: {
+  business: {
     wallets: 25,
     networks: 10,
     transactions: Infinity,
     aiChats: Infinity,
     syncIntervalMs: 30_000, // 30 seconds
+  },
+  // DB / legacy alias for Business
+  enterprise: {
+    wallets: 25,
+    networks: 10,
+    transactions: Infinity,
+    aiChats: Infinity,
+    syncIntervalMs: 30_000,
   },
 };
 
@@ -71,6 +87,7 @@ export const PLAN_LIMITS: Record<string, {
 export const PLAN_WALLET_LIMITS: Record<string, number> = {
   starter: PLAN_LIMITS.starter.wallets,
   pro: PLAN_LIMITS.pro.wallets,
+  business: PLAN_LIMITS.business.wallets,
   enterprise: PLAN_LIMITS.enterprise.wallets,
 };
 
@@ -93,6 +110,9 @@ interface WalletState {
   // Current user plan
   currentPlan: string;
 
+  /** Auth user id that owns this cache — used to wipe cross-account localStorage bleed */
+  ownerUserId: string | null;
+
   // Last sync timestamp
   lastSyncAt: Record<string, number>; // keyed by wallet ID
 
@@ -109,11 +129,16 @@ interface WalletActions {
 
   // Data operations
   /** Sync providers → DB. mode 'auto' = full if never synced, else incremental. */
-  syncWallet: (walletId: string, mode?: 'full' | 'incremental' | 'auto') => Promise<void>;
+  syncWallet: (
+    walletId: string,
+    mode?: 'full' | 'incremental' | 'auto',
+  ) => Promise<{ success: boolean; error?: string; recordsSynced?: number }>;
   syncAllWallets: () => Promise<void>;
   loadWalletsFromDB: () => Promise<void>;
   /** Load transactions for a wallet from Supabase into the local store (UI source of truth). */
   loadTransactionsFromDB: (walletId: string) => Promise<Transaction[]>;
+  /** Bind cache to auth user; clears local data when the user changes. */
+  bindOwner: (userId: string | null) => void;
 
   // Getters
   getActiveWallet: () => WalletInfo | null;
@@ -139,6 +164,7 @@ const initialState: WalletState = {
   isSyncing: {},
   isAddingWallet: false,
   currentPlan: 'pro', // Default to pro for development
+  ownerUserId: null,
   lastSyncAt: {},
   error: null,
 };
@@ -160,19 +186,55 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         }
 
         const label = input.label.trim();
-        const evm = input.evmAddress?.trim() || '';
-        const sol = input.solanaAddress?.trim() || '';
-        const tron = input.tronAddress?.trim() || '';
-        const btc = input.bitcoinAddress?.trim() || '';
+        let evm = input.evmAddress?.trim() || '';
+        let sol = input.solanaAddress?.trim() || '';
+        let tron = input.tronAddress?.trim() || '';
+        let btc = input.bitcoinAddress?.trim() || '';
+
+        // Enforce plan address-family entitlements on the client
+        const planCheck = assertAddressesAllowedForPlan(state.currentPlan, {
+          evmAddress: evm,
+          solanaAddress: sol,
+          tronAddress: tron,
+          bitcoinAddress: btc,
+        });
+        if (!planCheck.ok) {
+          set({ error: planCheck.error });
+          return;
+        }
+
+        const filtered = filterAddressesByPlan(state.currentPlan, {
+          evmAddress: evm,
+          solanaAddress: sol,
+          tronAddress: tron,
+          bitcoinAddress: btc,
+        });
+        evm = filtered.evmAddress || '';
+        sol = filtered.solanaAddress || '';
+        tron = filtered.tronAddress || '';
+        btc = filtered.bitcoinAddress || '';
 
         if (!label) {
           set({ error: 'Please enter a wallet name' });
           return;
         }
-        if (!evm && !sol && !tron && !btc) {
-          set({ error: 'Enter at least one address (EVM, Solana, Tron, or Bitcoin)' });
+
+        const req = assertPlanAddressRequirements(state.currentPlan, {
+          evmAddress: evm,
+          solanaAddress: sol,
+          tronAddress: tron,
+          bitcoinAddress: btc,
+        });
+        if (!req.ok) {
+          set({ error: req.error });
           return;
         }
+
+        // Drop any family the plan doesn't allow (defensive)
+        if (!planAllowsAddressFamily(state.currentPlan, 'solana')) sol = '';
+        if (!planAllowsAddressFamily(state.currentPlan, 'tron')) tron = '';
+        if (!planAllowsAddressFamily(state.currentPlan, 'bitcoin')) btc = '';
+        if (!planAllowsAddressFamily(state.currentPlan, 'evm')) evm = '';
 
         const matchesAny = (w: WalletInfo) =>
           (evm && w.address?.toLowerCase() === evm.toLowerCase()) ||
@@ -338,139 +400,68 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           const response = await fetch('/api/wallets');
           if (response.ok) {
             const result = await response.json();
-            if (result.data && result.data.length > 0) {
-              const dbWallets: WalletInfo[] = result.data.map((w: any) => ({
-                id: w.id,
-                address: w.address ?? null,
-                solanaAddress: w.solanaAddress ?? w.solana_address ?? null,
-                tronAddress: w.tronAddress ?? w.tron_address ?? null,
-                bitcoinAddress: w.bitcoinAddress ?? w.bitcoin_address ?? null,
-                displayAddress:
-                  w.displayAddress ||
-                  w.address ||
-                  w.solanaAddress ||
-                  w.solana_address ||
-                  w.tronAddress ||
-                  w.tron_address ||
-                  w.bitcoinAddress ||
-                  w.bitcoin_address ||
-                  '',
-                label: w.label,
-                lastSyncedAt: w.lastSyncedAt || w.last_synced_at,
-                isSyncing: false,
-                transactionCount: 0,
-              }));
-
-              set(state => {
-                // Prefer matching by wallet id; fall back to any shared address family
-                const dbById = new Map(dbWallets.map(w => [w.id, w]));
-                const idMigrations: Map<string, string> = new Map();
-                const merged: WalletInfo[] = [];
-                const usedDbIds = new Set<string>();
-
-                const findDbMatch = (localW: WalletInfo) => {
-                  const byId = dbById.get(localW.id);
-                  if (byId) return byId;
-                  return dbWallets.find(
-                    db =>
-                      (localW.address &&
-                        db.address &&
-                        localW.address.toLowerCase() === db.address.toLowerCase()) ||
-                      (localW.solanaAddress && localW.solanaAddress === db.solanaAddress) ||
-                      (localW.tronAddress && localW.tronAddress === db.tronAddress) ||
-                      (localW.bitcoinAddress && localW.bitcoinAddress === db.bitcoinAddress),
-                  );
-                };
-
-                for (const localW of state.wallets) {
-                  const dbMatch = findDbMatch(localW);
-                  if (dbMatch) {
-                    const reconciled: WalletInfo = {
-                      ...dbMatch,
-                      lastSyncedAt: localW.lastSyncedAt || dbMatch.lastSyncedAt,
-                    };
-                    merged.push(reconciled);
-                    usedDbIds.add(dbMatch.id);
-                    if (localW.id !== dbMatch.id) {
-                      console.log(`[WalletStore] Reconciling wallet ${localW.id} -> ${dbMatch.id}`);
-                      idMigrations.set(localW.id, dbMatch.id);
-                    }
-                  } else if (localW.id.includes('-') && localW.id.length >= 32) {
-                    // Normalize legacy local wallets that only had `address`
-                    merged.push({
-                      ...localW,
-                      solanaAddress: localW.solanaAddress ?? null,
-                      tronAddress: localW.tronAddress ?? null,
-                      bitcoinAddress: localW.bitcoinAddress ?? null,
-                      displayAddress:
-                        localW.displayAddress ||
-                        localW.address ||
-                        localW.solanaAddress ||
-                        localW.tronAddress ||
-                        localW.bitcoinAddress ||
-                        '',
-                    });
-                  }
-                }
-
-                for (const dbW of dbWallets) {
-                  if (!usedDbIds.has(dbW.id) && !merged.some(m => m.id === dbW.id)) {
-                    merged.push(dbW);
-                  }
-                }
-
-                let activeId = state.activeWalletId;
-                if (activeId) {
-                  const activeInMerged = merged.find(w => w.id === activeId);
-                  if (!activeInMerged) {
-                    const oldWallet = state.wallets.find(w => w.id === activeId);
-                    if (oldWallet) {
-                      const replacement = findDbMatch(oldWallet);
-                      activeId = replacement?.id || merged[0]?.id || null;
-                    } else {
-                      activeId = merged[0]?.id || null;
-                    }
-                  }
-                }
-
-                // Migrate transactionsMap and clientsMap keys from old IDs to new IDs
-                const newTransactionsMap = { ...state.transactionsMap };
-                const newClientsMap = { ...state.clientsMap };
-                const newSyncing = { ...state.isSyncing };
-                const newLastSync = { ...state.lastSyncAt };
-
-                for (const [oldId, newId] of idMigrations) {
-                  if (newTransactionsMap[oldId] !== undefined) {
-                    newTransactionsMap[newId] = newTransactionsMap[oldId];
-                    delete newTransactionsMap[oldId];
-                  }
-                  if (newClientsMap[oldId] !== undefined) {
-                    newClientsMap[newId] = newClientsMap[oldId];
-                    delete newClientsMap[oldId];
-                  }
-                  if (newSyncing[oldId] !== undefined) {
-                    newSyncing[newId] = newSyncing[oldId];
-                    delete newSyncing[oldId];
-                  }
-                  if (newLastSync[oldId] !== undefined) {
-                    newLastSync[newId] = newLastSync[oldId];
-                    delete newLastSync[oldId];
-                  }
-                }
-
-                return {
-                  wallets: merged,
-                  activeWalletId: activeId || merged[0]?.id,
-                  transactionsMap: newTransactionsMap,
-                  clientsMap: newClientsMap,
-                  isSyncing: newSyncing,
-                  lastSyncAt: newLastSync,
-                  isLoadingWallets: false,
-                };
-              });
+            if (result.plan) {
+              set({ currentPlan: result.plan });
             }
+
+            // DB is the only source of truth per authenticated user.
+            // Never keep orphan localStorage wallets from a previous account.
+            const dbWallets: WalletInfo[] = (result.data || []).map((w: any) => ({
+              id: w.id,
+              address: w.address ?? null,
+              solanaAddress: w.solanaAddress ?? w.solana_address ?? null,
+              tronAddress: w.tronAddress ?? w.tron_address ?? null,
+              bitcoinAddress: w.bitcoinAddress ?? w.bitcoin_address ?? null,
+              displayAddress:
+                w.displayAddress ||
+                w.address ||
+                w.solanaAddress ||
+                w.solana_address ||
+                w.tronAddress ||
+                w.tron_address ||
+                w.bitcoinAddress ||
+                w.bitcoin_address ||
+                '',
+              label: w.label,
+              lastSyncedAt: w.lastSyncedAt || w.last_synced_at,
+              isSyncing: false,
+              transactionCount: 0,
+            }));
+
+            const ownedIds = new Set(dbWallets.map(w => w.id));
+
+            set(state => {
+              const pruneMap = <T,>(map: Record<string, T>): Record<string, T> => {
+                const next: Record<string, T> = {};
+                for (const [id, value] of Object.entries(map)) {
+                  if (ownedIds.has(id)) next[id] = value;
+                }
+                return next;
+              };
+
+              const activeId =
+                state.activeWalletId && ownedIds.has(state.activeWalletId)
+                  ? state.activeWalletId
+                  : dbWallets[0]?.id || null;
+
+              return {
+                wallets: dbWallets,
+                activeWalletId: activeId,
+                transactionsMap: pruneMap(state.transactionsMap),
+                clientsMap: pruneMap(state.clientsMap),
+                isSyncing: pruneMap(state.isSyncing),
+                lastSyncAt: pruneMap(state.lastSyncAt),
+                isLoadingWallets: false,
+              };
+            });
+          } else {
+            // Unauthorized / error — do not keep previous account cache
+            set({
+              ...initialState,
+              isLoadingWallets: false,
+              error: 'Failed to load wallets',
+            });
           }
-          set({ isLoadingWallets: false });
         } catch (err) {
           console.warn('[WalletStore] Failed to load wallets from DB:', err);
           set({ isLoadingWallets: false });
@@ -488,7 +479,15 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           const response = await fetch(`/api/wallets/${walletId}/transactions`);
           if (!response.ok) {
             console.warn('[WalletStore] DB transactions fetch failed:', response.status);
-            return get().transactionsMap[walletId] || [];
+            // Clear stale cache — never show another account's txs
+            set(state => {
+              const transactionsMap = { ...state.transactionsMap };
+              const clientsMap = { ...state.clientsMap };
+              delete transactionsMap[walletId];
+              delete clientsMap[walletId];
+              return { transactionsMap, clientsMap };
+            });
+            return [];
           }
           const result = await response.json();
           const transactions: Transaction[] = result.data || [];
@@ -505,7 +504,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           return transactions;
         } catch (err) {
           console.warn('[WalletStore] DB transactions fetch error:', err);
-          return get().transactionsMap[walletId] || [];
+          return [];
         }
       },
 
@@ -514,14 +513,16 @@ export const useWalletStore = create<WalletState & WalletActions>()(
        * After sync, the local store is refreshed from the DB only.
        *
        * Modes:
-       *   - full: first-time / forced complete ingest
-       *   - incremental: only new txs + refreshed balances
+       *   - full: complete historical ingest + balances (user Sync button)
+       *   - incremental: only new txs since last block + refreshed balances
        *   - auto (default): full if never synced, else incremental
        */
       syncWallet: async (walletId: string, mode: 'full' | 'incremental' | 'auto' = 'auto') => {
         const state = get();
         let wallet = state.wallets.find(w => w.id === walletId);
-        if (!wallet || wallet.isSyncing) return;
+        if (!wallet || wallet.isSyncing) {
+          return { success: false, error: wallet?.isSyncing ? 'Wallet is already syncing' : 'Wallet not found' };
+        }
 
         // Validate wallet ID is a proper DB UUID (not a stale wallet-XXXXX ID)
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(walletId);
@@ -545,7 +546,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             wallet = resolvedWallet;
           } else {
             console.error('[WalletStore] Cannot resolve wallet UUID. Skipping sync.');
-            return;
+            return { success: false, error: 'Cannot resolve wallet. Try removing and re-adding it.' };
           }
         }
 
@@ -562,28 +563,85 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           ),
         }));
 
+        const clearSyncing = (extra?: { error?: string | null }) => {
+          set(state => ({
+            isSyncing: { ...state.isSyncing, [walletId]: false },
+            wallets: state.wallets.map(w =>
+              w.id === walletId ? { ...w, isSyncing: false } : w
+            ),
+            ...(extra?.error !== undefined ? { error: extra.error } : {}),
+          }));
+        };
+
         try {
           // 1) Providers → DB (only path that talks to Etherscan/CoinGecko)
-          try {
-            const syncResponse = await fetch(`/api/wallets/${walletId}/sync`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ mode: resolvedMode }),
-            });
-            if (syncResponse.ok) {
-              const syncResult = await syncResponse.json();
-              console.log('[WalletStore] Sync completed:', {
-                mode: resolvedMode,
-                success: syncResult.success,
-                changed: syncResult.changed,
-                recordsSynced: syncResult.totalRecordsSynced,
-              });
-            } else {
-              const errData = await syncResponse.json().catch(() => ({}));
-              console.warn('[WalletStore] Sync endpoint returned:', syncResponse.status, errData.error || '');
-            }
-          } catch (syncError) {
-            console.warn('[WalletStore] Sync endpoint error:', syncError);
+          const syncResponse = await fetch(`/api/wallets/${walletId}/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: resolvedMode }),
+          });
+
+          const syncResult = await syncResponse.json().catch(() => ({} as Record<string, unknown>));
+
+          if (!syncResponse.ok) {
+            const rawError =
+              (typeof syncResult.error === 'string' && syncResult.error) ||
+              `Sync failed (${syncResponse.status})`;
+            const errorMessage =
+              syncResponse.status === 429 || /rate.?limit/i.test(rawError)
+                ? 'Provider rate limit reached. Please wait a minute and try again.'
+                : syncResponse.status === 409
+                  ? 'Wallet is already syncing. Please wait for it to finish.'
+                  : rawError;
+
+            console.warn('[WalletStore] Sync endpoint returned:', syncResponse.status, errorMessage);
+            clearSyncing({ error: errorMessage });
+            return { success: false, error: errorMessage };
+          }
+
+          const recordsSynced =
+            typeof syncResult.totalRecordsSynced === 'number'
+              ? syncResult.totalRecordsSynced
+              : 0;
+
+          console.log('[WalletStore] Sync completed:', {
+            mode: resolvedMode,
+            success: syncResult.success,
+            changed: syncResult.changed,
+            recordsSynced,
+          });
+
+          // Soft-fail: API returned 200 but providers reported failure (e.g. rate limits)
+          if (syncResult.success === false) {
+            const providerErrors = Array.isArray(syncResult.results)
+              ? syncResult.results
+                  .flatMap((r: { errors?: string[] }) => r.errors || [])
+                  .filter(Boolean)
+              : [];
+            const joined = providerErrors.join('; ');
+            const errorMessage =
+              /rate.?limit/i.test(joined)
+                ? 'Provider rate limit reached. Please wait a minute and try again.'
+                : joined || 'Sync completed with errors from blockchain providers.';
+
+            // Still refresh UI from DB — partial data may have been upserted
+            const transactions = await get().loadTransactionsFromDB(walletId);
+            set(state => ({
+              wallets: state.wallets.map(w =>
+                w.id === walletId
+                  ? {
+                      ...w,
+                      isSyncing: false,
+                      lastSyncedAt: new Date().toISOString(),
+                      transactionCount: transactions.length,
+                    }
+                  : w
+              ),
+              isSyncing: { ...state.isSyncing, [walletId]: false },
+              lastSyncAt: { ...state.lastSyncAt, [walletId]: Date.now() },
+              error: errorMessage,
+            }));
+            return { success: false, error: errorMessage, recordsSynced };
           }
 
           // 2) DB → local store (UI source of truth)
@@ -603,15 +661,15 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             ),
             isSyncing: { ...state.isSyncing, [walletId]: false },
             lastSyncAt: { ...state.lastSyncAt, [walletId]: Date.now() },
+            error: null,
           }));
+
+          return { success: true, recordsSynced };
         } catch (error) {
-          set(state => ({
-            isSyncing: { ...state.isSyncing, [walletId]: false },
-            wallets: state.wallets.map(w =>
-              w.id === walletId ? { ...w, isSyncing: false } : w
-            ),
-            error: error instanceof Error ? error.message : 'Failed to sync wallet',
-          }));
+          const errorMessage =
+            error instanceof Error ? error.message : 'Failed to sync wallet';
+          clearSyncing({ error: errorMessage });
+          return { success: false, error: errorMessage };
         }
       },
 
@@ -666,9 +724,25 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       // ====== Setters ======
 
       setTransactions: (walletId: string, transactions: Transaction[]) => {
+        // Normalize labels for English-only UI (legacy cached rows may lack activity)
+        const normalized = transactions.map(tx => ({
+          ...tx,
+          typeLabel:
+            tx.typeLabel && !/[\u0600-\u06FF]/.test(tx.typeLabel)
+              ? tx.typeLabel
+              : resolveTypeLabel(tx.type),
+          activity:
+            tx.activity ||
+            resolveOnChainActivity({
+              direction: tx.direction,
+              methodName: tx.methodName,
+              type: tx.type,
+            }),
+        }));
+
         // Derive counterparties as clients so UI sections stay consistent
         const clientMap = new Map<string, Client>();
-        for (const tx of transactions) {
+        for (const tx of normalized) {
           const key = (tx.counterparty || '').toLowerCase();
           if (!key || !key.startsWith('0x')) continue;
           if (!clientMap.has(key)) {
@@ -684,7 +758,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         }
 
         set(state => ({
-          transactionsMap: { ...state.transactionsMap, [walletId]: transactions },
+          transactionsMap: { ...state.transactionsMap, [walletId]: normalized },
           clientsMap: { ...state.clientsMap, [walletId]: Array.from(clientMap.values()) },
         }));
       },
@@ -703,8 +777,30 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         set({ error });
       },
 
+      bindOwner: (userId: string | null) => {
+        const prev = get().ownerUserId;
+        if (prev === userId) return;
+        // Different account (or logout) — drop every cached wallet/list
+        set({
+          ...initialState,
+          ownerUserId: userId,
+        });
+        try {
+          localStorage.removeItem('sentinel-wallets');
+          localStorage.removeItem('cryptobooks-wallets');
+        } catch {
+          // ignore
+        }
+      },
+
       reset: () => {
         set(initialState);
+        try {
+          localStorage.removeItem('sentinel-wallets');
+          localStorage.removeItem('cryptobooks-wallets');
+        } catch {
+          // ignore
+        }
       },
     }),
     {
@@ -715,6 +811,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         transactionsMap: state.transactionsMap,
         clientsMap: state.clientsMap,
         currentPlan: state.currentPlan,
+        ownerUserId: state.ownerUserId,
         lastSyncAt: state.lastSyncAt,
       }),
       // Migrate stale wallet IDs on rehydration from localStorage

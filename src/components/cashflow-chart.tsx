@@ -10,10 +10,11 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ReferenceLine,
 } from 'recharts';
-import { usePortfolio } from '@/hooks/use-portfolio';
 import { useWalletStore } from '@/stores/wallet-store';
 import { Loader2 } from 'lucide-react';
+import type { CashflowMetric } from '@/lib/finance/cashflow-history';
 
 const periods = [
   { label: '24H', days: 1 },
@@ -27,30 +28,58 @@ const periods = [
 interface HistoryPoint {
   date: string;
   value: number;
-  fromSnapshot?: boolean;
+  daily?: number;
 }
 
 interface HistoryPayload {
   points: HistoryPoint[];
-  source: 'snapshots' | 'market' | 'hybrid' | 'empty';
+  periodTotal: number;
   methodology: string;
-  totalValueUsd: number;
-  snapshotCount?: number;
-  tokensPriced?: number;
+  contributingTxCount: number;
+  metric: CashflowMetric;
+  bucket: 'hour' | 'day';
 }
 
-export function PortfolioChart() {
+const METRIC_UI: Record<
+  CashflowMetric,
+  { title: string; color: string; valueLabel: string }
+> = {
+  revenue: {
+    title: 'Revenue Movement',
+    color: '#0ecb81',
+    valueLabel: 'Revenue',
+  },
+  expenses: {
+    title: 'Expenses Movement',
+    color: '#f6465d',
+    valueLabel: 'Expenses',
+  },
+  netFlow: {
+    title: 'Net Flow Movement',
+    color: '#0052ff',
+    valueLabel: 'Net Flow',
+  },
+  gas: {
+    title: 'Gas Fees Movement',
+    color: '#f7931a',
+    valueLabel: 'Gas',
+  },
+};
+
+interface CashflowChartProps {
+  metric: CashflowMetric;
+}
+
+export function CashflowChart({ metric }: CashflowChartProps) {
+  const ui = METRIC_UI[metric];
   const [activePeriod, setActivePeriod] = useState(30);
   const [points, setPoints] = useState<HistoryPoint[]>([]);
   const [meta, setMeta] = useState<Omit<HistoryPayload, 'points'> | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
 
-  const { portfolio, isLoading } = usePortfolio();
   const activeWalletId = useWalletStore(s => s.activeWalletId);
   const lastSyncAt = useWalletStore(s => s.lastSyncAt);
-
-  const totalValue = portfolio?.totalValueUsd || 0;
   const syncStamp = activeWalletId ? lastSyncAt[activeWalletId] : 0;
 
   const loadHistory = useCallback(async () => {
@@ -65,8 +94,9 @@ export function PortfolioChart() {
       const params = new URLSearchParams({
         walletId: activeWalletId,
         days: String(activePeriod),
+        metric,
       });
-      const res = await fetch(`/api/portfolio/history?${params}`);
+      const res = await fetch(`/api/portfolio/cashflow-history?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `Failed to load history (${res.status})`);
@@ -75,41 +105,51 @@ export function PortfolioChart() {
       const data = json.data as HistoryPayload;
       setPoints(Array.isArray(data.points) ? data.points : []);
       setMeta({
-        source: data.source,
+        periodTotal: data.periodTotal,
         methodology: data.methodology,
-        totalValueUsd: data.totalValueUsd,
-        snapshotCount: data.snapshotCount,
-        tokensPriced: data.tokensPriced,
+        contributingTxCount: data.contributingTxCount,
+        metric: data.metric,
+        bucket: data.bucket,
       });
     } catch (err) {
       setChartError(err instanceof Error ? err.message : 'Failed to load chart');
       setPoints([]);
+      setMeta(null);
     } finally {
       setChartLoading(false);
     }
-  }, [activeWalletId, activePeriod]);
+  }, [activeWalletId, activePeriod, metric]);
 
   useEffect(() => {
     loadHistory();
   }, [loadHistory, syncStamp]);
 
   const data = points;
-  const minValue = data.length ? Math.min(...data.map(d => d.value)) : 0;
-  const maxValue = data.length ? Math.max(...data.map(d => d.value)) : 0;
-  const isPositive = data.length > 1 && data[data.length - 1].value >= data[0].value;
-
-  const changeLabel = useMemo(() => {
-    if (data.length < 2 || !data[0]?.value) return null;
-    const start = data[0].value;
-    const end = data[data.length - 1].value;
-    const pct = ((end - start) / start) * 100;
-    return { end, pct };
-  }, [data]);
+  const minValue = data.length ? Math.min(0, ...data.map(d => d.value)) : 0;
+  const maxValue = data.length ? Math.max(0, ...data.map(d => d.value)) : 0;
+  const periodTotal = meta?.periodTotal ?? (data.length ? data[data.length - 1].value : 0);
+  const isPositive = periodTotal >= 0;
 
   const formatValue = (value: number) => {
-    if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-    if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-    return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const sign = value < 0 ? '-' : '';
+    const abs = Math.abs(value);
+    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+    return (
+      sign +
+      '$' +
+      abs.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    );
+  };
+
+  const formatSignedFull = (value: number) => {
+    const prefix = value > 0 && metric === 'netFlow' ? '+' : '';
+    return (
+      prefix +
+      (value < 0 ? '-' : '') +
+      '$' +
+      Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    );
   };
 
   const formatDate = (dateStr: string) => {
@@ -126,24 +166,13 @@ export function PortfolioChart() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  if (isLoading && totalValue === 0 && data.length === 0) {
-    return (
-      <div className="bg-[#0f1011] border border-white/5 rounded-xl p-6">
-        <div className="flex items-center gap-2">
-          <Loader2 className="h-4 w-4 text-[#0052ff] animate-spin" />
-          <span className="text-sm text-[#8a8f98]">Loading portfolio chart...</span>
-        </div>
-      </div>
-    );
-  }
+  const gradientId = useMemo(() => `cashflowGradient-${metric}`, [metric]);
 
-  if (totalValue === 0 && !isLoading && data.length === 0 && !chartLoading) {
+  if (!activeWalletId) {
     return (
       <div className="bg-[#0f1011] border border-white/5 rounded-xl p-6">
-        <h3 className="text-[#f7f8f8] text-base font-medium mb-2">Portfolio Performance</h3>
-        <p className="text-sm text-[#8a8f98]">
-          No portfolio data available yet. Sync your wallet to see performance charts.
-        </p>
+        <h3 className="text-[#f7f8f8] text-base font-medium mb-2">{ui.title}</h3>
+        <p className="text-sm text-[#8a8f98]">Select a wallet to see movement over time.</p>
       </div>
     );
   }
@@ -153,36 +182,36 @@ export function PortfolioChart() {
       <div className="p-4 pb-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-[#f7f8f8] text-base font-medium">Portfolio Performance</h3>
+            <h3 className="text-[#f7f8f8] text-base font-medium">{ui.title}</h3>
             <p className="text-xs text-[#8a8f98] mt-1">
-              {chartLoading ? (
+              {chartLoading && data.length === 0 ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Loading market history…
+                  <Loader2 className="h-3 w-3 animate-spin" /> Loading cash-flow history…
                 </span>
-              ) : changeLabel ? (
+              ) : data.length > 0 ? (
                 <>
-                  {isPositive ? '↑' : '↓'} {formatValue(changeLabel.end)}
-                  <span className="ml-1">
-                    ({isPositive ? '+' : ''}
-                    {changeLabel.pct.toFixed(2)}%)
+                  <span style={{ color: isPositive ? ui.color : '#f6465d' }}>
+                    {isPositive && metric !== 'expenses' && metric !== 'gas' ? '↑' : metric === 'netFlow' && !isPositive ? '↓' : ''}{' '}
+                    {formatSignedFull(periodTotal)}
                   </span>
+                  <span className="ml-1 text-[#8a8f98]">in selected period</span>
                 </>
               ) : (
-                formatValue(totalValue)
+                !chartLoading && 'No classified activity in this period'
               )}
             </p>
-            {meta?.methodology && !chartLoading && (
-              <p className="text-[10px] text-[#8a8f98]/70 mt-1 max-w-xl leading-relaxed">
-                {meta.methodology}
-                {meta.snapshotCount ? ` · ${meta.snapshotCount} sync snapshot(s)` : ''}
-              </p>
-            )}
+            <p className="text-[10px] text-[#8a8f98]/70 mt-1 max-w-xl leading-relaxed">
+              Based on classified transactions in your synced history
+              {meta?.contributingTxCount
+                ? ` · ${meta.contributingTxCount} contributing transfer(s)`
+                : ''}
+            </p>
             {chartError && (
               <p className="text-[10px] text-[#f6465d] mt-1">{chartError}</p>
             )}
           </div>
           <div className="flex items-center gap-1 bg-[#191a1b] rounded-lg p-1">
-            {periods.map((period) => (
+            {periods.map(period => (
               <Button
                 key={period.days}
                 variant="ghost"
@@ -201,7 +230,7 @@ export function PortfolioChart() {
         </div>
       </div>
       <div className="p-4 pt-2">
-        <div className="h-[300px] sm:h-[350px] w-full relative" dir="ltr">
+        <div className="h-[280px] sm:h-[320px] w-full relative" dir="ltr">
           {chartLoading && data.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center z-10">
               <Loader2 className="h-6 w-6 text-[#0052ff] animate-spin" />
@@ -211,10 +240,10 @@ export function PortfolioChart() {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <defs>
-                  <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0052ff" stopOpacity={0.3} />
-                    <stop offset="50%" stopColor="#0052ff" stopOpacity={0.1} />
-                    <stop offset="95%" stopColor="#0052ff" stopOpacity={0} />
+                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={ui.color} stopOpacity={0.3} />
+                    <stop offset="50%" stopColor={ui.color} stopOpacity={0.1} />
+                    <stop offset="95%" stopColor={ui.color} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
@@ -231,7 +260,10 @@ export function PortfolioChart() {
                   tickLine={false}
                 />
                 <YAxis
-                  domain={[minValue * 0.98, maxValue * 1.02]}
+                  domain={[
+                    minValue < 0 ? minValue * 1.08 : minValue * 0.98,
+                    maxValue > 0 ? maxValue * 1.05 : Math.max(1, Math.abs(minValue) * 0.1),
+                  ]}
                   tickFormatter={formatValue}
                   stroke="rgba(255,255,255,0.1)"
                   tick={{ fill: '#8a8f98', fontSize: 11 }}
@@ -239,6 +271,9 @@ export function PortfolioChart() {
                   tickLine={false}
                   width={70}
                 />
+                {metric === 'netFlow' && minValue < 0 && maxValue > 0 && (
+                  <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" />
+                )}
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#191a1b',
@@ -249,7 +284,7 @@ export function PortfolioChart() {
                     direction: 'ltr',
                   }}
                   labelStyle={{ color: '#8a8f98' }}
-                  formatter={(value: number) => [formatValue(value), 'Value']}
+                  formatter={(value: number) => [formatSignedFull(value), `${ui.valueLabel} (cumulative)`]}
                   labelFormatter={(label) => {
                     const d = new Date(label);
                     if (activePeriod <= 1) {
@@ -270,13 +305,13 @@ export function PortfolioChart() {
                 <Area
                   type="monotone"
                   dataKey="value"
-                  stroke="#0052ff"
+                  stroke={ui.color}
                   strokeWidth={2}
-                  fill="url(#portfolioGradient)"
+                  fill={`url(#${gradientId})`}
                   dot={false}
                   activeDot={{
                     r: 4,
-                    fill: '#0052ff',
+                    fill: ui.color,
                     stroke: '#0f1011',
                     strokeWidth: 2,
                   }}
@@ -286,7 +321,7 @@ export function PortfolioChart() {
           ) : (
             !chartLoading && (
               <div className="h-full flex items-center justify-center text-sm text-[#8a8f98]">
-                Unable to build history for this period. Try syncing again.
+                No classified transactions in this period. Sync your wallet or try a longer range.
               </div>
             )
           )}

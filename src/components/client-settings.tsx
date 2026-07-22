@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { type Client, type Transaction } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { TablePagination } from '@/components/table-pagination';
+import { useTablePagination } from '@/hooks/use-table-pagination';
 
 interface ClientSettingsProps {
   clients: Client[];
@@ -164,18 +166,35 @@ export function ClientSettings({ clients, onClientsChange, transactions, defineA
   };
 
   // Filter by search
-  const filteredDefined = clients.filter(
-    c =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.notes.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredDefined = useMemo(
+    () =>
+      clients.filter(
+        c =>
+          c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          c.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          c.notes.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
+    [clients, searchQuery],
   );
 
-  const filteredUndefined = undefinedAddresses.filter(
-    a =>
-      a.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.label.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredUndefined = useMemo(
+    () =>
+      undefinedAddresses.filter(
+        a =>
+          a.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          a.label.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
+    [undefinedAddresses, searchQuery],
   );
+
+  const definedPaging = useTablePagination(filteredDefined);
+  const undefinedPaging = useTablePagination(filteredUndefined);
+
+  useEffect(() => {
+    definedPaging.setPage(1);
+    undefinedPaging.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   return (
     <>
@@ -231,7 +250,7 @@ export function ClientSettings({ clients, onClientsChange, transactions, defineA
                 <span className="text-[11px] text-[#0ecb81] font-medium">Defined Clients</span>
               </div>
               <div className="space-y-1.5">
-                {filteredDefined.map((client) => (
+                {definedPaging.pageItems.map((client) => (
                   <div
                     key={client.id}
                     className="flex items-center gap-3 bg-[#191a1b] rounded-lg p-3 hover:bg-[#1e1f20] transition-colors group"
@@ -276,6 +295,13 @@ export function ClientSettings({ clients, onClientsChange, transactions, defineA
                   </div>
                 ))}
               </div>
+              <TablePagination
+                page={definedPaging.page}
+                pageSize={definedPaging.pageSize}
+                totalItems={definedPaging.totalItems}
+                onPageChange={definedPaging.setPage}
+                className="px-0"
+              />
             </div>
           )}
 
@@ -287,7 +313,7 @@ export function ClientSettings({ clients, onClientsChange, transactions, defineA
                 <span className="text-[11px] text-[#8a8f98] font-medium">Undefined Addresses</span>
               </div>
               <div className="space-y-1.5">
-                {filteredUndefined.map((addr) => (
+                {undefinedPaging.pageItems.map((addr) => (
                   <div
                     key={addr.address}
                     className="flex items-center gap-3 bg-[#191a1b]/40 rounded-lg p-3 hover:bg-[#191a1b] transition-colors group border border-dashed border-white/5"
@@ -327,6 +353,13 @@ export function ClientSettings({ clients, onClientsChange, transactions, defineA
                   </div>
                 ))}
               </div>
+              <TablePagination
+                page={undefinedPaging.page}
+                pageSize={undefinedPaging.pageSize}
+                totalItems={undefinedPaging.totalItems}
+                onPageChange={undefinedPaging.setPage}
+                className="px-0"
+              />
             </div>
           )}
 

@@ -28,6 +28,12 @@ import {
   isValidTronAddress,
   truncateAddress,
 } from '@/lib/wallet/address-validation';
+import {
+  getAllowedAddressFamilies,
+  networkChipsForPlan,
+  planAllowsAddressFamily,
+  planDisplayName,
+} from '@/lib/plans/address-families';
 
 function familyBadges(wallet: WalletInfo): string[] {
   const badges: string[] = [];
@@ -88,11 +94,24 @@ export function WalletBar() {
     setBitcoinAddress('');
   };
 
-  const hasAnyAddress =
-    !!evmAddress.trim() ||
-    !!solanaAddress.trim() ||
-    !!tronAddress.trim() ||
-    !!bitcoinAddress.trim();
+  const walletLimit = PLAN_WALLET_LIMITS[currentPlan] ?? 1;
+  const allowedFamilies = getAllowedAddressFamilies(currentPlan);
+  const allowEvm = planAllowsAddressFamily(currentPlan, 'evm');
+  const allowSolana = planAllowsAddressFamily(currentPlan, 'solana');
+  const allowTron = planAllowsAddressFamily(currentPlan, 'tron');
+  const allowBitcoin = planAllowsAddressFamily(currentPlan, 'bitcoin');
+  const planName = planDisplayName(currentPlan);
+  const networkChips = networkChipsForPlan(currentPlan);
+  const isStarter = allowedFamilies.length === 1 && allowedFamilies[0] === 'evm';
+
+  const hasRequiredAddresses = isStarter
+    ? !!evmAddress.trim()
+    : !!(
+        (allowEvm && evmAddress.trim()) ||
+        (allowSolana && solanaAddress.trim()) ||
+        (allowTron && tronAddress.trim()) ||
+        (allowBitcoin && bitcoinAddress.trim())
+      );
 
   const addressesValid =
     (!evmAddress.trim() || isValidEvmAddress(evmAddress.trim())) &&
@@ -106,8 +125,12 @@ export function WalletBar() {
       toast.error('Please enter a wallet name');
       return;
     }
-    if (!hasAnyAddress) {
-      toast.error('Enter at least one address');
+    if (!hasRequiredAddresses) {
+      toast.error(
+        isStarter
+          ? 'Enter an EVM wallet address'
+          : `Enter at least one address (${allowedFamilies.join(', ')})`,
+      );
       return;
     }
     if (!addressesValid) {
@@ -117,10 +140,10 @@ export function WalletBar() {
 
     await addWallet({
       label,
-      evmAddress: evmAddress.trim() || undefined,
-      solanaAddress: solanaAddress.trim() || undefined,
-      tronAddress: tronAddress.trim() || undefined,
-      bitcoinAddress: bitcoinAddress.trim() || undefined,
+      evmAddress: allowEvm ? evmAddress.trim() || undefined : undefined,
+      solanaAddress: allowSolana ? solanaAddress.trim() || undefined : undefined,
+      tronAddress: allowTron ? tronAddress.trim() || undefined : undefined,
+      bitcoinAddress: allowBitcoin ? bitcoinAddress.trim() || undefined : undefined,
     });
 
     const state = useWalletStore.getState();
@@ -151,8 +174,6 @@ export function WalletBar() {
       toast.success(`Switched to ${wallet.label}`);
     }
   };
-
-  const walletLimit = PLAN_WALLET_LIMITS[currentPlan] ?? 1;
 
   return (
     <>
@@ -359,70 +380,83 @@ export function WalletBar() {
 
             <div className="space-y-3 rounded-lg border border-white/5 bg-[#191a1b]/50 p-3">
               <p className="text-[11px] text-[#8a8f98]">
-                Enter at least one address. All addresses share this wallet name and dashboard.
+                {isStarter
+                  ? 'Starter plan: enter your EVM address. Data is synced across supported EVM networks.'
+                  : `Your ${planName} plan allows: ${allowedFamilies
+                      .map(f => f.toUpperCase())
+                      .join(', ')}. All addresses share this wallet name and dashboard.`}
               </p>
 
-              <div className="space-y-1.5">
-                <label className="text-xs text-[#d0d6e0]">EVM Address</label>
-                <Input
-                  placeholder="0x… (Ethereum, Base, Arb, OP, Polygon, BSC, Linea…)"
-                  value={evmAddress}
-                  onChange={e => setEvmAddress(e.target.value)}
-                  className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
-                />
-              </div>
+              {allowEvm && (
+                <div className="space-y-1.5">
+                  <label className="text-xs text-[#d0d6e0]">
+                    EVM Address{isStarter ? ' *' : ''}
+                  </label>
+                  <Input
+                    placeholder="0x… (Ethereum, Base, Arb, OP, Polygon, BSC, Linea…)"
+                    value={evmAddress}
+                    onChange={e => setEvmAddress(e.target.value)}
+                    className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                  />
+                </div>
+              )}
 
-              <div className="space-y-1.5">
-                <label className="text-xs text-[#d0d6e0]">Solana Address</label>
-                <Input
-                  placeholder="Base58 Solana pubkey"
-                  value={solanaAddress}
-                  onChange={e => setSolanaAddress(e.target.value)}
-                  className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
-                />
-              </div>
+              {allowSolana && (
+                <div className="space-y-1.5">
+                  <label className="text-xs text-[#d0d6e0]">Solana Address</label>
+                  <Input
+                    placeholder="Base58 Solana pubkey"
+                    value={solanaAddress}
+                    onChange={e => setSolanaAddress(e.target.value)}
+                    className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                  />
+                </div>
+              )}
 
-              <div className="space-y-1.5">
-                <label className="text-xs text-[#d0d6e0]">Tron Address</label>
-                <Input
-                  placeholder="T… Tron address"
-                  value={tronAddress}
-                  onChange={e => setTronAddress(e.target.value)}
-                  className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
-                />
-              </div>
+              {allowTron && (
+                <div className="space-y-1.5">
+                  <label className="text-xs text-[#d0d6e0]">Tron Address</label>
+                  <Input
+                    placeholder="T… Tron address"
+                    value={tronAddress}
+                    onChange={e => setTronAddress(e.target.value)}
+                    className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                  />
+                </div>
+              )}
 
-              <div className="space-y-1.5">
-                <label className="text-xs text-[#d0d6e0]">Bitcoin Address</label>
-                <Input
-                  placeholder="bc1… / 1… / 3…"
-                  value={bitcoinAddress}
-                  onChange={e => setBitcoinAddress(e.target.value)}
-                  className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
-                />
-              </div>
+              {allowBitcoin && (
+                <div className="space-y-1.5">
+                  <label className="text-xs text-[#d0d6e0]">Bitcoin Address</label>
+                  <Input
+                    placeholder="bc1… / 1… / 3…"
+                    value={bitcoinAddress}
+                    onChange={e => setBitcoinAddress(e.target.value)}
+                    className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                  />
+                </div>
+              )}
+
+              {(!allowSolana || !allowTron || !allowBitcoin) && (
+                <p className="text-[10px] text-[#8a8f98]/80">
+                  {!allowBitcoin && allowSolana
+                    ? 'Bitcoin addresses unlock on the Business plan.'
+                    : !allowSolana
+                      ? 'Solana, Tron, and Bitcoin unlock on Pro / Business plans.'
+                      : null}
+                </p>
+              )}
             </div>
 
             <div className="bg-[#191a1b] rounded-lg p-3 space-y-2">
               <div className="flex items-center gap-2">
                 <Link2 className="h-4 w-4 text-[#0052ff]" />
-                <span className="text-xs text-[#d0d6e0] font-medium">Synced networks</span>
+                <span className="text-xs text-[#d0d6e0] font-medium">
+                  Synced on {planName}
+                </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {[
-                  'Ethereum',
-                  'Base',
-                  'Arbitrum',
-                  'OP',
-                  'Polygon',
-                  'BSC',
-                  'Linea',
-                  'HyperEVM',
-                  'Monad',
-                  'Solana',
-                  'Tron',
-                  'Bitcoin',
-                ].map(n => (
+                {networkChips.map(n => (
                   <span
                     key={n}
                     className="text-[10px] text-[#8a8f98] bg-[#28282c] rounded px-2 py-0.5"
@@ -436,11 +470,12 @@ export function WalletBar() {
             <div className="flex items-center gap-2 bg-[#0052ff]/5 border border-[#0052ff]/10 rounded-lg p-2.5">
               <AlertCircle className="h-4 w-4 text-[#0052ff] flex-shrink-0" />
               <p className="text-[11px] text-[#d0d6e0]">
-                Your current plan supports up to{' '}
+                Plan <span className="text-[#0052ff] font-medium">{planName}</span>: up to{' '}
                 <span className="text-[#0052ff] font-medium">
                   {walletLimit === Infinity ? 'unlimited' : walletLimit}
                 </span>{' '}
-                wallets ({wallets.length} currently added). Address-family limits by plan come later.
+                wallets ({wallets.length} added). Address families:{' '}
+                {allowedFamilies.map(f => f.toUpperCase()).join(', ')}.
               </p>
             </div>
 
@@ -456,7 +491,7 @@ export function WalletBar() {
                 className="flex-1 bg-[#0052ff] hover:bg-[#0052ff]/80 text-white"
                 onClick={handleAddWallet}
                 disabled={
-                  isAddingWallet || !newLabel.trim() || !hasAnyAddress || !addressesValid
+                  isAddingWallet || !newLabel.trim() || !hasRequiredAddresses || !addressesValid
                 }
               >
                 {isAddingWallet ? (

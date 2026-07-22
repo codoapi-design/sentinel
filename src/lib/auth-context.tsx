@@ -1,9 +1,11 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
+import { clearUserLocalState } from '@/lib/clear-user-local-state';
+import { useWalletStore } from '@/stores/wallet-store';
 
 interface AuthContextType {
   user: User | null;
@@ -23,12 +25,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const boundUserIdRef = useRef<string | null>(null);
+
+  const bindSessionUser = useCallback((nextUser: User | null) => {
+    const nextId = nextUser?.id ?? null;
+    const prevId = boundUserIdRef.current;
+    if (prevId === nextId) {
+      if (nextId) useWalletStore.getState().bindOwner(nextId);
+      return;
+    }
+
+    // Account switched or signed out — wipe local caches from the previous user
+    if (prevId && prevId !== nextId) {
+      clearUserLocalState(nextId);
+    } else if (!prevId && nextId) {
+      // First bind this session: drop orphan/legacy cache not owned by this user
+      const cachedOwner = useWalletStore.getState().ownerUserId;
+      const hasCachedWallets = useWalletStore.getState().wallets.length > 0;
+      if ((cachedOwner && cachedOwner !== nextId) || (!cachedOwner && hasCachedWallets)) {
+        clearUserLocalState(nextId);
+      } else {
+        useWalletStore.getState().bindOwner(nextId);
+      }
+    } else if (!nextId) {
+      clearUserLocalState(null);
+    }
+
+    boundUserIdRef.current = nextId;
+  }, []);
 
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
+      bindSessionUser(currentSession?.user ?? null);
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -37,11 +68,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
-        // Handle different auth events
         if (event === 'SIGNED_IN') {
           setSession(newSession);
           setUser(newSession?.user ?? null);
+          bindSessionUser(newSession?.user ?? null);
         } else if (event === 'SIGNED_OUT') {
+          bindSessionUser(null);
           setSession(null);
           setUser(null);
         } else if (event === 'TOKEN_REFRESHED') {
@@ -50,16 +82,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setSession(newSession);
           setUser(newSession?.user ?? null);
+          bindSessionUser(newSession?.user ?? null);
         }
         setLoading(false);
       }
     );
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [bindSessionUser]);
 
   const signUp = useCallback(async (email: string, password: string, fullName: string) => {
     try {
+      // New account must not inherit the previous user's local wallet cache
+      clearUserLocalState(null);
+
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -90,9 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error.message };
       }
 
-      // The session should be set by the onAuthStateChange listener
-      // But we also set it here for immediate feedback
       if (data.session) {
+        bindSessionUser(data.session.user);
         setSession(data.session);
         setUser(data.session.user);
       }
@@ -102,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Sign in exception:', err);
       return { error: 'An unexpected error occurred. Please try again.' };
     }
-  }, []);
+  }, [bindSessionUser]);
 
   const signInWithGoogle = useCallback(async () => {
     try {
@@ -132,6 +167,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
+      clearUserLocalState(null);
+      boundUserIdRef.current = null;
       await supabase.auth.signOut();
       setUser(null);
       setSession(null);

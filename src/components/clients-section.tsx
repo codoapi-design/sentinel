@@ -25,7 +25,16 @@ import {
   type Client,
   type Transaction,
 } from '@/lib/mock-data';
+import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
+import {
+  filterVisibleTransactions,
+  isHiddenSpamOrDustTx,
+} from '@/lib/finance/visibility';
 import { cn } from '@/lib/utils';
+import { TablePagination } from '@/components/table-pagination';
+import { useTablePagination } from '@/hooks/use-table-pagination';
+import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
+import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
 
 const clientColors = [
   '#ff007a', '#0052ff', '#0ecb81', '#f6465d', '#f7931a',
@@ -77,6 +86,16 @@ export function ClientsSection({
   const [formAddress, setFormAddress] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formColor, setFormColor] = useState(clientColors[0]);
+
+  const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
+  const hasHiddenItems = useMemo(
+    () => transactions.some((tx) => isHiddenSpamOrDustTx(tx, false)),
+    [transactions],
+  );
+  const visibleTransactions = useMemo(
+    () => filterVisibleTransactions(transactions, showSpamAndDust),
+    [transactions, showSpamAndDust],
+  );
 
   // Handle external define trigger
   useEffect(() => {
@@ -160,17 +179,17 @@ export function ClientsSection({
   const allCounterparties = useMemo((): CounterpartyStats[] => {
     const statsMap = new Map<string, CounterpartyStats & { tokenCounts: Record<string, number> }>();
 
-    transactions.forEach(tx => {
+    visibleTransactions.forEach(tx => {
       const key = tx.counterparty.toLowerCase();
       const existing = statsMap.get(key);
 
       if (existing) {
         existing.txCount++;
         existing.totalVolume += tx.value;
-        if (tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi') {
+        if (isRevenueType(tx.type)) {
           existing.totalRevenue += tx.value;
         }
-        if (tx.type === 'expense' || tx.type === 'gas') {
+        if (isExpenseType(tx.type)) {
           existing.totalExpenses += tx.value;
         }
         existing.netFlow = existing.totalRevenue - existing.totalExpenses;
@@ -180,8 +199,8 @@ export function ClientsSection({
         existing.tokenCounts[tx.token] = (existing.tokenCounts[tx.token] || 0) + 1;
       } else {
         const client = clients.find(c => c.address.toLowerCase() === key);
-        const revenue = (tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi') ? tx.value : 0;
-        const expenses = (tx.type === 'expense' || tx.type === 'gas') ? tx.value : 0;
+        const revenue = isRevenueType(tx.type) ? tx.value : 0;
+        const expenses = isExpenseType(tx.type) ? tx.value : 0;
         statsMap.set(key, {
           address: tx.counterparty,
           label: tx.counterpartyLabel,
@@ -212,7 +231,7 @@ export function ClientsSection({
     });
 
     return result;
-  }, [clients, transactions]);
+  }, [clients, visibleTransactions]);
 
   // Filter by search
   const filteredCounterparties = useMemo(() => {
@@ -226,6 +245,19 @@ export function ClientsSection({
     );
   }, [allCounterparties, searchQuery]);
 
+  const {
+    page,
+    setPage,
+    pageSize,
+    pageItems: pagedCounterparties,
+    totalItems: counterpartiesTotal,
+  } = useTablePagination(filteredCounterparties);
+
+  // Reset to first page when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, setPage]);
+
   const truncateAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
@@ -237,12 +269,18 @@ export function ClientsSection({
     <>
       <Card className="bg-[#0f1011] border-white/5">
         <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
-              <Users className="h-5 w-5 text-[#b6509e]" />
-              Clients
-            </CardTitle>
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
+                <Users className="h-5 w-5 text-[#b6509e]" />
+                Clients
+              </CardTitle>
+              {hasHiddenItems && !showSpamAndDust ? (
+                <p className="text-[10px] text-[#8a8f98] mt-1">spam & $0 hidden</p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <ShowSpamDustToggle compact />
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-[#0ecb81]">{definedCount} defined</span>
                 <span className="text-[10px] text-[#8a8f98]">{undefinedCount} undefined</span>
@@ -281,10 +319,18 @@ export function ClientsSection({
             <div className="text-center py-12">
               <Users className="h-10 w-10 text-[#28282c] mx-auto mb-3" />
               <p className="text-sm text-[#8a8f98]">
-                {searchQuery ? 'No results found' : 'No transactions yet'}
+                {searchQuery
+                  ? 'No results found'
+                  : hasHiddenItems && !showSpamAndDust && visibleTransactions.length === 0
+                    ? 'No clients to show'
+                    : 'No transactions yet'}
               </p>
               <p className="text-xs text-[#8a8f98]/60 mt-1">
-                {searchQuery ? 'Try a different search' : 'Wallet addresses you interact with will appear here automatically'}
+                {searchQuery
+                  ? 'Try a different search'
+                  : hasHiddenItems && !showSpamAndDust && visibleTransactions.length === 0
+                    ? 'Enable Show spam & $0 if you expect dust'
+                    : 'Wallet addresses you interact with will appear here automatically'}
               </p>
             </div>
           ) : (
@@ -302,7 +348,7 @@ export function ClientsSection({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCounterparties.map((cp) => {
+                  {pagedCounterparties.map((cp) => {
                     const isNetPositive = cp.netFlow >= 0;
                     const clickIdentifier = cp.isDefined && cp.client ? cp.client.id : cp.address;
 
@@ -404,6 +450,12 @@ export function ClientsSection({
               </table>
             </div>
           )}
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            totalItems={counterpartiesTotal}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
 

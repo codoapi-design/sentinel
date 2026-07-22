@@ -55,7 +55,7 @@ const CHART_COLORS = ['#0052ff', '#0ecb81', '#f6465d', '#f7931a', '#627eea', '#8
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 shadow-xl" dir="rtl">
+    <div className="bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 shadow-xl" dir="ltr">
       {label && <p className="text-[10px] text-[#8a8f98] mb-1">{label}</p>}
       {payload.map((entry, i) => (
         <p key={i} className="text-xs font-medium text-[#f7f8f8]">
@@ -295,7 +295,7 @@ export function AIAnalysisSection({
   // ============================================================
 
   const renderLoading = () => (
-    <div className="flex flex-col items-center justify-center py-16 gap-4" dir="rtl">
+    <div className="flex flex-col items-center justify-center py-16 gap-4" dir="ltr">
       <div className="relative">
         <div className="w-16 h-16 rounded-2xl bg-[#0052ff]/10 flex items-center justify-center">
           <BarChart3 className="h-8 w-8 text-[#0052ff]" />
@@ -328,7 +328,7 @@ export function AIAnalysisSection({
     ];
 
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" dir="rtl">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" dir="ltr">
         {summaryItems.map((item, i) => (
           <div key={i} className="bg-[#0f1011] border border-white/5 rounded-xl p-4">
             <p className="text-[10px] text-[#8a8f98] mb-1">{item.label}</p>
@@ -362,7 +362,7 @@ export function AIAnalysisSection({
     const { byDate: byDateChart, byToken: byTokenChart, byNetwork: byNetworkChart, byCounterparty: byCounterpartyChart } = analysis.charts;
 
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" dir="rtl">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" dir="ltr">
         {/* By Date — AreaChart */}
         {formattedByDate.length > 0 && (
           <Card className="bg-[#0f1011] border-white/5 lg:col-span-2">
@@ -493,7 +493,7 @@ export function AIAnalysisSection({
     }
 
     return (
-      <div className="space-y-4" dir="rtl">
+      <div className="space-y-4" dir="ltr">
         {/* Insights */}
         {insights.length > 0 && (
           <div className="space-y-2">
@@ -581,7 +581,7 @@ export function AIAnalysisSection({
     if (!analysis?.reportMarkdown) return null;
 
     return (
-      <div dir="rtl">
+      <div dir="ltr">
         <button
           onClick={() => setShowReport(!showReport)}
           className="flex items-center gap-2 text-sm font-medium text-[#f7f8f8] hover:text-[#0052ff] transition-colors mb-3"
@@ -607,7 +607,7 @@ export function AIAnalysisSection({
     if (isOverlay || !transactions) return null;
 
     return (
-      <div className="flex items-center justify-center" dir="rtl">
+      <div className="flex items-center justify-center" dir="ltr">
         <Button
           onClick={triggerAnalysis}
           disabled={isLoading || transactions.length === 0}
@@ -636,7 +636,7 @@ export function AIAnalysisSection({
   const renderError = () => {
     if (!error) return null;
     return (
-      <div className="flex items-center gap-3 bg-[#f6465d]/5 border border-[#f6465d]/10 rounded-xl p-4" dir="rtl">
+      <div className="flex items-center gap-3 bg-[#f6465d]/5 border border-[#f6465d]/10 rounded-xl p-4" dir="ltr">
         <AlertTriangle className="h-5 w-5 text-[#f6465d] flex-shrink-0" />
         <div>
           <p className="text-sm font-medium text-[#f6465d]">Analysis failed</p>
@@ -663,7 +663,7 @@ export function AIAnalysisSection({
 
     return (
       <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-start justify-center overflow-y-auto py-8 px-4">
-        <div className="w-full max-w-5xl bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl" dir="rtl">
+        <div className="w-full max-w-5xl bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl" dir="ltr">
           {/* Header */}
           <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-white/5 bg-[#0a0a0b]/95 backdrop-blur-xl rounded-t-2xl">
             <div className="flex items-center gap-3">
@@ -719,7 +719,7 @@ export function AIAnalysisSection({
       {analysis && !isLoading && (
         <div className="space-y-6">
           {/* Inline header */}
-          <div className="flex items-center justify-between" dir="rtl">
+          <div className="flex items-center justify-between" dir="ltr">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#0052ff]/10 flex items-center justify-center">
                 <BarChart3 className="h-5 w-5 text-[#0052ff]" />

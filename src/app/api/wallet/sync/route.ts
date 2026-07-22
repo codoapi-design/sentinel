@@ -3,6 +3,8 @@ import { createCookieServerClient, createServerClient } from '@/lib/supabase/ser
 import { getSyncEngine } from '@/lib/blockchain/sync-engine';
 import { getBlockchainCache } from '@/lib/blockchain/cache';
 
+export const maxDuration = 300; // Full history pagination can exceed 60s on active wallets
+
 /**
  * POST /api/wallet/sync
  *

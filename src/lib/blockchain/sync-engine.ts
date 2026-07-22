@@ -35,6 +35,8 @@ import { fetchSolanaBalances, fetchSolanaTransactions } from '@/lib/solana/servi
 import { fetchTronBalances, fetchTronTransactions } from '@/lib/tron/service';
 import { fetchBitcoinBalances, fetchBitcoinTransactions } from '@/lib/bitcoin/service';
 import { primaryDisplayAddress } from '@/lib/wallet/address-validation';
+import { planAllowsAddressFamily, normalizePlanId } from '@/lib/plans/address-families';
+import { upsertPortfolioSnapshot } from '@/lib/finance/portfolio-snapshots';
 
 type WalletRow = {
   id: string;
@@ -45,6 +47,18 @@ type WalletRow = {
   bitcoin_address?: string | null;
   last_synced_block?: number | null;
 };
+
+async function resolveWalletPlan(
+  supabase: ReturnType<typeof createServerClient>,
+  userId: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('plan')
+    .eq('user_id', userId)
+    .maybeSingle();
+  return normalizePlanId(data?.plan || 'starter');
+}
 
 // ────────────────────────────────────────────────────────────
 // Sync Engine
@@ -91,6 +105,7 @@ export class SyncEngine {
 
       const evmAddress = wallet.address || null;
       const displayAddress = primaryDisplayAddress(wallet);
+      const userPlan = await resolveWalletPlan(supabase, wallet.user_id);
 
       // Mark as syncing
       await supabase
@@ -99,7 +114,7 @@ export class SyncEngine {
         .eq('id', walletId);
 
       try {
-        if (evmAddress) {
+        if (evmAddress && planAllowsAddressFamily(userPlan, 'evm')) {
           const balancesResult = await this.syncCurrentBalances(walletId, wallet.user_id, evmAddress);
           results.push(balancesResult);
 
@@ -113,8 +128,15 @@ export class SyncEngine {
           results.push(pnlResult);
         }
 
-        const nonEvm = await this.syncNonEvmFamilies(walletId, wallet.user_id, wallet as WalletRow);
+        const nonEvm = await this.syncNonEvmFamilies(
+          walletId,
+          wallet.user_id,
+          wallet as WalletRow,
+          userPlan,
+        );
         results.push(...nonEvm);
+
+        await this.recordDailyPortfolioSnapshot(walletId, wallet.user_id);
 
         await supabase.from('sync_status').upsert({
           wallet_id: walletId,
@@ -196,6 +218,7 @@ export class SyncEngine {
       const evmAddress = wallet.address || null;
       const displayAddress = primaryDisplayAddress(wallet);
       const before = await this.snapshotWalletData(walletId);
+      const userPlan = await resolveWalletPlan(supabase, wallet.user_id);
 
       // Mark as syncing
       await supabase
@@ -204,7 +227,7 @@ export class SyncEngine {
         .eq('id', walletId);
 
       try {
-        if (evmAddress) {
+        if (evmAddress && planAllowsAddressFamily(userPlan, 'evm')) {
           await this.cache.invalidate(evmAddress, 'portfolio');
           await this.cache.invalidate(evmAddress, 'pnl');
 
@@ -226,8 +249,15 @@ export class SyncEngine {
           results.push(pnlResult);
         }
 
-        const nonEvm = await this.syncNonEvmFamilies(walletId, wallet.user_id, wallet as WalletRow);
+        const nonEvm = await this.syncNonEvmFamilies(
+          walletId,
+          wallet.user_id,
+          wallet as WalletRow,
+          userPlan,
+        );
         results.push(...nonEvm);
+
+        await this.recordDailyPortfolioSnapshot(walletId, wallet.user_id);
 
       } catch (syncError) {
         console.error('[SyncEngine] Incremental sync error:', syncError);
@@ -319,6 +349,23 @@ export class SyncEngine {
     );
   }
 
+  /** Persist today's portfolio USD total for the performance chart. */
+  private async recordDailyPortfolioSnapshot(walletId: string, userId: string): Promise<void> {
+    try {
+      const snap = await this.snapshotWalletData(walletId);
+      await upsertPortfolioSnapshot({
+        walletId,
+        userId,
+        tokenValueUsd: snap.tokenValueUsd,
+        defiValueUsd: snap.defiValueUsd,
+        totalValueUsd: snap.tokenValueUsd + snap.defiValueUsd,
+        source: 'sync',
+      });
+    } catch (err) {
+      console.warn('[SyncEngine] portfolio snapshot skipped:', err);
+    }
+  }
+
   /**
    * Real-time webhook handler
    * Called when Alchemy Notify sends an address activity event
@@ -405,10 +452,11 @@ export class SyncEngine {
     walletId: string,
     userId: string,
     wallet: WalletRow,
+    plan: string,
   ): Promise<SyncResult[]> {
     const results: SyncResult[] = [];
 
-    if (wallet.solana_address) {
+    if (wallet.solana_address && planAllowsAddressFamily(plan, 'solana')) {
       results.push(
         await this.syncFamilyBalancesAndTxs(
           walletId,
@@ -419,7 +467,7 @@ export class SyncEngine {
         ),
       );
     }
-    if (wallet.tron_address) {
+    if (wallet.tron_address && planAllowsAddressFamily(plan, 'tron')) {
       results.push(
         await this.syncFamilyBalancesAndTxs(
           walletId,
@@ -430,7 +478,7 @@ export class SyncEngine {
         ),
       );
     }
-    if (wallet.bitcoin_address) {
+    if (wallet.bitcoin_address && planAllowsAddressFamily(plan, 'bitcoin')) {
       results.push(
         await this.syncFamilyBalancesAndTxs(
           walletId,
@@ -618,25 +666,28 @@ export class SyncEngine {
     const errors: string[] = [];
 
     try {
-      // Fetch from Etherscan V2 (via provider manager) for each supported chain,
-      // in parallel so one chain never blocks the others. Chains not covered by
-      // the current API plan are skipped quietly by the provider manager.
+      // Paginate every supported chain until history is exhausted (pageSize 100).
+      // Chains run in parallel; pages within a chain are sequential for rate limits.
       const chainIds = SYNC_CHAIN_IDS;
+      const pageSize = 100;
 
       const chainResults = await Promise.allSettled(
-        chainIds.map(chainId =>
-          this.providerManager
-            .fetchHistoricalTransactions(address, chainId, 0, 100)
-            .then(async ({ transactions, providers }) => {
-              if (transactions.length === 0) return 0;
-              return this.cache.upsertTransactions(
+        chainIds.map(async chainId => {
+          let stored = 0;
+          await this.providerManager.fetchAllHistoricalTransactions(address, chainId, {
+            pageSize,
+            onBatch: async (transactions, providers) => {
+              if (transactions.length === 0) return;
+              stored += await this.cache.upsertTransactions(
                 walletId,
                 userId,
                 transactions,
                 providers[0] || 'etherscan',
               );
-            }),
-        ),
+            },
+          });
+          return stored;
+        }),
       );
 
       chainResults.forEach((result, i) => {
@@ -681,26 +732,29 @@ export class SyncEngine {
     const errors: string[] = [];
     const chainIds = SYNC_CHAIN_IDS;
     const startBlock = lastSyncedBlock ? lastSyncedBlock + 1 : 0;
+    const pageSize = 100;
 
     try {
-      // Fetch new transactions from every chain in parallel; unsupported chains
-      // are skipped quietly by the provider manager.
+      // Paginate all new txs since lastSyncedBlock on every chain (not just first page).
       const chainResults = await Promise.allSettled(
-        chainIds.map(chainId =>
-          this.providerManager
-            .fetchHistoricalTransactions(address, chainId, 0, 100, startBlock)
-            .then(async ({ transactions }) => {
-              if (transactions.length === 0) return { stored: 0, chainMax: 0 };
-              const stored = await this.cache.upsertTransactions(
-                walletId,
-                userId,
-                transactions,
-                'etherscan',
-              );
-              const chainMax = Math.max(...transactions.map(tx => tx.blockNumber));
-              return { stored, chainMax };
-            }),
-        ),
+        chainIds.map(async chainId => {
+          let stored = 0;
+          const { maxBlock: chainMax } =
+            await this.providerManager.fetchAllHistoricalTransactions(address, chainId, {
+              pageSize,
+              startBlock,
+              onBatch: async (transactions) => {
+                if (transactions.length === 0) return;
+                stored += await this.cache.upsertTransactions(
+                  walletId,
+                  userId,
+                  transactions,
+                  'etherscan',
+                );
+              },
+            });
+          return { stored, chainMax };
+        }),
       );
 
       chainResults.forEach((result, i) => {

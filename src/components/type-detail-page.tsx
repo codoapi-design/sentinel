@@ -21,6 +21,7 @@ import {
 import {
   type Transaction,
 } from '@/lib/mock-data';
+import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
@@ -95,13 +96,13 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
   // Calculate stats
   const totalRevenue = useMemo(() => {
     return typeTransactions
-      .filter(tx => tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi')
+      .filter(tx => isRevenueType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
   }, [typeTransactions]);
 
   const totalExpenses = useMemo(() => {
     return typeTransactions
-      .filter(tx => tx.type === 'expense' || tx.type === 'gas')
+      .filter(tx => isExpenseType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
   }, [typeTransactions]);
 

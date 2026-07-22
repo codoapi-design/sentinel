@@ -17,6 +17,9 @@ import {
   type Transaction,
 } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
+import { TablePagination } from '@/components/table-pagination';
+import { useTablePagination } from '@/hooks/use-table-pagination';
 
 interface TypesSectionProps {
   transactions: Transaction[];
@@ -59,10 +62,10 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
       if (existing) {
         existing.txCount++;
         existing.totalVolume += tx.value;
-        if (tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi') {
+        if (isRevenueType(tx.type)) {
           existing.totalRevenue += tx.value;
         }
-        if (tx.type === 'expense' || tx.type === 'gas') {
+        if (isExpenseType(tx.type)) {
           existing.totalExpenses += tx.value;
         }
         existing.netFlow = existing.totalRevenue - existing.totalExpenses;
@@ -71,8 +74,8 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
         }
         existing.tokenCounts[tx.token] = (existing.tokenCounts[tx.token] || 0) + 1;
       } else {
-        const revenue = (tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi') ? tx.value : 0;
-        const expenses = (tx.type === 'expense' || tx.type === 'gas') ? tx.value : 0;
+        const revenue = isRevenueType(tx.type) ? tx.value : 0;
+        const expenses = isExpenseType(tx.type) ? tx.value : 0;
         statsMap.set(key, {
           typeId: key,
           typeLabel: config?.label || tx.typeLabel || key,
@@ -102,6 +105,14 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
 
     return result;
   }, [transactions]);
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    pageItems: pagedTypes,
+    totalItems,
+  } = useTablePagination(typeStats);
 
   if (typeStats.length === 0) {
     return (
@@ -148,7 +159,7 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
               </tr>
             </thead>
             <tbody>
-              {typeStats.map((ts) => {
+              {pagedTypes.map((ts) => {
                 const isNetPositive = ts.netFlow >= 0;
                 const config = typeConfig[ts.typeId];
                 const IconComp = config?.IconComponent || Coins;
@@ -227,6 +238,12 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
             </tbody>
           </table>
         </div>
+        <TablePagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+        />
       </CardContent>
     </Card>
   );

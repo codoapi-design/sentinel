@@ -97,7 +97,7 @@ export default function AdminUserDetailPage() {
     banned: 'bg-[#f6465d]/10 text-[#f6465d]',
   };
   const statusLabels: Record<string, string> = { active: 'Active', suspended: 'Suspended', banned: 'Banned' };
-  const planLabels: Record<string, string> = { starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise' };
+  const planLabels: Record<string, string> = { starter: 'Starter', pro: 'Pro', enterprise: 'Business', business: 'Business' };
 
   const tabs = [
     { id: 'overview', label: 'Overview' },

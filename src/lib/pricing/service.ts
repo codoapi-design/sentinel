@@ -219,6 +219,77 @@ export class PricingService {
   }
 
   /**
+   * CoinGecko market chart for a coin id (e.g. ethereum, solana).
+   * Returns [timestampMs, priceUsd] sorted ascending.
+   */
+  async getCoinMarketChart(
+    coinId: string,
+    days: number | 'max',
+  ): Promise<Array<[number, number]>> {
+    const daysParam = days === 'max' ? 'max' : String(days);
+    return this.fetchMarketChart(
+      `${this.baseUrl}/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=${daysParam}`,
+      `coin:${coinId}:${daysParam}`,
+    );
+  }
+
+  /**
+   * CoinGecko market chart for an ERC-20 (or equivalent) contract.
+   */
+  async getTokenMarketChart(
+    chainId: number,
+    tokenAddress: string,
+    days: number | 'max',
+  ): Promise<Array<[number, number]>> {
+    const platform = CHAIN_PLATFORMS[chainId];
+    if (!platform || !tokenAddress) return [];
+    const addr = tokenAddress.toLowerCase();
+    const daysParam = days === 'max' ? 'max' : String(days);
+    return this.fetchMarketChart(
+      `${this.baseUrl}/coins/${platform}/contract/${addr}/market_chart?vs_currency=usd&days=${daysParam}`,
+      `token:${platform}:${addr}:${daysParam}`,
+    );
+  }
+
+  private chartSeriesCache = new Map<string, Array<[number, number]>>();
+
+  private async fetchMarketChart(
+    url: string,
+    cacheKey: string,
+  ): Promise<Array<[number, number]>> {
+    if (this.chartSeriesCache.has(cacheKey)) {
+      return this.chartSeriesCache.get(cacheKey)!;
+    }
+    try {
+      const response = await fetch(url, { headers: this.headers() });
+      if (!response.ok) {
+        console.warn(`[Pricing] market_chart ${cacheKey} → ${response.status}`);
+        return [];
+      }
+      const data = await response.json();
+      const prices: [number, number][] = (data?.prices || [])
+        .filter((p: unknown) => Array.isArray(p) && typeof p[0] === 'number' && typeof p[1] === 'number' && p[1] > 0)
+        .map((p: [number, number]) => [p[0], p[1]]);
+      if (prices.length > 0) {
+        this.chartSeriesCache.set(cacheKey, prices);
+      }
+      return prices;
+    } catch (err) {
+      console.warn(`[Pricing] market_chart failed ${cacheKey}:`, err);
+      return [];
+    }
+  }
+
+  /** Native CoinGecko coin id for a chain (public). */
+  getNativeCoinId(chainId: number): string {
+    return NATIVE_COIN_IDS[chainId] || 'ethereum';
+  }
+
+  isStablecoinSymbol(symbol: string): boolean {
+    return STABLECOINS.has(symbol.toUpperCase());
+  }
+
+  /**
    * Batch-fetch current USD prices for many ERC-20 contracts on one chain.
    * Returns a map of lowercased contract address → USD price.
    * Uses CoinGecko's /simple/token_price endpoint (many contracts per call)

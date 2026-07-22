@@ -29,9 +29,9 @@ interface ReportEmailProps {
 }
 
 const reportTitles = {
-  daily: 'الملخص اليومي',
-  weekly: 'التقرير الأسبوعي',
-  monthly: 'التقرير الشهري',
+  daily: 'Daily Summary',
+  weekly: 'Weekly Report',
+  monthly: 'Monthly Report',
 };
 
 /**
@@ -54,7 +54,7 @@ export function ReportEmail({
   const changeColor = isPositive ? '#0ecb81' : '#f6465d';
 
   return (
-    <Html dir="rtl" lang="ar">
+    <Html dir="ltr" lang="en">
       <Head />
       <Preview>{reportTitles[reportType]} - CryptoBooks - {periodLabel}</Preview>
       <Body style={mainStyle}>
@@ -70,7 +70,7 @@ export function ReportEmail({
 
           {/* Portfolio Overview */}
           <Section style={contentStyle}>
-            <Heading style={sectionHeadingStyle}>ملخص المحفظة</Heading>
+            <Heading style={sectionHeadingStyle}>Portfolio Summary</Heading>
 
             <Section style={portfolioBoxStyle}>
               <Row>
@@ -90,13 +90,13 @@ export function ReportEmail({
               <Row>
                 <Column style={{ width: '50%', paddingLeft: '6px' }}>
                   <Section style={summaryBoxStyle}>
-                    <Text style={summaryLabelStyle}>الإيرادات</Text>
+                    <Text style={summaryLabelStyle}>Revenue</Text>
                     <Text style={{ ...summaryValueStyle, color: '#0ecb81' }}>{totalIncome}</Text>
                   </Section>
                 </Column>
                 <Column style={{ width: '50%', paddingRight: '6px' }}>
                   <Section style={summaryBoxStyle}>
-                    <Text style={summaryLabelStyle}>المصروفات</Text>
+                    <Text style={summaryLabelStyle}>Expenses</Text>
                     <Text style={{ ...summaryValueStyle, color: '#f6465d' }}>{totalExpenses}</Text>
                   </Section>
                 </Column>
@@ -110,7 +110,7 @@ export function ReportEmail({
                 </Column>
                 <Column style={{ width: '50%', paddingRight: '6px' }}>
                   <Section style={summaryBoxStyle}>
-                    <Text style={summaryLabelStyle}>رسوم الغاز</Text>
+                    <Text style={summaryLabelStyle}>Gas Fees</Text>
                     <Text style={summaryValueStyle}>{gasFees}</Text>
                   </Section>
                 </Column>

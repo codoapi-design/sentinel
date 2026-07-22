@@ -108,7 +108,8 @@ export function AIChat() {
   const planLabels: Record<string, string> = {
     starter: 'Starter',
     pro: 'Pro',
-    enterprise: 'Enterprise',
+    enterprise: 'Business',
+    business: 'Business',
   };
 
   // Model-specific loading messages

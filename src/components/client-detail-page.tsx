@@ -21,6 +21,7 @@ import {
   type Client,
   type Transaction,
 } from '@/lib/mock-data';
+import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
@@ -50,13 +51,13 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
   // Calculate stats
   const totalRevenue = useMemo(() => {
     return clientTransactions
-      .filter(tx => tx.type === 'income' || tx.type === 'staking' || tx.type === 'defi')
+      .filter(tx => isRevenueType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
   }, [clientTransactions]);
 
   const totalExpenses = useMemo(() => {
     return clientTransactions
-      .filter(tx => tx.type === 'expense' || tx.type === 'gas')
+      .filter(tx => isExpenseType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
   }, [clientTransactions]);
 

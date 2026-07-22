@@ -33,7 +33,7 @@ let dedicatedAccountant: DedicatedAccountant | null = null;
 const DEFAULT_ACCOUNTANT: DedicatedAccountant = {
   id: 'acc-001',
   name: 'Sarah Al-Rashid',
-  nameAr: 'سارة الراشد',
+  nameAr: 'Sarah Al-Rashid',
   title: 'Senior Crypto Tax Accountant',
   titleAr: 'محاسبة ضرائب كريبتو أولى',
   avatar: '/avatars/sarah.png',
@@ -54,7 +54,7 @@ const AVAILABLE_ACCOUNTANTS: DedicatedAccountant[] = [
   {
     id: 'acc-002',
     name: 'Ahmed Bin Khalid',
-    nameAr: 'أحمد بن خالد',
+    nameAr: 'Ahmed Bin Khalid',
     title: 'DeFi Tax Specialist',
     titleAr: 'أخصائي ضرائب DeFi',
     avatar: '/avatars/ahmed.png',
@@ -70,7 +70,7 @@ const AVAILABLE_ACCOUNTANTS: DedicatedAccountant[] = [
   {
     id: 'acc-003',
     name: 'Fatima Hassan',
-    nameAr: 'فاطمة حسن',
+    nameAr: 'Fatima Hassan',
     title: 'Enterprise Accounting Lead',
     titleAr: 'رئيسة المحاسبة المؤسسية',
     avatar: '/avatars/fatima.png',
@@ -360,7 +360,7 @@ export function assignAccountant(ticketId: string): SupportTicket | null {
     id: generateId('msg-'),
     sender: 'accountant',
     senderName: availableAccountant.nameAr,
-    content: `مرحباً! أنا ${availableAccountant.nameAr}، ${availableAccountant.titleAr}. سأتابع مشكلتك وأعمل على حلها في أقرب وقت ممكن.`,
+    content: `Hello! أنا ${availableAccountant.nameAr}، ${availableAccountant.titleAr}. سأتابع مشكلتك وأعمل على حلها في أقرب وقت ممكن.`,
     attachments: [],
     createdAt: new Date().toISOString(),
   };

@@ -16,6 +16,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { getSyncEngine } from '@/lib/blockchain/sync-engine';
 import { primaryDisplayAddress } from '@/lib/wallet/address-validation';
+import { computeFinancialSummary } from '@/lib/finance/summary';
+import { getPricingService } from '@/lib/pricing/service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -120,17 +122,17 @@ export async function GET(request: NextRequest) {
 
     const { data: transactions } = await supabase
       .from('transactions')
-      .select('type, value_eth, gas_fee_eth')
+      .select('type, direction, value_usd, value_eth, gas_fee_eth, method_id, method_name, protocol, to_addr')
       .eq('wallet_id', wallet.id);
 
-    let totalRevenue = 0;
-    let totalExpenses = 0;
-    let gasFees = 0;
-    for (const tx of transactions || []) {
-      if (tx.type === 'income') totalRevenue += tx.value_eth || 0;
-      else if (tx.type === 'expense') totalExpenses += tx.value_eth || 0;
-      gasFees += tx.gas_fee_eth || 0;
+    let ethPriceUsd = 0;
+    try {
+      ethPriceUsd = await getPricingService().getCurrentNativePriceUsd(1);
+    } catch {
+      ethPriceUsd = 0;
     }
+
+    const summary = computeFinancialSummary(transactions || [], { ethPriceUsd });
 
     return NextResponse.json({
       success: true,
@@ -179,11 +181,16 @@ export async function GET(request: NextRequest) {
           defiPositionCount: data.defi,
         })),
         transactionSummary: {
-          totalRevenue,
-          totalExpenses,
-          netFlow: totalRevenue - totalExpenses,
-          gasFees,
-          transactionCount: transactions?.length || 0,
+          totalRevenue: summary.totalRevenue,
+          totalExpenses: summary.totalExpenses,
+          netFlow: summary.netFlow,
+          gasFees: summary.gasFees,
+          tradingVolume: summary.tradingVolume,
+          transactionCount: summary.transactionCount,
+          pricedCashflowCount: summary.pricedCashflowCount,
+          unpricedCount: summary.unpricedCount,
+          excludedActivityCount: summary.excludedActivityCount,
+          methodology: summary.methodology,
         },
         lastSyncedAt: wallet.last_synced_at,
         isSyncing: wallet.is_syncing || false,

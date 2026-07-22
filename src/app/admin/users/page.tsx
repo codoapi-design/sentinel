@@ -110,7 +110,7 @@ export default function AdminUsersPage() {
   };
 
   const statusLabels: Record<string, string> = { active: 'Active', suspended: 'Suspended', banned: 'Banned' };
-  const planLabels: Record<string, string> = { starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise' };
+  const planLabels: Record<string, string> = { starter: 'Starter', pro: 'Pro', enterprise: 'Business', business: 'Business' };
 
   return (
     <div className="space-y-4">

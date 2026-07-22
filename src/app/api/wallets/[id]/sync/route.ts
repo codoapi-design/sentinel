@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { getSyncEngine } from '@/lib/blockchain/sync-engine';
 
-export const maxDuration = 60; // Allow up to 60 seconds for sync
+export const maxDuration = 300; // Full history pagination can exceed 60s on active wallets
 
 interface RouteParams {
   params: Promise<{ id: string }>;

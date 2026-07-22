@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import {
   Table,
   TableBody,
@@ -10,6 +11,14 @@ import {
 } from '@/components/ui/table';
 import { ArrowUpRight, ArrowDownRight, ChevronRight, Loader2 } from 'lucide-react';
 import { usePortfolio } from '@/hooks/use-portfolio';
+import { TablePagination } from '@/components/table-pagination';
+import { useTablePagination } from '@/hooks/use-table-pagination';
+import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
+import {
+  filterVisibleAssets,
+  isHiddenSpamOrDustAsset,
+} from '@/lib/finance/visibility';
+import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
 
 interface AssetsTableProps {
   onAssetClick?: (assetId: string) => void;
@@ -27,11 +36,34 @@ function formatValue(value: number): string {
 
 export function AssetsTable({ onAssetClick }: AssetsTableProps) {
   const { portfolio, isLoading } = usePortfolio();
+  const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
 
-  const tokens = portfolio?.tokens || [];
+  const rawTokens = useMemo(() => portfolio?.tokens || [], [portfolio?.tokens]);
+  const tokens = useMemo(
+    () => filterVisibleAssets(rawTokens, showSpamAndDust),
+    [rawTokens, showSpamAndDust],
+  );
+  const hasHiddenItems = useMemo(
+    () => rawTokens.some((t) => isHiddenSpamOrDustAsset(t, false)),
+    [rawTokens],
+  );
+
+  // Visible Total Value always matches the filtered list (not the raw API total).
+  const totalAssetsValue = useMemo(
+    () => tokens.reduce((sum, t) => sum + (t.valueUsd || 0), 0),
+    [tokens],
+  );
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    pageItems: pagedTokens,
+    totalItems,
+  } = useTablePagination(tokens);
 
   // Loading state
-  if (isLoading && tokens.length === 0) {
+  if (isLoading && rawTokens.length === 0) {
     return (
       <div className="bg-[#0f1011] border border-white/5 rounded-xl p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -54,8 +86,8 @@ export function AssetsTable({ onAssetClick }: AssetsTableProps) {
     );
   }
 
-  // No tokens state
-  if (tokens.length === 0) {
+  // No tokens at all
+  if (rawTokens.length === 0) {
     return (
       <div className="bg-[#0f1011] border border-white/5 rounded-xl p-6 text-center">
         <p className="text-sm text-[#8a8f98]">No token balances found</p>
@@ -66,11 +98,45 @@ export function AssetsTable({ onAssetClick }: AssetsTableProps) {
     );
   }
 
+  // All tokens hidden by spam / dust filter
+  if (tokens.length === 0) {
+    return (
+      <div className="bg-[#0f1011] border border-white/5 rounded-xl p-6">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <h3 className="text-[#f7f8f8] text-base font-medium">Assets</h3>
+          <ShowSpamDustToggle compact />
+        </div>
+        <div className="text-center py-4">
+          <p className="text-sm text-[#8a8f98]">No assets to show</p>
+          {hasHiddenItems && (
+            <p className="text-xs text-[#8a8f98]/60 mt-1">
+              Enable Show spam & $0 if you expect dust
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-[#0f1011] border border-white/5 rounded-xl">
-      <div className="p-4 pb-0">
-        <h3 className="text-[#f7f8f8] text-base font-medium">Assets</h3>
-        <p className="text-xs text-[#8a8f98] mt-1">{tokens.length} tokens across {portfolio?.chainBreakdown?.length || 0} chains</p>
+      <div className="p-4 pb-0 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-[#f7f8f8] text-base font-medium">Assets</h3>
+          <p className="text-xs text-[#8a8f98] mt-1">
+            {tokens.length} tokens across {portfolio?.chainBreakdown?.length || 0} chains
+            {hasHiddenItems && !showSpamAndDust ? ' · spam & $0 hidden' : ''}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <ShowSpamDustToggle compact />
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wide text-[#8a8f98]">Total Value</p>
+            <p className="text-lg font-bold text-[#f7f8f8] font-mono-num leading-tight">
+              {formatValue(totalAssetsValue)}
+            </p>
+          </div>
+        </div>
       </div>
       <div className="p-0 overflow-x-auto">
         <Table>
@@ -86,12 +152,13 @@ export function AssetsTable({ onAssetClick }: AssetsTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tokens.map((token, i) => {
+            {pagedTokens.map((token, i) => {
+              const rowIndex = (page - 1) * pageSize + i;
               const isPositive = (token.change24h || 0) >= 0;
-              const color = `hsl(${(i * 37) % 360}, 60%, 50%)`;
+              const color = `hsl(${(rowIndex * 37) % 360}, 60%, 50%)`;
               return (
                 <TableRow
-                  key={`${token.symbol}-${token.chain}-${i}`}
+                  key={`${token.symbol}-${token.chain}-${rowIndex}`}
                   className="border-white/5 hover:bg-[#191a1b]/50 transition-colors cursor-pointer group"
                   onClick={() => onAssetClick?.(token.symbol)}
                 >
@@ -117,7 +184,7 @@ export function AssetsTable({ onAssetClick }: AssetsTableProps) {
                     <span className="font-mono-num text-sm text-[#d0d6e0]">
                       {token.balance < 0.0001 ? '<0.0001' : formatNumber(token.balance, token.balance > 100 ? 2 : 4)}
                     </span>
-                    <span className="text-xs text-[#8a8f98] mr-1">{token.symbol}</span>
+                    <span className="text-xs text-[#8a8f98] ml-1">{token.symbol}</span>
                   </TableCell>
                   <TableCell className="text-right">
                     <span className="font-mono-num text-sm text-[#d0d6e0]">
@@ -153,6 +220,22 @@ export function AssetsTable({ onAssetClick }: AssetsTableProps) {
           </TableBody>
         </Table>
       </div>
+      <TablePagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        alwaysShow
+        extraLeft={
+          <>
+            <span className="text-[#8a8f98] text-[10px]">|</span>
+            <p className="text-xs text-[#d0d6e0] font-mono-num">
+              Total: {formatValue(totalAssetsValue)}
+            </p>
+          </>
+        }
+      />
     </div>
   );
 }

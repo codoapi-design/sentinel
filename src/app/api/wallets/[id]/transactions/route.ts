@@ -7,6 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
+import { resolveOnChainActivity } from '@/lib/finance/activity';
+import { resolveTypeLabel } from '@/lib/finance/summary';
 import { type Transaction } from '@/lib/mock-data';
 
 interface RouteParams {
@@ -139,13 +141,13 @@ export async function GET(
       blast: 'Blast',
     };
 
-    // Map of transaction types to human-readable labels
+    // Map of transaction types to accounting classification labels (English)
     const TYPE_LABELS: Record<string, string> = {
       income: 'Income',
       expense: 'Expense',
       trade: 'Trade',
       defi: 'DeFi',
-      staking: 'Staking',
+      staking: 'Staking Reward',
       gas: 'Gas Fee',
       nft: 'NFT',
       bridge: 'Bridge',
@@ -154,38 +156,55 @@ export async function GET(
     // Convert DB rows to app Transaction format with proper fallbacks
     const transactions: Transaction[] = (data || []).map((row, i) => {
       const network = row.network || 'ethereum';
-      const txType = row.type as Transaction['type'];
+      const txType = (row.type || 'income') as Transaction['type'];
       const counterparty = row.counterparty || row.from_addr || '';
 
-      // Build counterparty label with fallbacks
-      let counterpartyLabel = row.counterparty_label || row.protocol_ar || row.protocol || '';
+      // Prefer English protocol / shortened address — never Arabic protocol_ar in UI
+      let counterpartyLabel = row.counterparty_label || row.protocol || '';
+      if (counterpartyLabel && /[\u0600-\u06FF]/.test(counterpartyLabel)) {
+        counterpartyLabel = row.protocol || '';
+      }
       if (!counterpartyLabel && counterparty.startsWith('0x')) {
         counterpartyLabel = `${counterparty.slice(0, 6)}...${counterparty.slice(-4)}`;
       }
 
-      // Safely compute USD price and value
+      // Safely compute USD price and value — never treat raw ETH quantity as dollars
       const tokenValue = row.token_value || 0;
-      const valueUsd = row.value_usd || 0;
+      const valueUsd = typeof row.value_usd === 'number' && Number.isFinite(row.value_usd)
+        ? row.value_usd
+        : 0;
       const priceUsd = row.price_usd || 0;
 
       // Fallback for rows synced before USD columns existed
       const price = priceUsd > 0
         ? priceUsd
         : (tokenValue > 0 && valueUsd > 0 ? valueUsd / tokenValue : 0);
-      const value = valueUsd > 0 ? valueUsd : (row.value_eth || 0);
+      const value = valueUsd;
+
+      const activity = resolveOnChainActivity({
+        direction: row.direction,
+        methodId: row.method_id,
+        methodName: row.method_name,
+        type: txType,
+        statusFailed: row.status === false,
+      });
 
       return {
         id: row.id || `tx-${i}`,
         date: row.date || '',
         timestamp: row.timestamp || 0,
-        type: txType || 'income',
-        typeLabel: row.type_ar || TYPE_LABELS[txType] || txType,
+        type: txType,
+        // Always English classification — ignore legacy Arabic type_ar
+        typeLabel: TYPE_LABELS[txType] || resolveTypeLabel(txType) || txType,
+        activity,
+        methodName: row.method_name || null,
+        direction: row.direction || null,
         token: row.token_symbol || 'ETH',
         quantity: tokenValue || (row.value_eth || 0),
         price,
         value,
         network,
-        networkLabel: row.network_ar || NETWORK_LABELS[network] || network.charAt(0).toUpperCase() + network.slice(1),
+        networkLabel: NETWORK_LABELS[network] || network.charAt(0).toUpperCase() + network.slice(1),
         txHash: row.tx_hash || '',
         counterparty,
         counterpartyLabel,

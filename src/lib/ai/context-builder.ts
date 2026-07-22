@@ -10,6 +10,7 @@
  */
 
 import { getModelSpec, DEFAULT_MODEL_ID } from './models';
+import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 
 // ============================================================
 // Types
@@ -29,6 +30,8 @@ export interface TransactionSummary {
   totalExpenses: number;
   netFlow: number;
   gasFees: number;
+  /** Notional of trade/DeFi/bridge/NFT — excluded from R/E */
+  tradingVolume: number;
   topTokens: Array<{ token: string; value: number; count: number }>;
   topNetworks: Array<{ network: string; value: number; count: number }>;
   topCounterparties: Array<{ label: string; value: number; count: number }>;
@@ -113,7 +116,7 @@ export function truncateToTokenLimit(text: string, maxTokens: number): {
     : truncated;
 
   return {
-    text: finalText + '\n[... تم قطع السياق لتوفير المساحة ...]',
+    text: finalText + '\n[... context truncated ...]',
     wasTruncated: true,
     tokensUsed: estimateTokens(finalText),
   };
@@ -178,6 +181,7 @@ export function buildTransactionSummary(
   let totalIncome = 0;
   let totalExpenses = 0;
   let gasFees = 0;
+  let tradingVolume = 0;
   const tokenMap: Record<string, { value: number; count: number }> = {};
   const networkMap: Record<string, { value: number; count: number }> = {};
   const counterpartyMap: Record<string, { value: number; count: number }> = {};
@@ -191,18 +195,20 @@ export function buildTransactionSummary(
     // Type breakdown
     typeBreakdown[tx.type] = (typeBreakdown[tx.type] || 0) + val;
 
-    // Income/expense/gas split
-    if (tx.type === 'income' || tx.type === 'staking') {
+    // Same cash-flow rules as portfolio cards (trades excluded; gas separate)
+    if (isRevenueType(tx.type)) {
       totalIncome += val;
+    } else if (isExpenseType(tx.type)) {
+      totalExpenses += val;
     } else if (tx.type === 'gas') {
       gasFees += val;
-      totalExpenses += val;
-    } else if (tx.type === 'expense') {
-      totalExpenses += val;
-    } else if (tx.type === 'trade' || tx.type === 'defi') {
-      // Split trades/DeFi — count half as income, half as expense
-      totalIncome += val * 0.5;
-      totalExpenses += val * 0.5;
+    } else if (
+      tx.type === 'trade' ||
+      tx.type === 'defi' ||
+      tx.type === 'bridge' ||
+      tx.type === 'nft'
+    ) {
+      tradingVolume += val;
     }
 
     // Token aggregation
@@ -248,6 +254,7 @@ export function buildTransactionSummary(
     totalExpenses: Math.round(totalExpenses * 100) / 100,
     netFlow: Math.round((totalIncome - totalExpenses) * 100) / 100,
     gasFees: Math.round(gasFees * 100) / 100,
+    tradingVolume: Math.round(tradingVolume * 100) / 100,
     topTokens,
     topNetworks,
     topCounterparties,
@@ -267,40 +274,40 @@ export function buildTransactionSummary(
 export function getPageContextDescription(page: string, section?: string): PageContext {
   const pageDescriptions: Record<string, { description: string; relevantData: string }> = {
     dashboard: {
-      description: 'لوحة التحكم الرئيسية — تعرض ملخص المحفظة والإيرادات والمصروفات',
-      relevantData: 'ملخص الإيرادات والمصروفات والتدفق الصافي ورسوم الغاز وقيمة المحفظة',
+      description: 'Main dashboard — portfolio summary, revenue, and expenses',
+      relevantData: 'Revenue, expenses, net flow, gas fees, and portfolio value',
     },
     transactions: {
-      description: 'جدول المعاملات — يعرض جميع المعاملات مع تصفية وبحث',
-      relevantData: 'قائمة المعاملات مع التصفية حسب النوع والتوكن والشبكة والتاريخ',
+      description: 'Transactions table — all transactions with filters and search',
+      relevantData: 'Transaction list filtered by type, token, network, and date',
     },
     assets: {
-      description: 'صفحة الأصول — تعرض محفظة التوكنات والأسعار والتغيرات',
-      relevantData: 'قائمة الأصول مع الكمية والسعر والقيمة والتغير اليومي',
+      description: 'Assets page — token holdings, prices, and changes',
+      relevantData: 'Asset list with quantity, price, value, and 24h change',
     },
     clients: {
-      description: 'صفحة العملاء — تعرض الأطراف المقابلة في المعاملات',
-      relevantData: 'قائمة العملاء مع أسماء مخصصة وملاحظات وإحصائيات المعاملات',
+      description: 'Clients page — transaction counterparties',
+      relevantData: 'Client list with labels, notes, and transaction stats',
     },
     reports: {
-      description: 'صفحة التقارير — تقارير مالية وتحليلات',
-      relevantData: 'تقارير الإيرادات والمصروفات والتدفق ورسوم الغاز',
+      description: 'Reports page — financial reports and analysis',
+      relevantData: 'Revenue, expense, flow, and gas fee reports',
     },
     tax: {
-      description: 'صفحة الضرائب — حسابات الأرباح والخسائر الرأسمالية',
-      relevantData: 'حسابات الضريبة والأرباح الرأسمالية والتكلفة الأساسية',
+      description: 'Tax page — capital gains and losses',
+      relevantData: 'Tax calculations, capital gains, and cost basis',
     },
     settings: {
-      description: 'صفحة الإعدادات — إعدادات الحساب والاشتراك',
-      relevantData: 'خطة الاشتراك وإعدادات التنبيهات والمحافظ',
+      description: 'Settings page — account and subscription',
+      relevantData: 'Subscription plan, alerts, and wallets',
     },
     alerts: {
-      description: 'صفحة التنبيهات — تنبيهات التيليجرام والبريد',
-      relevantData: 'إعدادات التنبيهات للتحويلات الكبيرة وتغيرات المحفظة',
+      description: 'Alerts page — Telegram and email alerts',
+      relevantData: 'Alert settings for large transfers and portfolio changes',
     },
     pricing: {
-      description: 'صفحة الأسعار — خطط الاشتراك',
-      relevantData: 'خطط Starter و Pro و Enterprise',
+      description: 'Pricing page — subscription plans',
+      relevantData: 'Starter, Pro, and Enterprise plans',
     },
   };
 
@@ -349,23 +356,23 @@ export function buildUserContext(options: {
   // ─── Section 1: User & Plan Context ─────────────────────
   if (walletContext || customContext) {
     const userParts: string[] = [];
-    userParts.push('## سياق المستخدم');
+    userParts.push('## User context');
 
     if (walletContext) {
-      userParts.push(`- الباقة: ${walletContext.currentPlan}`);
-      userParts.push(`- عدد المحافظ: ${walletContext.walletCount}`);
+      userParts.push(`- Plan: ${walletContext.currentPlan}`);
+      userParts.push(`- Wallet count: ${walletContext.walletCount}`);
       if (walletContext.activeWalletLabel) {
-        userParts.push(`- المحفظة النشطة: ${walletContext.activeWalletLabel}`);
+        userParts.push(`- Active wallet: ${walletContext.activeWalletLabel}`);
       }
       if (walletContext.activeWalletAddress) {
         const addr = walletContext.activeWalletAddress;
-        userParts.push(`- عنوان المحفظة: ${addr.slice(0, 6)}...${addr.slice(-4)}`);
+        userParts.push(`- Wallet address: ${addr.slice(0, 6)}...${addr.slice(-4)}`);
       }
-      userParts.push(`- عدد المعاملات: ${walletContext.transactionCount}`);
+      userParts.push(`- Transaction count: ${walletContext.transactionCount}`);
     }
 
     if (customContext?.plan) {
-      userParts.push(`- الباقة: ${customContext.plan}`);
+      userParts.push(`- Plan: ${customContext.plan}`);
     }
 
     sections.push('user');
@@ -375,13 +382,13 @@ export function buildUserContext(options: {
   // ─── Section 2: Page Context ────────────────────────────
   if (pageContext) {
     const pageParts: string[] = [];
-    pageParts.push('## الصفحة الحالية');
-    pageParts.push(`- الصفحة: ${pageContext.page}`);
+    pageParts.push('## Current page');
+    pageParts.push(`- Page: ${pageContext.page}`);
     if (pageContext.section) {
-      pageParts.push(`- القسم: ${pageContext.section}`);
+      pageParts.push(`- Section: ${pageContext.section}`);
     }
     if (pageContext.visibleData) {
-      pageParts.push(`- البيانات المرئية: ${pageContext.visibleData}`);
+      pageParts.push(`- Visible data: ${pageContext.visibleData}`);
     }
 
     sections.push('page');
@@ -391,48 +398,52 @@ export function buildUserContext(options: {
   // ─── Section 3: Transaction Summary ─────────────────────
   if (transactionSummary) {
     const txParts: string[] = [];
-    txParts.push('## ملخص المعاملات المالية');
-    txParts.push(`- إجمالي الإيرادات: $${transactionSummary.totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-    txParts.push(`- إجمالي المصروفات: $${transactionSummary.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-    txParts.push(`- التدفق الصافي: $${transactionSummary.netFlow.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-    txParts.push(`- رسوم الغاز: $${transactionSummary.gasFees.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+    txParts.push('## Transaction summary');
+    txParts.push(`- Total revenue: $${transactionSummary.totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+    txParts.push(`- Total expenses: $${transactionSummary.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+    txParts.push(`- Net flow: $${transactionSummary.netFlow.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+    txParts.push(`- Gas fees: $${transactionSummary.gasFees.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+    if (transactionSummary.tradingVolume > 0) {
+      txParts.push(`- Trading volume (excluded from revenue/expenses): $${transactionSummary.tradingVolume.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+    }
+    txParts.push('- Methodology: Revenue = income+staking · Expenses = outgoing transfers · Trades/DeFi/bridge/NFT excluded · Gas separate (not deducted from Net Flow)');
 
     if (transactionSummary.dateRange) {
-      txParts.push(`- فترة البيانات: ${transactionSummary.dateRange.from} إلى ${transactionSummary.dateRange.to}`);
+      txParts.push(`- Date range: ${transactionSummary.dateRange.from} to ${transactionSummary.dateRange.to}`);
     }
 
     // Top tokens
     if (transactionSummary.topTokens.length > 0) {
-      txParts.push('\n### أعلى التوكنات');
+      txParts.push('\n### Top tokens');
       for (const t of transactionSummary.topTokens) {
-        txParts.push(`- ${t.token}: $${t.value.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${t.count} معاملة)`);
+        txParts.push(`- ${t.token}: $${t.value.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${t.count} txs)`);
       }
     }
 
     // Top networks
     if (transactionSummary.topNetworks.length > 0) {
-      txParts.push('\n### أعلى الشبكات');
+      txParts.push('\n### Top networks');
       for (const n of transactionSummary.topNetworks) {
-        txParts.push(`- ${n.network}: $${n.value.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${n.count} معاملة)`);
+        txParts.push(`- ${n.network}: $${n.value.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${n.count} txs)`);
       }
     }
 
     // Top counterparties
     if (transactionSummary.topCounterparties.length > 0) {
-      txParts.push('\n### أعلى الأطراف المقابلة');
+      txParts.push('\n### Top counterparties');
       for (const c of transactionSummary.topCounterparties) {
-        txParts.push(`- ${c.label}: $${c.value.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${c.count} معاملة)`);
+        txParts.push(`- ${c.label}: $${c.value.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${c.count} txs)`);
       }
     }
 
     // Type breakdown
     const typeLabels: Record<string, string> = {
-      income: 'إيراد', expense: 'مصروف', trade: 'تداول',
-      defi: 'DeFi', staking: 'Staking', gas: 'رسوم غاز',
+      income: 'Income', expense: 'Expense', trade: 'Trade',
+      defi: 'DeFi', staking: 'Staking', gas: 'Gas Fees',
     };
     const typeEntries = Object.entries(transactionSummary.transactionTypeBreakdown);
     if (typeEntries.length > 0) {
-      txParts.push('\n### توزيع حسب النوع');
+      txParts.push('\n### Breakdown by type');
       for (const [type, value] of typeEntries) {
         txParts.push(`- ${typeLabels[type] || type}: $${value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
       }
@@ -445,7 +456,7 @@ export function buildUserContext(options: {
   // ─── Build Final Context ────────────────────────────────
   let contextString = parts.join('\n\n');
   if (sections.length === 0) {
-    contextString = '## سياق المستخدم\n- لا توجد بيانات متاحة حالياً';
+    contextString = '## User context\n- No data available';
   }
 
   // Token-aware truncation

@@ -25,8 +25,16 @@ export interface Transaction {
   id: string;
   date: string;
   timestamp: number;
-  type: 'income' | 'expense' | 'trade' | 'defi' | 'staking' | 'gas';
+  type: 'income' | 'expense' | 'trade' | 'defi' | 'staking' | 'gas' | 'nft' | 'bridge';
+  /** Accounting classification label (Income, Expense, Trade, …) */
   typeLabel: string;
+  /**
+   * On-chain / explorer-style activity (Receive, Transfer, Swap, Approve, …).
+   * Shown beside Date, before Classification.
+   */
+  activity: string;
+  methodName?: string | null;
+  direction?: 'in' | 'out' | string | null;
   token: string;
   quantity: number;
   price: number;
@@ -156,7 +164,7 @@ export const pricingTiers: PricingTier[] = [
     description: 'Perfect for getting started with crypto tracking',
     features: [
       '1 Wallet',
-      '5 Networks (Ethereum, Base, Arbitrum, Optimism, Polygon)',
+      'EVM address only (Ethereum, Base, Arbitrum, OP, Polygon, BSC…)',
       'Up to 500 recorded transactions',
       'AI Assistant — 100 messages/month',
       'Sync every 10 minutes',
@@ -168,7 +176,7 @@ export const pricingTiers: PricingTier[] = [
     ],
     limits: {
       wallets: 1,
-      networks: 5,
+      networks: 1,
       transactions: 500,
       aiChats: 100,
       syncInterval: '10 min',
@@ -191,7 +199,7 @@ export const pricingTiers: PricingTier[] = [
     description: 'For active traders and investors',
     features: [
       'Up to 5 Wallets',
-      '5 Networks (Ethereum, Base, Arbitrum, Optimism, Polygon)',
+      'EVM + Solana + Tron addresses',
       'Up to 5,000 recorded transactions',
       'AI Assistant — 500 messages/month',
       'Sync every minute',
@@ -203,7 +211,7 @@ export const pricingTiers: PricingTier[] = [
     ],
     limits: {
       wallets: 5,
-      networks: 5,
+      networks: 3,
       transactions: 5000,
       aiChats: 500,
       syncInterval: '1 min',
@@ -220,14 +228,14 @@ export const pricingTiers: PricingTier[] = [
   },
   {
     id: 'enterprise',
-    name: 'Enterprise',
-    nameEn: 'Enterprise',
+    name: 'Business',
+    nameEn: 'Business',
     price: 99,
     yearlyMonthly: 82.17,
     description: 'For companies and professional accountants',
     features: [
       'Up to 25 Wallets',
-      'All supported networks',
+      'EVM + Solana + Tron + Bitcoin addresses',
       'Unlimited transactions',
       'AI Assistant — Unlimited messages',
       'Real-time sync (every 30 seconds)',
@@ -241,7 +249,7 @@ export const pricingTiers: PricingTier[] = [
     ],
     limits: {
       wallets: 25,
-      networks: 10,
+      networks: 4,
       transactions: Infinity,
       aiChats: Infinity,
       syncInterval: '30 sec',

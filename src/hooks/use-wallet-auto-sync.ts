@@ -7,6 +7,9 @@
  *   2. If the DB snapshot changed, reload transactions into Zustand and
  *      bump lastSyncAt so usePortfolio re-reads from the DB.
  *
+ * Manual Sync (dashboard button) uses full mode so missing historical
+ * transactions are backfilled from the chain and upserted by date.
+ *
  * The UI never talks to Etherscan/CoinGecko directly — only the sync
  * endpoint does, and displays always come from the database.
  */
@@ -14,6 +17,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useWalletStore, PLAN_LIMITS } from '@/stores/wallet-store';
 
 function isUUID(id: string): boolean {
@@ -117,14 +121,41 @@ export function useWalletAutoSync() {
     };
   }, [activeWalletId, runIncrementalRefresh, syncIntervalMs]);
 
-  /** Manual full/auto sync (e.g. refresh button). */
-  const triggerSync = useCallback(() => {
-    if (activeWalletId && isUUID(activeWalletId)) {
-      syncWallet(activeWalletId, 'auto');
-    } else if (activeWalletId) {
+  /**
+   * Manual Sync button: full blockchain re-sync for the active wallet.
+   * Pulls balances + full tx history, upserts missing rows into the DB,
+   * then refreshes the UI via lastSyncAt / loadTransactionsFromDB.
+   */
+  const triggerSync = useCallback(async () => {
+    if (!activeWalletId) return;
+    if (!isUUID(activeWalletId)) {
       console.warn('[AutoSync] Cannot sync: wallet ID is not a valid UUID');
+      toast.error('Cannot sync this wallet. Try removing and re-adding it.');
+      return;
     }
-  }, [activeWalletId, syncWallet]);
+    if (isSyncing[activeWalletId]) return;
+
+    const toastId = toast.loading('Syncing wallet from blockchain...');
+    try {
+      const result = await syncWallet(activeWalletId, 'full');
+      if (result.success) {
+        const count = result.recordsSynced ?? 0;
+        toast.success(
+          count > 0
+            ? `Sync complete — ${count} record${count === 1 ? '' : 's'} updated`
+            : 'Sync complete — portfolio is up to date',
+          { id: toastId },
+        );
+      } else {
+        toast.error(result.error || 'Sync failed. Please try again.', { id: toastId });
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Sync failed. Please try again.',
+        { id: toastId },
+      );
+    }
+  }, [activeWalletId, isSyncing, syncWallet]);
 
   return { triggerSync, syncIntervalMs };
 }
