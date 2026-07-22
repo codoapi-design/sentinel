@@ -3,6 +3,30 @@
  * Separate from accounting classification (Income / Expense / Trade / …).
  */
 
+/** Canonical labels used for column filters (plus any dynamic method names in data). */
+export const ON_CHAIN_ACTIVITY_LABELS = [
+  'Receive',
+  'Transfer',
+  'Swap',
+  'Approve',
+  'Bridge',
+  'Stake',
+  'Unstake',
+  'Claim',
+  'Deposit',
+  'Withdraw',
+  'Borrow',
+  'Repay',
+  'Mint',
+  'Burn',
+  'Multicall',
+  'NFT',
+  'Contract Interaction',
+  'Failed',
+] as const;
+
+export type OnChainActivityLabel = (typeof ON_CHAIN_ACTIVITY_LABELS)[number];
+
 export interface OnChainActivityInput {
   direction?: string | null;
   methodId?: string | null;

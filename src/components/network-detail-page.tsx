@@ -5,26 +5,23 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   ArrowRight,
-  ArrowUpRight,
-  ArrowDownLeft,
   FileText,
   FileSpreadsheet,
   Globe,
-  Fuel,
-  ArrowUpDown,
-  TrendingUp,
-  TrendingDown,
-  Wallet,
 } from 'lucide-react';
 import {
   networks,
+  type Client,
   type Transaction,
 } from '@/lib/mock-data';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
+import { NetworkTransactionFilterStats } from './transaction-filter-stats';
+import { RelationshipPerformanceChart } from './relationship-performance-chart';
+import { ActivityDonutChart } from './activity-donut-chart';
 import { AIAnalysisSection } from './ai-analysis-section';
-import { cn } from '@/lib/utils';
+import { NetworkHoldingsSummary } from './network-holdings-summary';
 
 const networkColors: Record<string, string> = {
   ethereum: '#627eea',
@@ -37,10 +34,17 @@ const networkColors: Record<string, string> = {
 interface NetworkDetailPageProps {
   networkId: string;
   onBack: () => void;
+  clients?: Client[];
 }
 
-export function NetworkDetailPage({ networkId, onBack }: NetworkDetailPageProps) {
+export function NetworkDetailPage({
+  networkId,
+  onBack,
+  clients = [],
+}: NetworkDetailPageProps) {
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
+  /** False until ColumnFilterTable emits — charts fall back to networkTransactions. */
+  const [filtersReady, setFiltersReady] = useState(false);
   const allTransactions = useActiveTransactions();
 
   const networkInfo = useMemo(() => {
@@ -50,63 +54,29 @@ export function NetworkDetailPage({ networkId, onBack }: NetworkDetailPageProps)
   const networkColor = networkColors[networkId] || '#8a8f98';
   const networkLabel = networkInfo?.label || networkId;
 
-  // Get all transactions on this network
   const networkTransactions = useMemo(() => {
     return allTransactions.filter(
       tx => tx.network === networkId
     );
   }, [allTransactions, networkId]);
 
-  // Calculate stats
-  const totalRevenue = useMemo(() => {
-    return networkTransactions
+  const chartTransactions = filtersReady ? filteredData : networkTransactions;
+  const statsTransactions = filtersReady ? filteredData : networkTransactions;
+
+  const isNetPositive = useMemo(() => {
+    const revenue = statsTransactions
       .filter(tx => isRevenueType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
-  }, [networkTransactions]);
-
-  const totalExpenses = useMemo(() => {
-    return networkTransactions
+    const expenses = statsTransactions
       .filter(tx => isExpenseType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
-  }, [networkTransactions]);
-
-  const gasFees = useMemo(() => {
-    // Prefer dedicated gas-type rows; otherwise 0 on UI tx model (full gas USD is on portfolio cards)
-    return networkTransactions
-      .filter(tx => tx.type === 'gas')
-      .reduce((sum, tx) => sum + tx.value, 0);
-  }, [networkTransactions]);
-
-  const totalVolume = useMemo(() => {
-    return networkTransactions.reduce((sum, tx) => sum + tx.value, 0);
-  }, [networkTransactions]);
-
-  const netFlow = totalRevenue - totalExpenses;
-  const isNetPositive = netFlow >= 0;
-
-  // Most used token
-  const topToken = useMemo(() => {
-    const tokenCount: Record<string, number> = {};
-    networkTransactions.forEach(tx => {
-      tokenCount[tx.token] = (tokenCount[tx.token] || 0) + 1;
-    });
-    const sorted = Object.entries(tokenCount).sort(([, a], [, b]) => b - a);
-    return sorted[0]?.[0] || '-';
-  }, [networkTransactions]);
-
-  // Unique counterparties count
-  const uniqueCounterparties = useMemo(() => {
-    const set = new Set(networkTransactions.map(tx => tx.counterparty.toLowerCase()));
-    return set.size;
-  }, [networkTransactions]);
+    return revenue - expenses >= 0;
+  }, [statsTransactions]);
 
   const handleFilteredDataChange = useCallback((data: Transaction[]) => {
+    setFiltersReady(true);
     setFilteredData(data);
   }, []);
-
-  const formatNumber = (num: number, decimals: number = 2) => {
-    return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  };
 
   return (
     <div className="space-y-6">
@@ -152,102 +122,11 @@ export function NetworkDetailPage({ networkId, onBack }: NetworkDetailPageProps)
         </div>
       </div>
 
-      {/* Network Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Total Revenue */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, rgba(14, 203, 129, 0.06) 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowDownLeft className="h-3.5 w-3.5 text-[#0ecb81]" />
-              <p className="text-[10px] text-[#8a8f98]">Revenue</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#0ecb81]">
-              ${formatNumber(totalRevenue)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Expenses */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, rgba(246, 70, 93, 0.06) 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowUpRight className="h-3.5 w-3.5 text-[#f6465d]" />
-              <p className="text-[10px] text-[#8a8f98]">Expense</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f6465d]">
-              ${formatNumber(totalExpenses)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Net Flow */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, ${isNetPositive ? 'rgba(14, 203, 129, 0.06)' : 'rgba(246, 70, 93, 0.06)'} 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              {isNetPositive ? (
-                <TrendingUp className="h-3.5 w-3.5 text-[#0ecb81]" />
-              ) : (
-                <TrendingDown className="h-3.5 w-3.5 text-[#f6465d]" />
-              )}
-              <p className="text-[10px] text-[#8a8f98]">Net Flow</p>
-            </div>
-            <p className={cn(
-              'text-lg font-bold font-mono-num',
-              isNetPositive ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-            )}>
-              {isNetPositive ? '+' : ''}${formatNumber(netFlow)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Gas Fees */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Fuel className="h-3.5 w-3.5 text-[#f7931a]" />
-              <p className="text-[10px] text-[#8a8f98]">Gas Fees</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f7931a]">
-              ${formatNumber(gasFees)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Transaction Count */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowUpDown className="h-3.5 w-3.5 text-[#0052ff]" />
-              <p className="text-[10px] text-[#8a8f98]">Transactions</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f7f8f8]">
-              {networkTransactions.length}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Counterparties */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Wallet className="h-3.5 w-3.5 text-[#b6509e]" />
-              <p className="text-[10px] text-[#8a8f98]">Counterparties</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f7f8f8]">
-              {uniqueCounterparties}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Current holdings on this network (live positions, not txs) */}
+      <NetworkHoldingsSummary
+        networkId={networkId}
+        networkLabel={networkLabel}
+      />
 
       {/* Transaction Table */}
       <Card className="bg-[#0f1011] border-white/5">
@@ -262,13 +141,34 @@ export function NetworkDetailPage({ networkId, onBack }: NetworkDetailPageProps)
             transactions={networkTransactions}
             showTypeColumn={true}
             onFilteredDataChange={handleFilteredDataChange}
+            clients={clients}
           />
         </CardContent>
       </Card>
 
+      {/* Filter-bound network stats (same set as table) */}
+      <NetworkTransactionFilterStats
+        transactions={statsTransactions}
+        clients={clients}
+      />
+
+      {/* Network Flow — shared chart with Asset / Client Details */}
+      <RelationshipPerformanceChart
+        transactions={chartTransactions}
+        title={`Network Flow · ${networkLabel}`}
+        subtitle="Cumulative inflow, outflow, net & volume · values in USD"
+        methodology="Based on filtered transactions on this network from synced wallet data."
+      />
+
+      {/* Activity Mix donut — network personality */}
+      <ActivityDonutChart
+        transactions={chartTransactions}
+        contextLabel={networkLabel}
+      />
+
       {/* AI Analysis */}
       <AIAnalysisSection
-        transactions={filteredData}
+        transactions={statsTransactions}
         sectionTitle={`Transactions of ${networkLabel}`}
         sectionColor={networkColor}
         sectionType={isNetPositive ? 'revenue' : 'expenses'}

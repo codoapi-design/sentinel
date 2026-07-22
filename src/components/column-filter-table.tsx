@@ -34,6 +34,7 @@ import {
   getClientNameByAddress,
 } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { ON_CHAIN_ACTIVITY_LABELS } from '@/lib/finance/activity';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -132,6 +133,59 @@ function DateFilter({
           className="bg-[#0f1011] border-white/10 text-[#d0d6e0] text-xs h-8"
           dir="ltr"
         />
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full bg-[#0f1011] border-white/10 text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-[#28282c] text-xs h-7"
+        onClick={onAll}
+      >
+        ALL
+      </Button>
+    </div>
+  );
+}
+
+// On-chain activity filter
+function ActivityFilter({
+  selected,
+  onToggle,
+  onAll,
+  options,
+}: {
+  selected: string[];
+  onToggle: (activity: string) => void;
+  onAll: () => void;
+  options: string[];
+}) {
+  return (
+    <div className="space-y-2 w-52">
+      <p className="text-xs font-medium text-[#d0d6e0] mb-2">Filter by Activity</p>
+      <div className="space-y-1 max-h-56 overflow-y-auto">
+        {options.map(activity => (
+          <button
+            key={activity}
+            className={cn(
+              'w-full text-right text-xs px-2 py-1.5 rounded transition-colors flex items-center gap-2',
+              selected.includes(activity)
+                ? 'bg-[#0052ff]/10 text-[#0052ff]'
+                : 'hover:bg-[#28282c] text-[#d0d6e0]'
+            )}
+            onClick={() => onToggle(activity)}
+          >
+            <div className={cn(
+              'w-3.5 h-3.5 rounded border flex items-center justify-center',
+              selected.includes(activity)
+                ? 'bg-[#0052ff] border-[#0052ff]'
+                : 'border-[#8a8f98]/40'
+            )}>
+              {selected.includes(activity) && (
+                <Check className="h-2.5 w-2.5 text-white" />
+              )}
+            </div>
+            {activity}
+          </button>
+        ))}
       </div>
       <Button
         variant="outline"
@@ -334,6 +388,7 @@ export function ColumnFilterTable({
   // Filter state
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [activityFilter, setActivityFilter] = useState<string[]>([]);
   const [tokenSearch, setTokenSearch] = useState('');
   const [amountMin, setAmountMin] = useState('');
   const [amountMax, setAmountMax] = useState('');
@@ -357,6 +412,11 @@ export function ColumnFilterTable({
     // Fixed type filter
     if (fixedType) {
       result = result.filter(tx => tx.type === fixedType);
+    }
+
+    // Activity filter
+    if (activityFilter.length > 0) {
+      result = result.filter(tx => activityFilter.includes(tx.activity || 'Transfer'));
     }
 
     // Date filter
@@ -404,7 +464,7 @@ export function ColumnFilterTable({
     });
 
     return result;
-  }, [transactions, fixedType, dateFrom, dateTo, tokenSearch, amountMin, amountMax, networkSearch, hashSearch, sortField, sortDir]);
+  }, [transactions, fixedType, activityFilter, dateFrom, dateTo, tokenSearch, amountMin, amountMax, networkSearch, hashSearch, sortField, sortDir]);
 
   // Notify parent of filtered data changes
   useEffect(() => {
@@ -444,11 +504,12 @@ export function ColumnFilterTable({
     }
   };
 
-  const hasActiveFilters = !!(dateFrom || dateTo || tokenSearch || amountMin || amountMax || networkSearch || hashSearch);
+  const hasActiveFilters = activityFilter.length > 0 || !!(dateFrom || dateTo || tokenSearch || amountMin || amountMax || networkSearch || hashSearch);
 
   const clearAllFilters = () => {
     setDateFrom('');
     setDateTo('');
+    setActivityFilter([]);
     setTokenSearch('');
     setAmountMin('');
     setAmountMax('');
@@ -457,10 +518,28 @@ export function ColumnFilterTable({
     setCurrentPage(1);
   };
 
+  const toggleActivityFilter = (activity: string) => {
+    if (activityFilter.includes(activity)) {
+      setActivityFilter(activityFilter.filter(a => a !== activity));
+    } else {
+      setActivityFilter([...activityFilter, activity]);
+    }
+    setCurrentPage(1);
+  };
+
   const uniqueTokens = useMemo(() => [...new Set(transactions.map(tx => tx.token))], [transactions]);
+
+  const activityOptions = useMemo(() => {
+    const fromData = transactions.map(tx => tx.activity || 'Transfer');
+    const extras = fromData.filter(
+      (label) => !(ON_CHAIN_ACTIVITY_LABELS as readonly string[]).includes(label),
+    );
+    return [...new Set([...ON_CHAIN_ACTIVITY_LABELS, ...extras])];
+  }, [transactions]);
 
   // Check which columns have active filters
   const dateFilterActive = !!(dateFrom || dateTo);
+  const activityFilterActive = activityFilter.length > 0;
   const tokenFilterActive = !!tokenSearch;
   const amountFilterActive = !!(amountMin || amountMax);
   const networkFilterActive = !!networkSearch;
@@ -481,6 +560,12 @@ export function ColumnFilterTable({
             <Badge variant="outline" className="text-[10px] bg-[#0052ff]/5 text-[#0052ff] border-[#0052ff]/20 px-2 py-0.5">
               Date {dateFrom && `from ${dateFrom}`} {dateTo && `to ${dateTo}`}
               <X className="h-2.5 w-2.5 mr-1 cursor-pointer" onClick={() => { setDateFrom(''); setDateTo(''); }} />
+            </Badge>
+          )}
+          {activityFilterActive && (
+            <Badge variant="outline" className="text-[10px] bg-[#0052ff]/5 text-[#0052ff] border-[#0052ff]/20 px-2 py-0.5">
+              Activity: {activityFilter.join(', ')}
+              <X className="h-2.5 w-2.5 mr-1 cursor-pointer" onClick={() => { setActivityFilter([]); setCurrentPage(1); }} />
             </Badge>
           )}
           {tokenFilterActive && (
@@ -548,8 +633,23 @@ export function ColumnFilterTable({
 
               {/* On-chain activity (explorer-style) */}
               <TableHead className="text-xs font-medium p-2">
-                <div className="flex items-center gap-1 text-[#8a8f98]">
-                  <span>Activity</span>
+                <div className="group">
+                  <ColumnFilterPopup
+                    hasActiveFilter={activityFilterActive}
+                    filterContent={
+                      <ActivityFilter
+                        selected={activityFilter}
+                        onToggle={toggleActivityFilter}
+                        onAll={() => { setActivityFilter([]); setCurrentPage(1); }}
+                        options={activityOptions}
+                      />
+                    }
+                  >
+                    <div className="flex items-center gap-1" onClick={() => toggleSort('activity')}>
+                      <span>Activity</span>
+                      <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </ColumnFilterPopup>
                 </div>
               </TableHead>
 

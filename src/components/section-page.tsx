@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
   ArrowRight,
   FileText,
@@ -12,7 +11,6 @@ import {
   TrendingDown,
   Wallet,
   Fuel,
-  BarChart3,
 } from 'lucide-react';
 import {
   type Transaction,
@@ -110,19 +108,9 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
   }, [sectionTransactions, sectionType]);
 
   const [filteredData, setFilteredData] = useState<Transaction[]>(sectionTransactions);
-  const [analysisTriggerKey, setAnalysisTriggerKey] = useState(0);
-  const analysisRef = useRef<HTMLDivElement>(null);
 
   const handleFilteredDataChange = useCallback((data: Transaction[]) => {
     setFilteredData(data);
-  }, []);
-
-  const handleAnalyzeFromHeader = useCallback(() => {
-    setAnalysisTriggerKey(prev => prev + 1);
-    // Scroll to analysis section
-    setTimeout(() => {
-      analysisRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
   }, []);
 
   return (
@@ -150,15 +138,6 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
           <Button
             variant="outline"
             size="sm"
-            className="bg-[#0052ff]/10 border-[#0052ff]/20 text-[#0052ff] hover:bg-[#0052ff]/20 hover:text-[#0052ff]"
-            onClick={handleAnalyzeFromHeader}
-          >
-            <BarChart3 className="h-4 w-4 ml-1" />
-            Analyze Data
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
             className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
           >
             <FileText className="h-4 w-4 ml-1" />
@@ -174,6 +153,18 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
           </Button>
         </div>
       </div>
+
+      {/* Transactions Table with Column Filters */}
+      <Card className="bg-[#0f1011] border-white/5">
+        <CardContent className="p-0">
+          <ColumnFilterTable
+            transactions={sectionTransactions}
+            showTypeColumn={true}
+            onFilteredDataChange={handleFilteredDataChange}
+            clients={clients}
+          />
+        </CardContent>
+      </Card>
 
       {/* Total Value Card */}
       <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
@@ -198,28 +189,13 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
       {/* Period cash-flow movement (classified txs, not market revaluation) */}
       <CashflowChart metric={SECTION_TO_METRIC[sectionType]} />
 
-      {/* Transactions Table with Column Filters */}
-      <Card className="bg-[#0f1011] border-white/5">
-        <CardContent className="p-0">
-          <ColumnFilterTable
-            transactions={sectionTransactions}
-            showTypeColumn={true}
-            onFilteredDataChange={handleFilteredDataChange}
-            clients={clients}
-          />
-        </CardContent>
-      </Card>
-
       {/* AI Analysis Section */}
-      <div ref={analysisRef}>
-        <AIAnalysisSection
-          transactions={filteredData}
-          sectionTitle={config.title}
-          sectionColor={config.color}
-          sectionType={sectionType}
-          triggerKey={analysisTriggerKey}
-        />
-      </div>
+      <AIAnalysisSection
+        transactions={filteredData}
+        sectionTitle={config.title}
+        sectionColor={config.color}
+        sectionType={sectionType}
+      />
     </div>
   );
 }

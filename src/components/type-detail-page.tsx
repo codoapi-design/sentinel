@@ -13,10 +13,7 @@ import {
   Landmark,
   Fuel,
   TrendingUp,
-  TrendingDown,
   Coins,
-  Globe,
-  Users,
 } from 'lucide-react';
 import {
   type Transaction,
@@ -24,8 +21,10 @@ import {
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
+import { TypeTransactionFilterStats } from './transaction-filter-stats';
+import { TypeVolumeChart } from './type-volume-chart';
+import { ActivityDonutChart } from './activity-donut-chart';
 import { AIAnalysisSection } from './ai-analysis-section';
-import { cn } from '@/lib/utils';
 
 const typeConfig: Record<string, {
   label: string;
@@ -78,6 +77,8 @@ interface TypeDetailPageProps {
 
 export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
+  /** False until ColumnFilterTable emits — charts fall back to typeTransactions. */
+  const [filtersReady, setFiltersReady] = useState(false);
   const allTransactions = useActiveTransactions();
 
   const config = typeConfig[typeId];
@@ -93,68 +94,23 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
     );
   }, [allTransactions, typeId]);
 
-  // Calculate stats
-  const totalRevenue = useMemo(() => {
-    return typeTransactions
-      .filter(tx => isRevenueType(tx.type))
-      .reduce((sum, tx) => sum + tx.value, 0);
-  }, [typeTransactions]);
+  const chartTransactions = filtersReady ? filteredData : typeTransactions;
+  const statsTransactions = filtersReady ? filteredData : typeTransactions;
 
-  const totalExpenses = useMemo(() => {
-    return typeTransactions
-      .filter(tx => isExpenseType(tx.type))
-      .reduce((sum, tx) => sum + tx.value, 0);
-  }, [typeTransactions]);
-
-  const totalVolume = useMemo(() => {
-    return typeTransactions.reduce((sum, tx) => sum + tx.value, 0);
-  }, [typeTransactions]);
-
-  const netFlow = totalRevenue - totalExpenses;
-  const isNetPositive = netFlow >= 0;
-
-  // Most used token
-  const topToken = useMemo(() => {
-    const tokenCount: Record<string, number> = {};
-    typeTransactions.forEach(tx => {
-      tokenCount[tx.token] = (tokenCount[tx.token] || 0) + 1;
-    });
-    const sorted = Object.entries(tokenCount).sort(([, a], [, b]) => b - a);
-    return sorted[0]?.[0] || '-';
-  }, [typeTransactions]);
-
-  // Most used network
-  const topNetwork = useMemo(() => {
-    const networkCount: Record<string, { count: number; label: string }> = {};
-    typeTransactions.forEach(tx => {
-      if (!networkCount[tx.network]) {
-        networkCount[tx.network] = { count: 0, label: tx.networkLabel };
-      }
-      networkCount[tx.network].count++;
-    });
-    const sorted = Object.entries(networkCount).sort(([, a], [, b]) => b.count - a.count);
-    return sorted[0]?.[1].label || '-';
-  }, [typeTransactions]);
-
-  // Unique counterparties count
-  const uniqueCounterparties = useMemo(() => {
-    const set = new Set(typeTransactions.map(tx => tx.counterparty.toLowerCase()));
-    return set.size;
-  }, [typeTransactions]);
-
-  // Average transaction value
-  const avgValue = useMemo(() => {
-    if (typeTransactions.length === 0) return 0;
-    return totalVolume / typeTransactions.length;
-  }, [typeTransactions, totalVolume]);
+  const isNetPositive = useMemo(() => {
+    let revenue = 0;
+    let expense = 0;
+    for (const tx of statsTransactions) {
+      if (isRevenueType(tx.type)) revenue += tx.value;
+      if (isExpenseType(tx.type)) expense += tx.value;
+    }
+    return revenue - expense >= 0;
+  }, [statsTransactions]);
 
   const handleFilteredDataChange = useCallback((data: Transaction[]) => {
+    setFiltersReady(true);
     setFilteredData(data);
   }, []);
-
-  const formatNumber = (num: number, decimals: number = 2) => {
-    return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  };
 
   return (
     <div className="space-y-6">
@@ -200,145 +156,6 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
         </div>
       </div>
 
-      {/* Type Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Total Revenue */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, rgba(14, 203, 129, 0.06) 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowDownLeft className="h-3.5 w-3.5 text-[#0ecb81]" />
-              <p className="text-[10px] text-[#8a8f98]">Revenue</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#0ecb81]">
-              ${formatNumber(totalRevenue)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Expenses */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, rgba(246, 70, 93, 0.06) 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowUpRight className="h-3.5 w-3.5 text-[#f6465d]" />
-              <p className="text-[10px] text-[#8a8f98]">Expense</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f6465d]">
-              ${formatNumber(totalExpenses)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Net Flow */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, ${isNetPositive ? 'rgba(14, 203, 129, 0.06)' : 'rgba(246, 70, 93, 0.06)'} 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              {isNetPositive ? (
-                <TrendingUp className="h-3.5 w-3.5 text-[#0ecb81]" />
-              ) : (
-                <TrendingDown className="h-3.5 w-3.5 text-[#f6465d]" />
-              )}
-              <p className="text-[10px] text-[#8a8f98]">Net Flow</p>
-            </div>
-            <p className={cn(
-              'text-lg font-bold font-mono-num',
-              isNetPositive ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-            )}>
-              {isNetPositive ? '+' : ''}${formatNumber(netFlow)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Volume */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Coins className="h-3.5 w-3.5 text-[#0052ff]" />
-              <p className="text-[10px] text-[#8a8f98]">Total Volume</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#0052ff]">
-              ${formatNumber(totalVolume)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Transaction Count */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowLeftRight className="h-3.5 w-3.5 text-[#8a8f98]" />
-              <p className="text-[10px] text-[#8a8f98]">Transactions</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f7f8f8]">
-              {typeTransactions.length}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Average Value */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Globe className="h-3.5 w-3.5 text-[#b6509e]" />
-              <p className="text-[10px] text-[#8a8f98]">Avg Value</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f7f8f8]">
-              ${formatNumber(avgValue)}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Secondary Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {/* Top Token */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Coins className="h-3.5 w-3.5 text-[#f7931a]" />
-              <p className="text-[10px] text-[#8a8f98]">Most Used Token</p>
-            </div>
-            <p className="text-base font-bold text-[#f7f8f8]">
-              {topToken}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Top Network */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Globe className="h-3.5 w-3.5 text-[#627eea]" />
-              <p className="text-[10px] text-[#8a8f98]">Most Used Network</p>
-            </div>
-            <p className="text-base font-bold text-[#f7f8f8]">
-              {topNetwork}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Counterparties */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Users className="h-3.5 w-3.5 text-[#b6509e]" />
-              <p className="text-[10px] text-[#8a8f98]">Counterparties</p>
-            </div>
-            <p className="text-base font-bold text-[#f7f8f8]">
-              {uniqueCounterparties}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Transaction Table */}
       <Card className="bg-[#0f1011] border-white/5">
         <CardContent className="p-0">
@@ -356,9 +173,33 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
         </CardContent>
       </Card>
 
+      {/* Filter-bound type stats (same set as table) */}
+      <TypeTransactionFilterStats transactions={statsTransactions} />
+
+      {/* Type volume over time — single series (not Inflow/Outflow/Net) */}
+      <TypeVolumeChart
+        transactions={chartTransactions}
+        typeId={typeId}
+        typeLabel={typeLabel}
+      />
+
+      {/* Token Mix + Network Mix — side-by-side on desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ActivityDonutChart
+          transactions={chartTransactions}
+          contextLabel={typeLabel}
+          mode="token"
+        />
+        <ActivityDonutChart
+          transactions={chartTransactions}
+          contextLabel={typeLabel}
+          mode="network"
+        />
+      </div>
+
       {/* AI Analysis */}
       <AIAnalysisSection
-        transactions={filteredData}
+        transactions={statsTransactions}
         sectionTitle={`Transactions of ${typeLabel}`}
         sectionColor={typeColor}
         sectionType={isNetPositive ? 'revenue' : 'expenses'}

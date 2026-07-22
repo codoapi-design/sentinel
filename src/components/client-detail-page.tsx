@@ -5,16 +5,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   ArrowRight,
-  ArrowUpRight,
-  ArrowDownLeft,
   FileText,
   FileSpreadsheet,
   Wallet,
   Copy,
   Check,
-  ArrowUpDown,
-  TrendingUp,
-  TrendingDown,
   UserPlus,
 } from 'lucide-react';
 import {
@@ -24,6 +19,8 @@ import {
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
+import { ClientTransactionFilterStats } from './transaction-filter-stats';
+import { RelationshipPerformanceChart } from './relationship-performance-chart';
 import { AIAnalysisSection } from './ai-analysis-section';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +33,8 @@ interface ClientDetailPageProps {
 export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetailPageProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
+  /** False until ColumnFilterTable emits — chart falls back to clientTransactions. */
+  const [filtersReady, setFiltersReady] = useState(false);
   const allTransactions = useActiveTransactions();
 
   // Determine if this is an undefined/auto-generated client
@@ -48,48 +47,17 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
     );
   }, [allTransactions, client.address]);
 
-  // Calculate stats
-  const totalRevenue = useMemo(() => {
-    return clientTransactions
+  // Net direction for AI section — based on currently filtered table rows
+  const isNetPositive = useMemo(() => {
+    const source = filtersReady ? filteredData : clientTransactions;
+    const revenue = source
       .filter(tx => isRevenueType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
-  }, [clientTransactions]);
-
-  const totalExpenses = useMemo(() => {
-    return clientTransactions
+    const expenses = source
       .filter(tx => isExpenseType(tx.type))
       .reduce((sum, tx) => sum + tx.value, 0);
-  }, [clientTransactions]);
-
-  const totalVolume = useMemo(() => {
-    return clientTransactions.reduce((sum, tx) => sum + tx.value, 0);
-  }, [clientTransactions]);
-
-  const netFlow = totalRevenue - totalExpenses;
-  const isNetPositive = netFlow >= 0;
-
-  // Most used token
-  const topToken = useMemo(() => {
-    const tokenCount: Record<string, number> = {};
-    clientTransactions.forEach(tx => {
-      tokenCount[tx.token] = (tokenCount[tx.token] || 0) + 1;
-    });
-    const sorted = Object.entries(tokenCount).sort(([, a], [, b]) => b - a);
-    return sorted[0]?.[0] || '-';
-  }, [clientTransactions]);
-
-  // Most used network
-  const topNetwork = useMemo(() => {
-    const networkCount: Record<string, { count: number; label: string }> = {};
-    clientTransactions.forEach(tx => {
-      if (!networkCount[tx.network]) {
-        networkCount[tx.network] = { count: 0, label: tx.networkLabel };
-      }
-      networkCount[tx.network].count++;
-    });
-    const sorted = Object.entries(networkCount).sort(([, a], [, b]) => b.count - a.count);
-    return sorted[0]?.[1].label || '-';
-  }, [clientTransactions]);
+    return revenue - expenses >= 0;
+  }, [filtersReady, filteredData, clientTransactions]);
 
   const copyAddress = async () => {
     try {
@@ -102,12 +70,12 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
   };
 
   const handleFilteredDataChange = useCallback((data: Transaction[]) => {
+    setFiltersReady(true);
     setFilteredData(data);
   }, []);
 
-  const formatNumber = (num: number, decimals: number = 2) => {
-    return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  };
+  const chartTransactions = filtersReady ? filteredData : clientTransactions;
+  const statsTransactions = filtersReady ? filteredData : clientTransactions;
 
   return (
     <div className="space-y-6">
@@ -192,103 +160,6 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
         </div>
       </div>
 
-      {/* Client Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Total Revenue */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, rgba(14, 203, 129, 0.06) 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowDownLeft className="h-3.5 w-3.5 text-[#0ecb81]" />
-              <p className="text-[10px] text-[#8a8f98]">Revenue</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#0ecb81]">
-              ${formatNumber(totalRevenue)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Expenses */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, rgba(246, 70, 93, 0.06) 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowUpRight className="h-3.5 w-3.5 text-[#f6465d]" />
-              <p className="text-[10px] text-[#8a8f98]">Expense</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f6465d]">
-              ${formatNumber(totalExpenses)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Net Flow */}
-        <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: `radial-gradient(ellipse at top right, ${isNetPositive ? 'rgba(14, 203, 129, 0.06)' : 'rgba(246, 70, 93, 0.06)'} 0%, transparent 70%)`,
-          }} />
-          <CardContent className="p-4 relative z-10">
-            <div className="flex items-center gap-1.5 mb-2">
-              {isNetPositive ? (
-                <TrendingUp className="h-3.5 w-3.5 text-[#0ecb81]" />
-              ) : (
-                <TrendingDown className="h-3.5 w-3.5 text-[#f6465d]" />
-              )}
-              <p className="text-[10px] text-[#8a8f98]">Net Flow</p>
-            </div>
-            <p className={cn(
-              'text-lg font-bold font-mono-num',
-              isNetPositive ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-            )}>
-              {isNetPositive ? '+' : ''}${formatNumber(netFlow)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Volume */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <ArrowUpDown className="h-3.5 w-3.5 text-[#0052ff]" />
-              <p className="text-[10px] text-[#8a8f98]">Volume</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#0052ff]">
-              ${formatNumber(totalVolume)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Transaction Count */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <FileText className="h-3.5 w-3.5 text-[#8a8f98]" />
-              <p className="text-[10px] text-[#8a8f98]">Transactions</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f7f8f8]">
-              {clientTransactions.length}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Top Token */}
-        <Card className="bg-[#0f1011] border-white/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Wallet className="h-3.5 w-3.5 text-[#f7931a]" />
-              <p className="text-[10px] text-[#8a8f98]">Top Token</p>
-            </div>
-            <p className="text-lg font-bold font-mono-num text-[#f7f8f8]">
-              {topToken}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Transaction Table */}
       <Card className="bg-[#0f1011] border-white/5">
         <CardContent className="p-0">
@@ -306,9 +177,20 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
         </CardContent>
       </Card>
 
+      {/* Filter-bound client stats (same set as table) */}
+      <ClientTransactionFilterStats transactions={statsTransactions} />
+
+      {/* Client Flow — shared chart with Asset Details */}
+      <RelationshipPerformanceChart
+        transactions={chartTransactions}
+        title={`Client Flow · ${client.name}`}
+        subtitle="Cumulative inflow, outflow, net & volume · values in USD"
+        methodology="Based on filtered transactions with this client (synced wallet data)."
+      />
+
       {/* AI Analysis */}
       <AIAnalysisSection
-        transactions={filteredData}
+        transactions={statsTransactions}
         sectionTitle={`Transactions of ${client.name}`}
         sectionColor={client.color}
         sectionType={isNetPositive ? 'revenue' : 'expenses'}
