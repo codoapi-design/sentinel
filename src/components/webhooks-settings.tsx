@@ -477,7 +477,7 @@ export function WebhooksSettings() {
             <div className="space-y-2">
               <Label className="text-xs text-[#8a8f98]">Label</Label>
               <Input
-                placeholder="e.g.: Revenue alerts"
+                placeholder="e.g.: Inflow alerts"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 className="bg-[#191a1b] border-white/5 text-[#d0d6e0] placeholder-[#8a8f98] text-sm"

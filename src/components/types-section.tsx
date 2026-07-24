@@ -149,8 +149,8 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
             <thead>
               <tr className="border-b border-white/5">
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Type</th>
-                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Revenue</th>
-                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Expense</th>
+                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Inflow</th>
+                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Outflow</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Net Flow</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Volume</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Transactions</th>
@@ -185,8 +185,8 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
                              ts.typeId === 'staking' ? 'Staking Reward' :
                              ts.typeId === 'trade' ? 'Swap' :
                              ts.typeId === 'gas' ? 'Network Fee' :
-                             ts.typeId === 'income' ? 'Incoming Revenue' :
-                             ts.typeId === 'expense' ? 'Outgoing Expense' : ts.typeId}
+                             ts.typeId === 'income' ? 'Cash inflow' :
+                             ts.typeId === 'expense' ? 'Cash outflow' : ts.typeId}
                           </p>
                         </div>
                       </div>

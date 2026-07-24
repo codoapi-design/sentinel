@@ -131,6 +131,8 @@ export interface Database {
           last_synced_block: number | null;
           last_synced_at: string | null;
           is_syncing: boolean;
+          investment_baseline_at: string | null;
+          investment_baseline_value_usd: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -145,6 +147,8 @@ export interface Database {
           last_synced_block?: number | null;
           last_synced_at?: string | null;
           is_syncing?: boolean;
+          investment_baseline_at?: string | null;
+          investment_baseline_value_usd?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -159,6 +163,8 @@ export interface Database {
           last_synced_block?: number | null;
           last_synced_at?: string | null;
           is_syncing?: boolean;
+          investment_baseline_at?: string | null;
+          investment_baseline_value_usd?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -862,6 +868,112 @@ export interface Database {
           total_value_usd?: number;
           token_value_usd?: number;
           defi_value_usd?: number;
+          source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ─── Investment Lots (return since connected) ───
+      investment_lots: {
+        Row: {
+          id: string;
+          user_id: string;
+          wallet_id: string;
+          token_symbol: string;
+          token_address: string | null;
+          network: string;
+          chain_id: number;
+          quantity_open: number;
+          cost_per_unit_usd: number;
+          cost_basis_usd: number;
+          closed_cost_basis_usd: number;
+          opened_at: string;
+          source: string;
+          closed_at: string | null;
+          realized_pnl_usd: number;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          wallet_id: string;
+          token_symbol: string;
+          token_address?: string | null;
+          network?: string;
+          chain_id?: number;
+          quantity_open?: number;
+          cost_per_unit_usd?: number;
+          cost_basis_usd?: number;
+          closed_cost_basis_usd?: number;
+          opened_at?: string;
+          source?: string;
+          closed_at?: string | null;
+          realized_pnl_usd?: number;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          wallet_id?: string;
+          token_symbol?: string;
+          token_address?: string | null;
+          network?: string;
+          chain_id?: number;
+          quantity_open?: number;
+          cost_per_unit_usd?: number;
+          cost_basis_usd?: number;
+          closed_cost_basis_usd?: number;
+          opened_at?: string;
+          source?: string;
+          closed_at?: string | null;
+          realized_pnl_usd?: number;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ─── Investment Return Daily (PnL chart since connected) ───
+      investment_return_daily: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          user_id: string;
+          snapshot_date: string;
+          total_pnl_usd: number;
+          unrealized_pnl_usd: number;
+          realized_pnl_usd: number;
+          source: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          user_id: string;
+          snapshot_date: string;
+          total_pnl_usd?: number;
+          unrealized_pnl_usd?: number;
+          realized_pnl_usd?: number;
+          source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          wallet_id?: string;
+          user_id?: string;
+          snapshot_date?: string;
+          total_pnl_usd?: number;
+          unrealized_pnl_usd?: number;
+          realized_pnl_usd?: number;
           source?: string;
           created_at?: string;
           updated_at?: string;

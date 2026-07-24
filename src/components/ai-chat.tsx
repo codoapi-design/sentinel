@@ -93,7 +93,7 @@ export function AIChat() {
 
     // Build page-specific data description
     const pageDataMap: Record<string, string> = {
-      dashboard: 'Dashboard data: Revenue, Expenses, Flow, and Gas Fees',
+      dashboard: 'Dashboard data: Inflow, Outflow, Flow, and Gas Fees',
       transactions: 'Transactions table data: All transactions with filtering and search',
       assets: 'Assets data: Token portfolio, prices, and changes',
       clients: 'Clients data: Transaction counterparties',

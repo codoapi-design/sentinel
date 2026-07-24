@@ -43,9 +43,9 @@ const REVENUE = new Set(['income', 'staking']);
 const EXPENSE = new Set(['expense']);
 
 const METRIC_LABEL: Record<CashflowMetric, string> = {
-  revenue: 'Revenue (income + staking)',
-  expenses: 'Expenses (expense transfers only)',
-  netFlow: 'Net Flow (revenue − expenses; gas not deducted)',
+  revenue: 'Inflow (income + staking)',
+  expenses: 'Outflow (expense transfers only)',
+  netFlow: 'Net Flow (inflow − outflow; gas not deducted)',
   gas: 'Gas fees (USD, all transactions)',
 };
 

@@ -274,8 +274,8 @@ export function buildTransactionSummary(
 export function getPageContextDescription(page: string, section?: string): PageContext {
   const pageDescriptions: Record<string, { description: string; relevantData: string }> = {
     dashboard: {
-      description: 'Main dashboard — portfolio summary, revenue, and expenses',
-      relevantData: 'Revenue, expenses, net flow, gas fees, and portfolio value',
+      description: 'Main dashboard — portfolio summary, inflow, and outflow',
+      relevantData: 'Inflow, outflow, net flow, gas fees, and portfolio value',
     },
     transactions: {
       description: 'Transactions table — all transactions with filters and search',
@@ -291,7 +291,7 @@ export function getPageContextDescription(page: string, section?: string): PageC
     },
     reports: {
       description: 'Reports page — financial reports and analysis',
-      relevantData: 'Revenue, expense, flow, and gas fee reports',
+      relevantData: 'Inflow, outflow, flow, and gas fee reports',
     },
     tax: {
       description: 'Tax page — capital gains and losses',
@@ -399,14 +399,14 @@ export function buildUserContext(options: {
   if (transactionSummary) {
     const txParts: string[] = [];
     txParts.push('## Transaction summary');
-    txParts.push(`- Total revenue: $${transactionSummary.totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-    txParts.push(`- Total expenses: $${transactionSummary.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+    txParts.push(`- Total inflow: $${transactionSummary.totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+    txParts.push(`- Total outflow: $${transactionSummary.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
     txParts.push(`- Net flow: $${transactionSummary.netFlow.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
     txParts.push(`- Gas fees: $${transactionSummary.gasFees.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
     if (transactionSummary.tradingVolume > 0) {
-      txParts.push(`- Trading volume (excluded from revenue/expenses): $${transactionSummary.tradingVolume.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+      txParts.push(`- Trading volume (excluded from inflow/outflow): $${transactionSummary.tradingVolume.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
     }
-    txParts.push('- Methodology: Revenue = income+staking · Expenses = outgoing transfers · Trades/DeFi/bridge/NFT excluded · Gas separate (not deducted from Net Flow)');
+    txParts.push('- Methodology: Inflow = income+staking · Outflow = outgoing transfers · Trades/DeFi/bridge/NFT excluded · Gas separate (not deducted from Net Flow)');
 
     if (transactionSummary.dateRange) {
       txParts.push(`- Date range: ${transactionSummary.dateRange.from} to ${transactionSummary.dateRange.to}`);

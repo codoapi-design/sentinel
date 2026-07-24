@@ -14,9 +14,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
-import { getSyncEngine } from '@/lib/blockchain/sync-engine';
+import { getSyncEngine, releaseStaleSyncLock } from '@/lib/blockchain/sync-engine';
 import { primaryDisplayAddress } from '@/lib/wallet/address-validation';
 import { computeFinancialSummary } from '@/lib/finance/summary';
+import {
+  computeInvestmentReturn,
+  type InvestmentReturnResult,
+} from '@/lib/finance/investment-return';
 import { getPricingService } from '@/lib/pricing/service';
 
 export async function GET(request: NextRequest) {
@@ -68,24 +72,35 @@ export async function GET(request: NextRequest) {
 
     // Optional: refresh DB from providers via the sync engine, then read DB.
     // Never return live provider payloads directly to the UI.
-    if (forceRefresh && !wallet.is_syncing) {
-      try {
-        const syncEngine = getSyncEngine();
-        const mode = wallet.last_synced_at ? 'incremental' : 'full';
-        if (mode === 'full') {
-          await syncEngine.fullSync(wallet.id);
-        } else {
-          await syncEngine.incrementalSync(wallet.id);
-        }
-        // Re-read wallet flags after sync
-        const { data: refreshed } = await supabase
+    if (forceRefresh) {
+      if (wallet.is_syncing) {
+        await releaseStaleSyncLock(wallet);
+        const { data: unlocked } = await supabase
           .from('wallets')
           .select('*')
           .eq('id', wallet.id)
           .single();
-        if (refreshed) wallet = refreshed;
-      } catch (syncError) {
-        console.warn('[Portfolio API] Refresh sync failed, serving DB snapshot:', syncError);
+        if (unlocked) wallet = unlocked;
+      }
+      if (!wallet.is_syncing) {
+        try {
+          const syncEngine = getSyncEngine();
+          const mode = wallet.last_synced_at ? 'incremental' : 'full';
+          if (mode === 'full') {
+            await syncEngine.fullSync(wallet.id);
+          } else {
+            await syncEngine.incrementalSync(wallet.id);
+          }
+          // Re-read wallet flags after sync
+          const { data: refreshed } = await supabase
+            .from('wallets')
+            .select('*')
+            .eq('id', wallet.id)
+            .single();
+          if (refreshed) wallet = refreshed;
+        } catch (syncError) {
+          console.warn('[Portfolio API] Refresh sync failed, serving DB snapshot:', syncError);
+        }
       }
     }
 
@@ -133,6 +148,13 @@ export async function GET(request: NextRequest) {
     }
 
     const summary = computeFinancialSummary(transactions || [], { ethPriceUsd });
+
+    let investmentReturn: InvestmentReturnResult | null = null;
+    try {
+      investmentReturn = await computeInvestmentReturn(wallet.id);
+    } catch (err) {
+      console.warn('[Portfolio API] investment return skipped:', err);
+    }
 
     return NextResponse.json({
       success: true,
@@ -192,6 +214,7 @@ export async function GET(request: NextRequest) {
           excludedActivityCount: summary.excludedActivityCount,
           methodology: summary.methodology,
         },
+        investmentReturn,
         lastSyncedAt: wallet.last_synced_at,
         isSyncing: wallet.is_syncing || false,
       },

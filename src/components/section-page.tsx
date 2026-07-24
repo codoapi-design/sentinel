@@ -17,6 +17,12 @@ import {
   type Client,
 } from '@/lib/mock-data';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
+import {
+  SUMMARY_INFLOW,
+  SUMMARY_OUTFLOW,
+  SUMMARY_TOTAL_INFLOW,
+  SUMMARY_TOTAL_OUTFLOW,
+} from '@/lib/finance/labels';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
@@ -31,8 +37,8 @@ interface SectionPageProps {
 
 const sectionConfig = {
   revenue: {
-    title: 'Revenue',
-    totalLabel: 'Total Revenue',
+    title: SUMMARY_INFLOW,
+    totalLabel: SUMMARY_TOTAL_INFLOW,
     color: '#0ecb81',
     bgColor: 'rgba(14, 203, 129, 0.1)',
     icon: TrendingUp,
@@ -40,8 +46,8 @@ const sectionConfig = {
     description: 'Income and staking rewards (USD cash in)',
   },
   expenses: {
-    title: 'Expenses',
-    totalLabel: 'Total Expenses',
+    title: SUMMARY_OUTFLOW,
+    totalLabel: SUMMARY_TOTAL_OUTFLOW,
     color: '#f6465d',
     bgColor: 'rgba(246, 70, 93, 0.1)',
     icon: TrendingDown,
@@ -55,7 +61,7 @@ const sectionConfig = {
     bgColor: 'rgba(0, 82, 255, 0.1)',
     icon: Wallet,
     gradient: 'from-[#0052ff] to-[#0036cc]',
-    description: 'Revenue − Expenses (gas not deducted)',
+    description: 'Inflow − Outflow (gas not deducted)',
   },
   gas: {
     title: 'Gas Fees',

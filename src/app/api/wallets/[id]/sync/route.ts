@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
-import { getSyncEngine } from '@/lib/blockchain/sync-engine';
+import { getSyncEngine, releaseStaleSyncLock } from '@/lib/blockchain/sync-engine';
 
 export const maxDuration = 300; // Full history pagination can exceed 60s on active wallets
 
@@ -101,10 +101,13 @@ export async function POST(
     const resolvedWalletId = wallet.id;
 
     if (wallet.is_syncing) {
-      return NextResponse.json(
-        { error: 'Wallet is already syncing' },
-        { status: 409 },
-      );
+      const free = await releaseStaleSyncLock(wallet);
+      if (!free) {
+        return NextResponse.json(
+          { error: 'Wallet is already syncing' },
+          { status: 409 },
+        );
+      }
     }
 
     console.log(`[WalletSync] Starting ${mode} sync for ${wallet.address || wallet.id} (ID: ${resolvedWalletId})`);

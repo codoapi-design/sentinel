@@ -15,6 +15,7 @@ import {
 import { useWalletStore } from '@/stores/wallet-store';
 import { Loader2 } from 'lucide-react';
 import type { CashflowMetric } from '@/lib/finance/cashflow-history';
+import { SUMMARY_INFLOW, SUMMARY_OUTFLOW } from '@/lib/finance/labels';
 
 const periods = [
   { label: '24H', days: 1 },
@@ -45,14 +46,14 @@ const METRIC_UI: Record<
   { title: string; color: string; valueLabel: string }
 > = {
   revenue: {
-    title: 'Revenue Movement',
+    title: 'Inflow Movement',
     color: '#0ecb81',
-    valueLabel: 'Revenue',
+    valueLabel: SUMMARY_INFLOW,
   },
   expenses: {
-    title: 'Expenses Movement',
+    title: 'Outflow Movement',
     color: '#f6465d',
-    valueLabel: 'Expenses',
+    valueLabel: SUMMARY_OUTFLOW,
   },
   netFlow: {
     title: 'Net Flow Movement',

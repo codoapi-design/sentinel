@@ -371,7 +371,7 @@ export function ClientTransactionFilterStats({
       <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
         <StatCard
           icon={<ArrowDownLeft className="h-3 w-3 shrink-0 text-[#0ecb81]" />}
-          label="Revenue"
+          label="Inflow"
           glow="rgba(14, 203, 129, 0.06)"
         >
           <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#0ecb81] leading-tight truncate">
@@ -381,7 +381,7 @@ export function ClientTransactionFilterStats({
 
         <StatCard
           icon={<ArrowUpRight className="h-3 w-3 shrink-0 text-[#f6465d]" />}
-          label="Expense"
+          label="Outflow"
           glow="rgba(246, 70, 93, 0.06)"
         >
           <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#f6465d] leading-tight truncate">
@@ -563,7 +563,7 @@ export function NetworkTransactionFilterStats({
       <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
         <StatCard
           icon={<ArrowDownLeft className="h-3 w-3 shrink-0 text-[#0ecb81]" />}
-          label="Revenue"
+          label="Inflow"
           glow="rgba(14, 203, 129, 0.06)"
         >
           <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#0ecb81] leading-tight truncate">
@@ -573,7 +573,7 @@ export function NetworkTransactionFilterStats({
 
         <StatCard
           icon={<ArrowUpRight className="h-3 w-3 shrink-0 text-[#f6465d]" />}
-          label="Expense"
+          label="Outflow"
           glow="rgba(246, 70, 93, 0.06)"
         >
           <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#f6465d] leading-tight truncate">
@@ -759,7 +759,7 @@ export function TypeTransactionFilterStats({
       <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
         <StatCard
           icon={<ArrowDownLeft className="h-3 w-3 shrink-0 text-[#0ecb81]" />}
-          label="Revenue"
+          label="Inflow"
           glow="rgba(14, 203, 129, 0.06)"
         >
           <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#0ecb81] leading-tight truncate">
@@ -769,7 +769,7 @@ export function TypeTransactionFilterStats({
 
         <StatCard
           icon={<ArrowUpRight className="h-3 w-3 shrink-0 text-[#f6465d]" />}
-          label="Expense"
+          label="Outflow"
           glow="rgba(246, 70, 93, 0.06)"
         >
           <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#f6465d] leading-tight truncate">

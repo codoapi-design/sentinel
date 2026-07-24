@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
-import { getSyncEngine } from '@/lib/blockchain/sync-engine';
+import { getSyncEngine, releaseStaleSyncLock } from '@/lib/blockchain/sync-engine';
 import { getBlockchainCache } from '@/lib/blockchain/cache';
 
 export const maxDuration = 300; // Full history pagination can exceed 60s on active wallets
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     // ── Verify wallet ownership ──
     const { data: wallet, error: walletError } = await supabase
       .from('wallets')
-      .select('id, address, user_id, is_syncing')
+      .select('id, address, user_id, is_syncing, updated_at')
       .eq('id', walletId)
       .single();
 
@@ -74,12 +74,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Check if already syncing ──
+    // ── Check if already syncing (auto-clear stuck locks) ──
     if (wallet.is_syncing) {
-      return NextResponse.json(
-        { error: 'Wallet is already being synced. Please wait.' },
-        { status: 409 },
-      );
+      const free = await releaseStaleSyncLock(wallet);
+      if (!free) {
+        return NextResponse.json(
+          { error: 'Wallet is already being synced. Please wait.' },
+          { status: 409 },
+        );
+      }
     }
 
     // ── Run sync ──

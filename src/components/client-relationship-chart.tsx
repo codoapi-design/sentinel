@@ -164,15 +164,15 @@ export function RelationshipChart({
   };
 
   const seriesLabels: Record<string, string> = {
-    revenue: 'Revenue',
-    expense: 'Expenses',
+    revenue: 'Inflow',
+    expense: 'Outflow',
     netFlow: 'Net Flow',
     volume: 'Volume',
   };
 
   const tooltipLabels: Record<string, string> = {
-    revenue: 'Revenue (cumulative)',
-    expense: 'Expenses (cumulative)',
+    revenue: 'Inflow (cumulative)',
+    expense: 'Outflow (cumulative)',
     netFlow: 'Net Flow (cumulative)',
     volume: 'Volume (cumulative)',
   };
@@ -212,7 +212,7 @@ export function RelationshipChart({
               </p>
             ) : hasData && showVolumeSeries ? (
               <p className="text-xs mt-1.5 font-mono-num text-[#8a8f98]">
-                No classified revenue/expense · Volume {formatUsdFull(history.periodVolume)} in
+                No classified inflow/outflow · Volume {formatUsdFull(history.periodVolume)} in
                 selected period
               </p>
             ) : (
@@ -424,7 +424,7 @@ export function RelationshipChart({
             <div className="h-full flex items-center justify-center text-sm text-[#8a8f98]">
               {transactions.length === 0
                 ? 'No filtered transactions to chart. Adjust table filters or sync the wallet.'
-                : 'No revenue or expense transactions in this period. Try a longer range.'}
+                : 'No inflow or outflow transactions in this period. Try a longer range.'}
             </div>
           )}
         </div>
@@ -440,7 +440,7 @@ export function ClientRelationshipChart({ transactions }: { transactions: Transa
       transactions={transactions}
       title="Relationship over time"
       subtitle="Based on filtered transactions with this client"
-      methodology="Cumulative revenue & expenses from filtered table rows · same classification as client cards · period-relative"
+      methodology="Cumulative inflow & outflow from filtered table rows · same classification as client cards · period-relative"
       showPeriodVolume={false}
     />
   );

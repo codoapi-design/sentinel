@@ -64,6 +64,22 @@ export interface TransactionSummary {
   methodology?: string;
 }
 
+export interface InvestmentReturnSummary {
+  totalPnlUsd: number;
+  unrealizedPnlUsd: number;
+  realizedPnlUsd: number;
+  costBasisOpenUsd: number;
+  costBasisClosedUsd: number;
+  marketValueOpenUsd: number;
+  returnPct: number | null;
+  methodology: string;
+  lotsCount: number;
+  openLotsCount: number;
+  sinceConnectedAt: string | null;
+  baselineValueUsd: number | null;
+  trackingActive: boolean;
+}
+
 export interface PortfolioData {
   walletId: string;
   address: string;
@@ -74,6 +90,7 @@ export interface PortfolioData {
   defiPositions: PortfolioDeFiPosition[];
   chainBreakdown: ChainBreakdown[];
   transactionSummary: TransactionSummary | null;
+  investmentReturn?: InvestmentReturnSummary | null;
   providers?: string[];
   lastSyncedAt: string | null;
   isSyncing: boolean;

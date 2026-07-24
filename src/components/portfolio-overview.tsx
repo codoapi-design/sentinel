@@ -12,9 +12,11 @@ import {
   AlertCircle,
   RefreshCw,
   ArrowLeftRight,
+  LineChart,
 } from 'lucide-react';
 import { usePortfolio } from '@/hooks/use-portfolio';
 import { useWalletStore } from '@/stores/wallet-store';
+import { SUMMARY_INFLOW, SUMMARY_OUTFLOW } from '@/lib/finance/labels';
 
 interface PortfolioOverviewProps {
   onSectionClick?: (section: string) => void;
@@ -23,14 +25,14 @@ interface PortfolioOverviewProps {
 const sections = [
   {
     id: 'revenue',
-    title: 'Revenue',
+    title: SUMMARY_INFLOW,
     color: '#0ecb81',
     bgColor: 'rgba(14, 203, 129, 0.1)',
     icon: TrendingUp,
   },
   {
     id: 'expenses',
-    title: 'Expenses',
+    title: SUMMARY_OUTFLOW,
     color: '#f6465d',
     bgColor: 'rgba(246, 70, 93, 0.1)',
     icon: TrendingDown,
@@ -109,9 +111,10 @@ export function PortfolioOverview({ onSectionClick }: PortfolioOverviewProps) {
   const netFlow = summary?.netFlow || 0;
   const gasFees = summary?.gasFees || 0;
   const tradingVolume = summary?.tradingVolume || 0;
+  const investmentReturn = portfolio?.investmentReturn ?? null;
   const methodology =
     summary?.methodology ||
-    'USD cash flow · trades excluded from Revenue/Expenses · gas shown separately';
+    'USD cash flow · trades excluded from Inflow/Outflow · gas shown separately';
 
   const change24h =
     portfolio?.tokens?.reduce((sum, t) => {
@@ -138,7 +141,7 @@ export function PortfolioOverview({ onSectionClick }: PortfolioOverviewProps) {
       case 'expenses':
         return 'Cash out (USD)';
       case 'flow':
-        return 'Revenue − Expenses';
+        return 'Inflow − Outflow';
       case 'gas':
         return 'Network fees (USD)';
       default:
@@ -221,15 +224,114 @@ export function PortfolioOverview({ onSectionClick }: PortfolioOverviewProps) {
         })}
       </div>
 
-      {/* Trading activity (separate from cash flow) */}
+      {/* Investment return since wallet connect / first sync — above trading volume */}
+      <div
+        className="bg-[#0f1011] border border-white/5 hover:border-white/15 transition-all duration-200 cursor-pointer group relative overflow-hidden rounded-xl p-4 flex items-center gap-3"
+        onClick={() => onSectionClick?.('investment-return')}
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSectionClick?.('investment-return');
+          }
+        }}
+      >
+        <div
+          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+          style={{
+            background: investmentReturn?.trackingActive
+              ? investmentReturn.totalPnlUsd >= 0
+                ? 'radial-gradient(ellipse at center, rgba(14, 203, 129, 0.08) 0%, transparent 70%)'
+                : 'radial-gradient(ellipse at center, rgba(246, 70, 93, 0.08) 0%, transparent 70%)'
+              : undefined,
+          }}
+        />
+        <div
+          className={`relative z-10 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+            investmentReturn?.trackingActive
+              ? (investmentReturn.totalPnlUsd >= 0 ? 'bg-[#0ecb81]/10' : 'bg-[#f6465d]/10')
+              : 'bg-white/5'
+          }`}
+        >
+          <LineChart
+            className={`h-4 w-4 ${
+              investmentReturn?.trackingActive
+                ? investmentReturn.totalPnlUsd >= 0
+                  ? 'text-[#0ecb81]'
+                  : 'text-[#f6465d]'
+                : 'text-[#8a8f98]'
+            }`}
+          />
+        </div>
+        <div className="relative z-10 flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-[#8a8f98]">Investment return (since connected)</p>
+            <ChevronRight className="h-4 w-4 text-[#8a8f98] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          </div>
+          {investmentReturn?.trackingActive ? (
+            <>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <p
+                  className={`text-lg font-bold font-mono-num ${
+                    investmentReturn.totalPnlUsd >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+                  }`}
+                >
+                  {investmentReturn.totalPnlUsd >= 0 ? '+' : '−'}
+                  {formatUsd(Math.abs(investmentReturn.totalPnlUsd))}
+                </p>
+                <span
+                  className={`text-sm font-medium font-mono-num ${
+                    (investmentReturn.returnPct ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+                  }`}
+                >
+                  {(investmentReturn.returnPct ?? 0) >= 0 ? '+' : ''}
+                  {(investmentReturn.returnPct ?? 0).toFixed(2)}%
+                </span>
+              </div>
+              <p className="text-[10px] text-[#8a8f98]/70 mt-0.5 leading-relaxed truncate" title={investmentReturn.methodology}>
+                {investmentReturn.methodology}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-[#8a8f98] mt-0.5">Tracking starts after first sync</p>
+          )}
+        </div>
+      </div>
+
+      {/* Trading activity (separate from cash flow) — full synced history */}
       {tradingVolume > 0 && (
-        <div className="bg-[#0f1011] border border-white/5 rounded-xl p-4 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#a855f7]/10 flex items-center justify-center">
+        <div
+          className="bg-[#0f1011] border border-white/5 hover:border-white/15 transition-all duration-200 cursor-pointer group relative overflow-hidden rounded-xl p-4 flex items-center gap-3"
+          onClick={() => onSectionClick?.('trading-volume')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSectionClick?.('trading-volume');
+            }
+          }}
+        >
+          <div
+            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+            style={{
+              background:
+                'radial-gradient(ellipse at center, rgba(168, 85, 247, 0.08) 0%, transparent 70%)',
+            }}
+          />
+          <div className="relative z-10 w-8 h-8 rounded-lg bg-[#a855f7]/10 flex items-center justify-center shrink-0">
             <ArrowLeftRight className="h-4 w-4 text-[#a855f7]" />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-[#8a8f98]">Trading volume (excluded from Revenue / Expenses)</p>
+          <div className="relative z-10 flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-[#8a8f98]">Trading volume (excluded from Inflow / Outflow)</p>
+              <ChevronRight className="h-4 w-4 text-[#8a8f98] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            </div>
             <p className="text-lg font-bold text-[#a855f7] font-mono-num">{formatUsd(tradingVolume)}</p>
+            <p className="text-[10px] text-[#8a8f98]/70 mt-0.5 leading-relaxed">
+              All synced trade history · not limited to since connected
+            </p>
           </div>
         </div>
       )}

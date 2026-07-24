@@ -90,13 +90,13 @@ export function ReportEmail({
               <Row>
                 <Column style={{ width: '50%', paddingLeft: '6px' }}>
                   <Section style={summaryBoxStyle}>
-                    <Text style={summaryLabelStyle}>Revenue</Text>
+                    <Text style={summaryLabelStyle}>Inflow</Text>
                     <Text style={{ ...summaryValueStyle, color: '#0ecb81' }}>{totalIncome}</Text>
                   </Section>
                 </Column>
                 <Column style={{ width: '50%', paddingRight: '6px' }}>
                   <Section style={summaryBoxStyle}>
-                    <Text style={summaryLabelStyle}>Expenses</Text>
+                    <Text style={summaryLabelStyle}>Outflow</Text>
                     <Text style={{ ...summaryValueStyle, color: '#f6465d' }}>{totalExpenses}</Text>
                   </Section>
                 </Column>

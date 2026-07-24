@@ -339,8 +339,8 @@ export function ClientsSection({
                 <thead>
                   <tr className="border-b border-white/5">
                     <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Client</th>
-                    <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Revenue</th>
-                    <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Expense</th>
+                    <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Inflow</th>
+                    <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Outflow</th>
                     <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Net Flow</th>
                     <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Transactions</th>
                     <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Last Transaction</th>

@@ -134,7 +134,7 @@ function zeroPoint(date: string): RelationshipHistoryPoint {
 }
 
 const DEFAULT_METHODOLOGY =
-  'Cumulative revenue & expenses from filtered table rows · same classification as stats cards · period-relative';
+  'Cumulative inflow & outflow from filtered table rows · same classification as stats cards · period-relative';
 
 /**
  * Build cumulative revenue / expense / net (and volume) series from filtered txs.
@@ -302,6 +302,6 @@ export function buildClientRelationshipHistory(
     ...options,
     methodology:
       options.methodology ??
-      'Cumulative revenue & expenses from filtered table rows · same classification as client cards · period-relative',
+      'Cumulative inflow & outflow from filtered table rows · same classification as client cards · period-relative',
   });
 }

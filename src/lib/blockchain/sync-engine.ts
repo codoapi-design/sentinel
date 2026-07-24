@@ -37,6 +37,7 @@ import { fetchBitcoinBalances, fetchBitcoinTransactions } from '@/lib/bitcoin/se
 import { primaryDisplayAddress } from '@/lib/wallet/address-validation';
 import { planAllowsAddressFamily, normalizePlanId } from '@/lib/plans/address-families';
 import { upsertPortfolioSnapshot } from '@/lib/finance/portfolio-snapshots';
+import { syncInvestmentReturnAfterBalances } from '@/lib/finance/investment-return';
 
 type WalletRow = {
   id: string;
@@ -47,6 +48,35 @@ type WalletRow = {
   bitcoin_address?: string | null;
   last_synced_block?: number | null;
 };
+
+/** Sync lock older than this is treated as stuck (process crash / outer catch). */
+export const STALE_SYNC_LOCK_MS = 10 * 60 * 1000;
+
+/**
+ * If is_syncing has been true longer than STALE_SYNC_LOCK_MS (by updated_at), clear it.
+ * Returns whether the wallet is free to sync after this call.
+ */
+export async function releaseStaleSyncLock(wallet: {
+  id: string;
+  is_syncing?: boolean | null;
+  updated_at?: string | null;
+}): Promise<boolean> {
+  if (!wallet.is_syncing) return true;
+  const updatedAt = wallet.updated_at ? new Date(wallet.updated_at).getTime() : 0;
+  const ageMs = Date.now() - updatedAt;
+  if (updatedAt > 0 && ageMs < STALE_SYNC_LOCK_MS) {
+    return false; // genuinely in progress
+  }
+  console.warn(
+    `[SyncEngine] Clearing stale is_syncing for wallet ${wallet.id} (updated_at age ${ageMs}ms)`,
+  );
+  const supabase = createServerClient();
+  await supabase
+    .from('wallets')
+    .update({ is_syncing: false, updated_at: new Date().toISOString() })
+    .eq('id', wallet.id);
+  return true;
+}
 
 async function resolveWalletPlan(
   supabase: ReturnType<typeof createServerClient>,
@@ -107,10 +137,10 @@ export class SyncEngine {
       const displayAddress = primaryDisplayAddress(wallet);
       const userPlan = await resolveWalletPlan(supabase, wallet.user_id);
 
-      // Mark as syncing
+      // Mark as syncing (updated_at lets stale-lock recovery work)
       await supabase
         .from('wallets')
-        .update({ is_syncing: true })
+        .update({ is_syncing: true, updated_at: new Date().toISOString() })
         .eq('id', walletId);
 
       try {
@@ -149,16 +179,17 @@ export class SyncEngine {
 
       } catch (syncError) {
         errors.push(`Sync error: ${syncError}`);
+      } finally {
+        // Always clear syncing — outer catch used to leave is_syncing stuck true
+        await supabase
+          .from('wallets')
+          .update({
+            is_syncing: false,
+            last_synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', walletId);
       }
-
-      // Mark as not syncing
-      await supabase
-        .from('wallets')
-        .update({
-          is_syncing: false,
-          last_synced_at: new Date().toISOString(),
-        })
-        .eq('id', walletId);
 
       const totalRecordsSynced = results.reduce((sum, r) => sum + r.recordsSynced, 0);
       const totalDurationMs = Date.now() - startTime;
@@ -173,6 +204,16 @@ export class SyncEngine {
         changed: totalRecordsSynced > 0 || results.some(r => r.success),
       };
     } catch (error) {
+      // Best-effort unlock if we failed before/during the inner finally
+      try {
+        const supabase = createServerClient();
+        await supabase
+          .from('wallets')
+          .update({ is_syncing: false, updated_at: new Date().toISOString() })
+          .eq('id', walletId);
+      } catch {
+        /* ignore */
+      }
       return {
         walletId,
         address: '',
@@ -223,7 +264,7 @@ export class SyncEngine {
       // Mark as syncing
       await supabase
         .from('wallets')
-        .update({ is_syncing: true })
+        .update({ is_syncing: true, updated_at: new Date().toISOString() })
         .eq('id', walletId);
 
       try {
@@ -261,16 +302,16 @@ export class SyncEngine {
 
       } catch (syncError) {
         console.error('[SyncEngine] Incremental sync error:', syncError);
+      } finally {
+        await supabase
+          .from('wallets')
+          .update({
+            is_syncing: false,
+            last_synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', walletId);
       }
-
-      // Mark as not syncing
-      await supabase
-        .from('wallets')
-        .update({
-          is_syncing: false,
-          last_synced_at: new Date().toISOString(),
-        })
-        .eq('id', walletId);
 
       const after = await this.snapshotWalletData(walletId);
       const changed = !this.areWalletSnapshotsEqual(before, after);
@@ -285,6 +326,15 @@ export class SyncEngine {
         changed,
       };
     } catch (error) {
+      try {
+        const supabase = createServerClient();
+        await supabase
+          .from('wallets')
+          .update({ is_syncing: false, updated_at: new Date().toISOString() })
+          .eq('id', walletId);
+      } catch {
+        /* ignore */
+      }
       return {
         walletId,
         address: '',
@@ -363,6 +413,14 @@ export class SyncEngine {
       });
     } catch (err) {
       console.warn('[SyncEngine] portfolio snapshot skipped:', err);
+    }
+
+    // Investment return (since connected): baseline once, then reconcile lots.
+    // Soft-fail — never break sync if the table is missing.
+    try {
+      await syncInvestmentReturnAfterBalances(walletId);
+    } catch (err) {
+      console.warn('[SyncEngine] investment return update skipped:', err);
     }
   }
 

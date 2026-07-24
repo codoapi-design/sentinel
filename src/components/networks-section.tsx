@@ -131,8 +131,8 @@ export function NetworksSection({ transactions, onNetworkClick }: NetworksSectio
             <thead>
               <tr className="border-b border-white/5">
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Network</th>
-                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Revenue</th>
-                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Expense</th>
+                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Inflow</th>
+                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Outflow</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Net Flow</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Gas Fees</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Transactions</th>

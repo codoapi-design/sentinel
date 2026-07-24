@@ -16,6 +16,10 @@ import { SupportCenter } from './support-center';
 import { AIChat } from './ai-chat';
 import { AIAnalysisSection, type AnalysisResponse } from './ai-analysis-section';
 import { SectionPage } from './section-page';
+import { InvestmentReturnPage } from './investment-return-page';
+import { InvestmentReturnAssetPage } from './investment-return-asset-page';
+import type { InvestmentReturnAssetParams } from '@/hooks/use-investment-return-asset';
+import { TradingVolumePage } from './trading-volume-page';
 import { AssetDetailPage } from './asset-detail-page';
 import { ClientsSection } from './clients-section';
 import { ClientDetailPage } from './client-detail-page';
@@ -42,6 +46,8 @@ interface DashboardProps {
 export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [investmentReturnAsset, setInvestmentReturnAsset] =
+    useState<InvestmentReturnAssetParams | null>(null);
   const [activeAsset, setActiveAsset] = useState<string | null>(null);
   const [activeClient, setActiveClient] = useState<string | null>(null);
   const [activeNetwork, setActiveNetwork] = useState<string | null>(null);
@@ -126,6 +132,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
 
   const handleSectionClick = (section: string) => {
     setActiveSection(section);
+    setInvestmentReturnAsset(null);
     setActiveAsset(null);
     setActiveClient(null);
     setActiveNetwork(null);
@@ -135,6 +142,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const handleAssetClick = (assetId: string) => {
     setActiveAsset(assetId);
     setActiveSection(null);
+    setInvestmentReturnAsset(null);
     setActiveClient(null);
     setActiveNetwork(null);
     setActiveType(null);
@@ -143,6 +151,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const handleClientClick = (identifier: string) => {
     setActiveClient(identifier);
     setActiveSection(null);
+    setInvestmentReturnAsset(null);
     setActiveAsset(null);
     setActiveNetwork(null);
     setActiveType(null);
@@ -151,6 +160,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const handleNetworkClick = (networkId: string) => {
     setActiveNetwork(networkId);
     setActiveSection(null);
+    setInvestmentReturnAsset(null);
     setActiveAsset(null);
     setActiveClient(null);
     setActiveType(null);
@@ -159,12 +169,29 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const handleTypeClick = (typeId: string) => {
     setActiveType(typeId);
     setActiveSection(null);
+    setInvestmentReturnAsset(null);
     setActiveAsset(null);
     setActiveClient(null);
     setActiveNetwork(null);
   };
 
-  const handleBackFromSection = () => setActiveSection(null);
+  const handleInvestmentReturnAssetClick = (asset: InvestmentReturnAssetParams) => {
+    setInvestmentReturnAsset(asset);
+    setActiveSection('investment-return-asset');
+    setActiveAsset(null);
+    setActiveClient(null);
+    setActiveNetwork(null);
+    setActiveType(null);
+  };
+
+  const handleBackFromSection = () => {
+    setActiveSection(null);
+    setInvestmentReturnAsset(null);
+  };
+  const handleBackFromInvestmentReturnAsset = () => {
+    setInvestmentReturnAsset(null);
+    setActiveSection('investment-return');
+  };
   const handleBackFromAsset = () => setActiveAsset(null);
   const handleBackFromClient = () => setActiveClient(null);
   const handleBackFromNetwork = () => setActiveNetwork(null);
@@ -173,6 +200,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setActiveSection(null);
+    setInvestmentReturnAsset(null);
     setActiveAsset(null);
     setActiveClient(null);
     setActiveNetwork(null);
@@ -327,10 +355,16 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     if (activeAsset) return `${activeAsset.toUpperCase()} Details`;
     if (activeSection) {
       switch (activeSection) {
-        case 'revenue': return 'Revenue';
-        case 'expenses': return 'Expenses';
+        case 'revenue': return 'Inflow';
+        case 'expenses': return 'Outflow';
         case 'flow': return 'Net Flow';
         case 'gas': return 'Gas Fees';
+        case 'investment-return': return 'Investment Return';
+        case 'investment-return-asset':
+          return investmentReturnAsset
+            ? `${investmentReturnAsset.symbol} Return`
+            : 'Asset Return';
+        case 'trading-volume': return 'Trading Volume';
         default: return '';
       }
     }
@@ -389,6 +423,28 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
           clients={displayClients}
         />
       );
+    }
+
+    if (activeSection === 'investment-return-asset' && investmentReturnAsset) {
+      return (
+        <InvestmentReturnAssetPage
+          asset={investmentReturnAsset}
+          onBack={handleBackFromInvestmentReturnAsset}
+        />
+      );
+    }
+
+    if (activeSection === 'investment-return') {
+      return (
+        <InvestmentReturnPage
+          onBack={handleBackFromSection}
+          onAssetClick={handleInvestmentReturnAssetClick}
+        />
+      );
+    }
+
+    if (activeSection === 'trading-volume') {
+      return <TradingVolumePage onBack={handleBackFromSection} />;
     }
 
     if (activeSection) {
@@ -687,15 +743,26 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
           isOverlay={true}
           sectionTitle={activeSection
             ? activeSection === 'revenue'
-              ? 'Revenue'
+              ? 'Inflow'
               : activeSection === 'expenses'
-                ? 'Expenses'
+                ? 'Outflow'
                 : activeSection === 'flow'
                   ? 'Net Flow'
-                  : 'Gas Fees'
+                  : activeSection === 'investment-return' ||
+                      activeSection === 'investment-return-asset'
+                    ? 'Investment Return'
+                    : activeSection === 'trading-volume'
+                      ? 'Trading Volume'
+                      : 'Gas Fees'
             : undefined
           }
-          sectionType={activeSection || undefined}
+          sectionType={
+            activeSection === 'investment-return' ||
+            activeSection === 'investment-return-asset' ||
+            activeSection === 'trading-volume'
+              ? undefined
+              : (activeSection || undefined)
+          }
         />
       )}
     </div>
