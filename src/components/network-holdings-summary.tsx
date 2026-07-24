@@ -97,7 +97,10 @@ export function NetworkHoldingsSummary({
   );
 
   return (
-    <div className="bg-[#0f1011] border border-white/5 rounded-xl px-4 py-3.5">
+    <div
+      className="bg-[#0f1011] border border-white/5 rounded-xl px-4 py-3.5"
+      data-export-chart="Holdings mix"
+    >
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
           <p className="text-xs text-[#8a8f98] mb-1">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,11 +14,19 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   type Transaction,
   type Client,
 } from '@/lib/mock-data';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
+import {
+  buildTransactionsReportPayload,
+  downloadReportExcel,
+  downloadReportPdf,
+} from '@/lib/export/download-report';
+import { captureExportCharts } from '@/lib/export/capture-chart';
+import { buildAssetFilterStatsSummary } from '@/lib/export/filter-stats-summary';
 import { usePortfolio } from '@/hooks/use-portfolio';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
@@ -44,6 +52,7 @@ function colorFromSymbol(symbol: string): string {
 }
 
 export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPageProps) {
+  const pageRef = useRef<HTMLDivElement>(null);
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
   /** False until ColumnFilterTable emits — chart falls back to assetTransactions. */
   const [filtersReady, setFiltersReady] = useState(false);
@@ -84,6 +93,125 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
   const chartTransactions = filtersReady ? filteredData : assetTransactions;
   const statsTransactions = filtersReady ? filteredData : assetTransactions;
 
+  const totalInflowQty = useMemo(
+    () =>
+      assetTransactions
+        .filter(tx => isRevenueType(tx.type))
+        .reduce((s, tx) => s + tx.quantity, 0),
+    [assetTransactions],
+  );
+  const totalOutflowQty = useMemo(
+    () =>
+      assetTransactions
+        .filter(tx => isExpenseType(tx.type))
+        .reduce((s, tx) => s + tx.quantity, 0),
+    [assetTransactions],
+  );
+
+  const formatQty = (value: number) => {
+    if (value >= 1000) return value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    if (value >= 1) return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    return value.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+  };
+
+  const buildAssetSummary = useCallback(() => {
+    if (!asset) return [];
+    const change24h = asset.change24h;
+    const changeSign = change24h >= 0 ? '+' : '';
+    return [
+      {
+        label: 'Balance',
+        value: `${formatQty(asset.quantity)} ${asset.symbol}`,
+      },
+      {
+        label: 'Current Value (USD)',
+        value: `$${asset.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      },
+      {
+        label: 'Total Inflow',
+        value: `+${formatQty(totalInflowQty)} ${asset.symbol}`,
+      },
+      {
+        label: 'Total Outflow',
+        value: `-${formatQty(totalOutflowQty)} ${asset.symbol}`,
+      },
+      {
+        label: '24h Change',
+        value: `${changeSign}${change24h}%`,
+      },
+      ...buildAssetFilterStatsSummary(statsTransactions, clients),
+    ];
+  }, [asset, totalInflowQty, totalOutflowQty, statsTransactions, clients]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    if (!asset) {
+      toast.info('No asset data to export');
+      return;
+    }
+    try {
+      const payload = buildTransactionsReportPayload({
+        title: `${asset.name} (${asset.symbol})`,
+        subtitle: `Asset transactions · ${asset.symbol}`,
+        filenameBase: `sentinel-asset-${asset.symbol.toLowerCase()}`,
+        transactions: statsTransactions,
+      });
+      if (!payload) {
+        toast.info('No transactions to export');
+        return;
+      }
+      // Prefer on-screen card summary over auto totals (avoids duplicate Volume).
+      payload.summary = buildAssetSummary();
+      const charts = await captureExportCharts(pageRef.current, {
+        background: '#0f1011',
+      });
+      if (charts.length > 0) {
+        payload.charts = charts;
+      }
+      downloadReportExcel(payload);
+      toast.success(
+        charts.length > 0
+          ? 'Excel report downloaded (with charts)'
+          : 'Excel report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
+    }
+  }, [asset, statsTransactions, buildAssetSummary]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!asset) {
+      toast.info('No asset data to export');
+      return;
+    }
+    try {
+      const payload = buildTransactionsReportPayload({
+        title: `${asset.name} (${asset.symbol})`,
+        subtitle: `Asset transactions · ${asset.symbol}`,
+        filenameBase: `sentinel-asset-${asset.symbol.toLowerCase()}`,
+        transactions: statsTransactions,
+      });
+      if (!payload) {
+        toast.info('No transactions to export');
+        return;
+      }
+      payload.summary = buildAssetSummary();
+      const charts = await captureExportCharts(pageRef.current, {
+        background: '#0f1011',
+      });
+      if (charts.length > 0) {
+        payload.charts = charts;
+      }
+      downloadReportPdf(payload);
+      toast.success(
+        charts.length > 0
+          ? 'PDF report downloaded (with charts)'
+          : 'PDF report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
+    }
+  }, [asset, statsTransactions, buildAssetSummary]);
+
   if (!asset) {
     return (
       <div className="text-center py-20">
@@ -95,21 +223,8 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
 
   const isPositive = asset.change24h >= 0;
 
-  const totalInflow = assetTransactions
-    .filter(tx => isRevenueType(tx.type))
-    .reduce((s, tx) => s + tx.quantity, 0);
-  const totalOutflow = assetTransactions
-    .filter(tx => isExpenseType(tx.type))
-    .reduce((s, tx) => s + tx.quantity, 0);
-
-  const formatQty = (value: number) => {
-    if (value >= 1000) return value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-    if (value >= 1) return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-    return value.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={pageRef}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -137,6 +252,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
             variant="outline"
             size="sm"
             className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+            onClick={() => void handleDownloadPdf()}
           >
             <FileText className="h-4 w-4 ml-1" />
             Download PDF
@@ -145,6 +261,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
             variant="outline"
             size="sm"
             className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+            onClick={() => void handleDownloadExcel()}
           >
             <FileSpreadsheet className="h-4 w-4 ml-1" />
             Download Excel
@@ -210,7 +327,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
                 <p className="text-[9px] sm:text-[10px] text-[#8a8f98] truncate">Total Inflow</p>
               </div>
               <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#0ecb81] leading-tight truncate">
-                +{formatQty(totalInflow)} {asset.symbol}
+                +{formatQty(totalInflowQty)} {asset.symbol}
               </p>
             </CardContent>
           </Card>
@@ -225,7 +342,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
                 <p className="text-[9px] sm:text-[10px] text-[#8a8f98] truncate">Total Outflow</p>
               </div>
               <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#f6465d] leading-tight truncate">
-                -{formatQty(totalOutflow)} {asset.symbol}
+                -{formatQty(totalOutflowQty)} {asset.symbol}
               </p>
             </CardContent>
           </Card>

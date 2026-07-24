@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, type RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   AreaChart,
@@ -69,9 +69,11 @@ const METRIC_UI: Record<
 
 interface CashflowChartProps {
   metric: CashflowMetric;
+  /** Optional ref on the chart card for PDF capture (title + stats + plot). */
+  chartCaptureRef?: RefObject<HTMLDivElement | null>;
 }
 
-export function CashflowChart({ metric }: CashflowChartProps) {
+export function CashflowChart({ metric, chartCaptureRef }: CashflowChartProps) {
   const ui = METRIC_UI[metric];
   const [activePeriod, setActivePeriod] = useState(30);
   const [points, setPoints] = useState<HistoryPoint[]>([]);
@@ -179,7 +181,11 @@ export function CashflowChart({ metric }: CashflowChartProps) {
   }
 
   return (
-    <div className="bg-[#0f1011] border border-white/5 rounded-xl">
+    <div
+      ref={chartCaptureRef}
+      className="bg-[#0f1011] border border-white/5 rounded-xl"
+      data-export-chart={ui.title}
+    >
       <div className="p-4 pb-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -211,7 +217,10 @@ export function CashflowChart({ metric }: CashflowChartProps) {
               <p className="text-[10px] text-[#f6465d] mt-1">{chartError}</p>
             )}
           </div>
-          <div className="flex items-center gap-1 bg-[#191a1b] rounded-lg p-1">
+          <div
+            className="flex items-center gap-1 bg-[#191a1b] rounded-lg p-1"
+            data-export-ignore
+          >
             {periods.map(period => (
               <Button
                 key={period.days}

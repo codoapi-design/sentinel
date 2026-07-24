@@ -325,13 +325,70 @@ export class BlockchainCache {
           protocol_ar: classified.protocolAr,
           network: classified.chain,
           network_ar: classified.chain,
-          token_symbol: classified.tokenTransfers[0]?.tokenSymbol || null,
-          token_name: classified.tokenTransfers[0]?.tokenName || null,
-          token_address: classified.tokenTransfers[0]?.tokenAddress || null,
-          token_value: classified.tokenTransfers[0]?.valueFormatted || 0,
+          token_symbol: (() => {
+            const transfers = classified.tokenTransfers || [];
+            for (const t of transfers) {
+              const s = (t.tokenSymbol || '').trim();
+              if (s && s.toUpperCase() !== 'UNKNOWN') return s;
+            }
+            return transfers[0]?.tokenSymbol || null;
+          })(),
+          token_name: (() => {
+            const transfers = classified.tokenTransfers || [];
+            for (const t of transfers) {
+              const n = (t.tokenName || '').trim();
+              if (n && n.toUpperCase() !== 'UNKNOWN') return n;
+            }
+            return transfers[0]?.tokenName || null;
+          })(),
+          token_address: (() => {
+            const transfers = classified.tokenTransfers || [];
+            // Prefer address of highest priced leg, else first
+            let best = transfers[0];
+            let bestUsd = -1;
+            for (const t of transfers) {
+              const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : 0;
+              if (u > bestUsd) {
+                best = t;
+                bestUsd = u;
+              }
+            }
+            return best?.tokenAddress || null;
+          })(),
+          token_value: (() => {
+            const transfers = classified.tokenTransfers || [];
+            let best = transfers[0];
+            let bestUsd = -1;
+            for (const t of transfers) {
+              const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : 0;
+              if (u > bestUsd) {
+                best = t;
+                bestUsd = u;
+              }
+            }
+            return best?.valueFormatted || 0;
+          })(),
           token_decimals: classified.tokenTransfers[0]?.decimals || 18,
-          value_usd: classified.valueUsd ?? (classified.tokenTransfers[0]?.valueUsd ?? 0),
-          price_usd: classified.priceUsd ?? (classified.tokenTransfers[0]?.priceUsd ?? 0),
+          // Prefer null over 0 so readers can distinguish unpriced from dust
+          value_usd: (() => {
+            const top =
+              classified.valueUsd ??
+              classified.tokenTransfers?.reduce<number | null>((best, t) => {
+                const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : null;
+                if (u == null) return best;
+                return best == null || u > best ? u : best;
+              }, null) ??
+              null;
+            return typeof top === 'number' && top > 0 ? top : null;
+          })(),
+          price_usd: (() => {
+            const p =
+              classified.priceUsd ??
+              classified.tokenTransfers?.find(t => typeof t.priceUsd === 'number' && t.priceUsd > 0)
+                ?.priceUsd ??
+              null;
+            return typeof p === 'number' && p > 0 ? p : null;
+          })(),
           counterparty: classified.direction === 'in' ? classified.from : classified.to,
           counterparty_label: classified.protocol || classified.protocolAr || null,
           raw_data: { tokenTransfers: classified.tokenTransfers, provider } as unknown as Json,

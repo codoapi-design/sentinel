@@ -1,13 +1,16 @@
 'use client';
 
-import { useId, useMemo, useState, useEffect } from 'react';
+import { useId, useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   ArrowRight,
   LineChart,
   Loader2,
   AlertCircle,
   RefreshCw,
+  FileText,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -19,6 +22,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+import { toast } from 'sonner';
 import { useInvestmentReturnDetail } from '@/hooks/use-investment-return-detail';
 import type { InvestmentAssetStatus, InvestmentReturnAsset } from '@/lib/finance/investment-return';
 import {
@@ -28,7 +32,15 @@ import {
   type InvestmentReturnPeriodDays,
 } from '@/lib/finance/investment-return-period';
 import { InvestmentReturnPeriodControls } from '@/components/investment-return-period-controls';
+import { AIAnalysisSection } from '@/components/ai-analysis-section';
 import type { InvestmentReturnAssetParams } from '@/hooks/use-investment-return-asset';
+import type { Transaction } from '@/lib/mock-data';
+import {
+  downloadReportExcel,
+  downloadReportPdf,
+  type ReportPayload,
+} from '@/lib/export/download-report';
+import { captureChartCard } from '@/lib/export/capture-chart';
 
 interface InvestmentReturnPageProps {
   onBack: () => void;
@@ -99,6 +111,7 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
   const reactId = useId().replace(/:/g, '');
   const { detail, isLoading, error, refetch } = useInvestmentReturnDetail();
   const gradId = `invReturnGrad-${reactId}`;
+  const chartCaptureRef = useRef<HTMLDivElement>(null);
 
   const [activePeriod, setActivePeriod] = useState<InvestmentReturnPeriodDays>(0);
   /** Applied custom end date; null means “to today” (no custom range). */
@@ -151,6 +164,162 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
   const assets = filtered?.assets ?? detail?.assets ?? [];
   const showingLiveAll = activePeriod === 0 && !isCustomActive;
 
+  /** Synthetic txs for AIAnalysisSection — asset PnL summary as analysis context */
+  const analysisTransactions = useMemo((): Transaction[] => {
+    return assets.map(asset => {
+      const opened = asset.openedAt || '';
+      const date = (asset.closedAt || opened).slice(0, 10) || today;
+      const ts = Date.parse(asset.closedAt || opened || `${today}T00:00:00.000Z`) || 0;
+      return {
+        id: `inv-return-${asset.key}`,
+        date,
+        timestamp: ts,
+        type: 'trade' as const,
+        typeLabel: 'Investment return',
+        activity: statusLabel(asset.status),
+        token: asset.tokenSymbol,
+        quantity: asset.quantityOpen,
+        price: 0,
+        value: asset.totalPnlUsd,
+        network: asset.network,
+        networkLabel: networkLabel(asset.network),
+        txHash: '',
+        counterparty: asset.status,
+        counterpartyLabel: asset.periodLabel || statusLabel(asset.status),
+      };
+    });
+  }, [assets, today]);
+
+  const buildExportPayload = useCallback((): ReportPayload | null => {
+    if (!detail?.trackingActive || !filtered) return null;
+    const view = filtered;
+    return {
+      title: 'Investment Return',
+      subtitle: view.periodLabel
+        ? `${view.periodLabel} · mark-to-market vs lot cost basis`
+        : sinceLabel
+          ? `Since connected · ${sinceLabel}`
+          : 'Mark-to-market return since wallet connect',
+      filenameBase: 'sentinel-investment-return',
+      summary: [
+        { label: 'Total PnL (USD)', value: formatSignedUsd(view.totalPnlUsd) },
+        {
+          label: 'Return %',
+          value:
+            view.returnPct != null
+              ? `${view.returnPct >= 0 ? '+' : ''}${view.returnPct.toFixed(2)}%`
+              : '—',
+        },
+        {
+          label: view.unrealizedIsLive ? 'Unrealized (USD)' : 'MTM change (USD)',
+          value: formatSignedUsd(view.unrealizedPnlUsd),
+        },
+        { label: 'Realized (USD)', value: formatSignedUsd(view.realizedPnlUsd) },
+        {
+          label: 'Baseline value (USD)',
+          value: formatUsd(
+            detail.baselineValueUsd ?? detail.costBasisOpenUsd + detail.costBasisClosedUsd,
+          ),
+        },
+        {
+          label: 'Current holdings (USD)',
+          value: formatUsd(view.marketValueOpenUsd),
+        },
+      ],
+      tables: [
+        {
+          title: 'Assets contributing to return',
+          headers: [
+            'Token',
+            'Network',
+            'Status',
+            'Return (USD)',
+            'Return %',
+            'Period',
+            'Duration',
+            'Qty open',
+            'Market value open (USD)',
+          ],
+          rows: assets.map(a => [
+            a.tokenSymbol,
+            networkLabel(a.network),
+            statusLabel(a.status),
+            a.totalPnlUsd.toFixed(2),
+            a.returnPct != null ? a.returnPct.toFixed(2) : '',
+            a.periodLabel,
+            a.durationLabel,
+            a.quantityOpen,
+            a.marketValueOpenUsd.toFixed(2),
+          ]),
+        },
+      ],
+    };
+  }, [detail, filtered, assets, sinceLabel]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    try {
+      const payload = buildExportPayload();
+      if (!payload) {
+        toast.info('No investment return data to export');
+        return;
+      }
+      const chartResult = await captureChartCard(chartCaptureRef.current, {
+        background: '#0f1011',
+      });
+      if (chartResult) {
+        payload.charts = [
+          {
+            title: showingLiveAll
+              ? 'Return since connected'
+              : 'Return in selected period',
+            dataUrl: chartResult.dataUrl,
+            caption: chartResult.caption,
+          },
+        ];
+      }
+      downloadReportExcel(payload);
+      toast.success(
+        chartResult
+          ? 'Excel report downloaded (with chart)'
+          : 'Excel report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
+    }
+  }, [buildExportPayload, showingLiveAll]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    try {
+      const payload = buildExportPayload();
+      if (!payload) {
+        toast.info('No investment return data to export');
+        return;
+      }
+      const chartResult = await captureChartCard(chartCaptureRef.current, {
+        background: '#0f1011',
+      });
+      if (chartResult) {
+        payload.charts = [
+          {
+            title: showingLiveAll
+              ? 'Return since connected'
+              : 'Return in selected period',
+            dataUrl: chartResult.dataUrl,
+            caption: chartResult.caption,
+          },
+        ];
+      }
+      downloadReportPdf(payload);
+      toast.success(
+        chartResult
+          ? 'PDF report downloaded (with chart)'
+          : 'PDF report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
+    }
+  }, [buildExportPayload, showingLiveAll]);
+
   if (isLoading && !detail) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -165,7 +334,7 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
   if (error && !detail) {
     return (
       <div className="space-y-6">
-        <PageHeader onBack={onBack} sinceLabel={null} />
+        <PageHeader onBack={onBack} sinceLabel={null} exportDisabled />
         <div className="bg-[#0f1011] border border-[#f6465d]/20 rounded-xl p-6 flex items-center gap-3">
           <AlertCircle className="h-5 w-5 text-[#f6465d]" />
           <div className="flex-1">
@@ -187,7 +356,7 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
   if (!detail?.trackingActive) {
     return (
       <div className="space-y-6">
-        <PageHeader onBack={onBack} sinceLabel={null} />
+        <PageHeader onBack={onBack} sinceLabel={null} exportDisabled />
         <Card className="bg-[#0f1011] border-white/5">
           <CardContent className="p-8 text-center">
             <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mx-auto mb-4">
@@ -269,7 +438,12 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
 
   return (
     <div className="space-y-6">
-      <PageHeader onBack={onBack} sinceLabel={sinceLabel} />
+      <PageHeader
+        onBack={onBack}
+        sinceLabel={sinceLabel}
+        onDownloadPdf={handleDownloadPdf}
+        onDownloadExcel={handleDownloadExcel}
+      />
 
       {/* Hero total */}
       <Card className="bg-[#0f1011] border-white/5 overflow-hidden relative">
@@ -347,7 +521,15 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
       </div>
 
       {/* Chart */}
-      <div className="bg-[#0f1011] border border-white/5 rounded-xl">
+      <div
+        ref={chartCaptureRef}
+        className="bg-[#0f1011] border border-white/5 rounded-xl"
+        data-export-chart={
+          showingLiveAll
+            ? 'Return since connected'
+            : 'Return in selected period'
+        }
+      >
         <div className="p-4 pb-0">
           <h3 className="text-[#f7f8f8] text-base font-medium">
             {showingLiveAll
@@ -365,7 +547,10 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
           )}
         </div>
         <div className="p-4 pt-2">
-          <div className="h-[280px] sm:h-[320px] w-full relative" dir="ltr">
+          <div
+            className="h-[280px] sm:h-[320px] w-full relative"
+            dir="ltr"
+          >
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>
@@ -612,6 +797,14 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
           . Period start is never before wallet connect.
         </p>
       </div>
+
+      {/* AI Analysis */}
+      <AIAnalysisSection
+        transactions={analysisTransactions}
+        sectionTitle="Investment Return"
+        sectionColor="#0ecb81"
+        sectionType="investment-return"
+      />
     </div>
   );
 }
@@ -619,32 +812,62 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
 function PageHeader({
   onBack,
   sinceLabel,
+  onDownloadPdf,
+  onDownloadExcel,
+  exportDisabled = false,
 }: {
   onBack: () => void;
   sinceLabel: string | null;
+  onDownloadPdf?: () => void | Promise<void>;
+  onDownloadExcel?: () => void | Promise<void>;
+  exportDisabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <button
-        type="button"
-        onClick={onBack}
-        className="w-9 h-9 rounded-lg bg-[#0f1011] border border-white/5 flex items-center justify-center hover:bg-[#191a1b] transition-colors"
-        aria-label="Back to dashboard"
-      >
-        <ArrowRight className="h-4 w-4 text-[#8a8f98]" />
-      </button>
-      <div className="flex items-center gap-2.5">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#0ecb81]/10">
-          <LineChart className="h-5 w-5 text-[#0ecb81]" />
+    <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="w-9 h-9 rounded-lg bg-[#0f1011] border border-white/5 flex items-center justify-center hover:bg-[#191a1b] transition-colors"
+          aria-label="Back to dashboard"
+        >
+          <ArrowRight className="h-4 w-4 text-[#8a8f98]" />
+        </button>
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#0ecb81]/10">
+            <LineChart className="h-5 w-5 text-[#0ecb81]" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-[#f7f8f8]">Investment return</h2>
+            <p className="text-xs text-[#8a8f98]">
+              {sinceLabel
+                ? `Since connected · ${sinceLabel}`
+                : 'Mark-to-market return since wallet connect'}
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-[#f7f8f8]">Investment return</h2>
-          <p className="text-xs text-[#8a8f98]">
-            {sinceLabel
-              ? `Since connected · ${sinceLabel}`
-              : 'Mark-to-market return since wallet connect'}
-          </p>
-        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+          onClick={onDownloadPdf}
+          disabled={exportDisabled || !onDownloadPdf}
+        >
+          <FileText className="h-4 w-4 ml-1" />
+          Download PDF
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+          onClick={onDownloadExcel}
+          disabled={exportDisabled || !onDownloadExcel}
+        >
+          <FileSpreadsheet className="h-4 w-4 ml-1" />
+          Download Excel
+        </Button>
       </div>
     </div>
   );

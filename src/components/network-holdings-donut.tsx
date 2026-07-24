@@ -85,7 +85,10 @@ export function NetworkHoldingsDonut({
 
   return (
     <div className="flex flex-col items-center gap-2 shrink-0" dir="ltr">
-      <div className="relative" style={{ width: size, height: size }}>
+      <div
+        className="relative"
+        style={{ width: size, height: size }}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -115,6 +118,11 @@ export function NetworkHoldingsDonut({
           <li
             key={slice.symbol}
             className="flex items-center gap-1 text-[9px] leading-none text-[#d0d6e0]"
+            data-export-legend-item={`${slice.symbol} ${
+              slice.percent < 1 && slice.percent > 0
+                ? '<1%'
+                : `${Math.round(slice.percent)}%`
+            }`}
           >
             <span
               className="inline-block size-1.5 rounded-sm shrink-0"

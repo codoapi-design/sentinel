@@ -28,6 +28,7 @@ import {
 import { useTaxStore } from '@/stores/tax-store';
 import type { TaxReport, TaxSummary, GainLossEntry, TaxLot, HoldingPeriod } from '@/lib/tax/types';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
+import { downloadReportExcel, downloadReportPdf, type ReportPayload } from '@/lib/export/download-report';
 import { toast } from 'sonner';
 
 // ============================================================
@@ -385,32 +386,85 @@ export function TaxAnalysis() {
     }
   };
 
+  const buildTaxExportPayload = useCallback((): ReportPayload | null => {
+    if (!activeReport) return null;
+    const entries = activeReport.gainLossEntries;
+    const s = activeReport.summary;
+    return {
+      title: `Tax Analysis ${year}`,
+      subtitle: `Cost basis method: ${method}`,
+      filenameBase: `sentinel-tax-${year}-${method}`,
+      summary: [
+        { label: 'Year', value: String(year) },
+        { label: 'Method', value: String(method).toUpperCase() },
+        { label: 'Net realized gain/loss (USD)', value: formatCurrency(s.netRealizedGainLoss) },
+        { label: 'Short-term gains (USD)', value: formatCurrency(s.shortTermGains) },
+        { label: 'Long-term gains (USD)', value: formatCurrency(s.longTermGains) },
+        { label: 'Total realized losses (USD)', value: formatCurrency(s.totalRealizedLosses) },
+        { label: 'Unrealized gains (USD)', value: formatCurrency(s.unrealizedGains) },
+        { label: 'Total realized gains (USD)', value: formatCurrency(s.totalRealizedGains) },
+        { label: 'Cost basis total (USD)', value: formatCurrency(s.costBasisTotal) },
+        {
+          label: 'Taxable events',
+          value: `${s.taxableEvents} of ${s.totalTransactions} transactions`,
+        },
+        { label: 'Disposals', value: String(entries.length) },
+      ],
+      tables: [
+        {
+          title: 'Gain / loss entries',
+          headers: [
+            'Token',
+            'Sale date',
+            'Purchase date',
+            'Quantity',
+            'Cost basis',
+            'Sale proceeds',
+            'Gain/Loss',
+            'Holding period',
+            'Network',
+          ],
+          rows: entries.map(e => [
+            e.tokenSymbol,
+            e.disposalDate,
+            e.acquisitionDate,
+            e.quantity,
+            e.costBasis,
+            e.proceeds,
+            e.gainLoss,
+            e.holdingPeriod,
+            e.network,
+          ]),
+        },
+      ],
+    };
+  }, [activeReport, year, method]);
+
   const handleExportCSV = () => {
-    if (!activeReport) return;
     try {
-      const headers = ['Token', 'Sale Date', 'Purchase Date', 'Quantity', 'Cost Basis', 'Sale Proceeds', 'Gain/Loss', 'Holding Period', 'Network'];
-      const rows = activeReport.gainLossEntries.map((e) => [
-        e.tokenSymbol,
-        e.disposalDate,
-        e.acquisitionDate,
-        e.quantity,
-        e.costBasis,
-        e.proceeds,
-        e.gainLoss,
-        e.holdingPeriod,
-        e.network,
-      ]);
-      const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tax-report-${year}-${method}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Report exported successfully');
+      const payload = buildTaxExportPayload();
+      if (!payload || payload.tables[0]?.rows.length === 0) {
+        toast.info('No tax entries to export');
+        return;
+      }
+      downloadReportExcel(payload);
+      toast.success('Excel report downloaded');
     } catch {
       toast.error('Failed to export report');
+    }
+  };
+
+  const handleExportPdf = () => {
+    try {
+      const payload = buildTaxExportPayload();
+      if (!payload) {
+        toast.info('No tax report to export');
+        return;
+      }
+      downloadReportPdf(payload);
+      toast.success('PDF report downloaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
   };
 
@@ -623,7 +677,7 @@ export function TaxAnalysis() {
               variant="outline"
               className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8] text-xs"
               disabled={!activeReport}
-              onClick={() => toast.info('PDF export coming soon')}
+              onClick={handleExportPdf}
             >
               <FileText className="h-3.5 w-3.5 ml-1.5" />
               Export PDF

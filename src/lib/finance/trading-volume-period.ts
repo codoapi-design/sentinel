@@ -1,6 +1,7 @@
 /**
  * Client-side period filtering for Trading Volume detail.
- * From is clamped to earliest trade (full synced history), never wallet connect.
+ * Period pills use earliest trade as the floor; custom range uses user From+To
+ * (From ≤ To ≤ today). From before earliest simply yields whatever trades exist.
  */
 
 import {
@@ -10,6 +11,7 @@ import {
   todayDateOnly,
   toDateOnly,
   type InvestmentReturnPeriodDays,
+  type PeriodRange,
 } from '@/lib/finance/investment-return-period';
 import type {
   TradingVolumeAtom,
@@ -93,14 +95,27 @@ function rebuildHistoryInWindow(
   return out;
 }
 
+function atomGroupKey(a: TradingVolumeAtom): string {
+  if (a.tokenAddress) return `${a.network}:${a.tokenAddress.toLowerCase()}`;
+  return `${a.network}:sym:${a.tokenSymbol.toLowerCase()}`;
+}
+
 function rebuildByTokenFromAtoms(
   atoms: TradingVolumeAtom[],
   from: string,
   to: string,
+  unpricedTrades: TradingVolumeTradeRow[],
 ): { byToken: TradingVolumeByToken[]; totalVolumeUsd: number; pricedCount: number } {
   const map = new Map<
     string,
-    { tokenSymbol: string; network: string; volumeUsd: number; tradeCount: number }
+    {
+      tokenSymbol: string;
+      tokenAddress: string | null;
+      network: string;
+      volumeUsd: number;
+      tradeCount: number;
+      unpriced: boolean;
+    }
   >();
   let total = 0;
   let pricedCount = 0;
@@ -108,49 +123,121 @@ function rebuildByTokenFromAtoms(
     if (a.date < from || a.date > to || a.volumeUsd <= 0) continue;
     pricedCount++;
     total += a.volumeUsd;
-    const key = `${a.network}:${a.tokenSymbol.toLowerCase()}`;
+    const key = atomGroupKey(a);
     const existing = map.get(key);
     if (existing) {
       existing.volumeUsd += a.volumeUsd;
       existing.tradeCount += 1;
+      existing.unpriced = false;
+      if (!existing.tokenAddress && a.tokenAddress) existing.tokenAddress = a.tokenAddress;
     } else {
       map.set(key, {
         tokenSymbol: a.tokenSymbol,
+        tokenAddress: a.tokenAddress,
         network: a.network,
         volumeUsd: a.volumeUsd,
         tradeCount: 1,
+        unpriced: false,
       });
     }
   }
+
+  // Fold unpriced trades into by-token (excluded from volume totals)
+  for (const t of unpricedTrades) {
+    if (t.volumeUsd != null) continue;
+    const key = t.tokenAddress
+      ? `${t.network}:${t.tokenAddress.toLowerCase()}`
+      : `${t.network}:sym:${t.tokenSymbol.toLowerCase()}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.tradeCount += 1;
+    } else {
+      map.set(key, {
+        tokenSymbol: t.tokenSymbol,
+        tokenAddress: t.tokenAddress,
+        network: t.network,
+        volumeUsd: 0,
+        tradeCount: 1,
+        unpriced: true,
+      });
+    }
+  }
+
   total = round2(total);
   const byToken = Array.from(map.entries())
     .map(([key, v]) => ({
       key,
       tokenSymbol: v.tokenSymbol,
-      tokenAddress: null as string | null,
+      tokenAddress: v.tokenAddress,
       network: v.network,
       volumeUsd: round2(v.volumeUsd),
       tradeCount: v.tradeCount,
-      pct: total > 0 ? round2((v.volumeUsd / total) * 100) : 0,
+      pct: !v.unpriced && total > 0 ? round2((v.volumeUsd / total) * 100) : 0,
+      unpriced: v.unpriced,
     }))
-    .sort((a, b) => b.volumeUsd - a.volumeUsd);
+    .sort((a, b) => {
+      if (a.unpriced !== b.unpriced) return a.unpriced ? 1 : -1;
+      if (b.volumeUsd !== a.volumeUsd) return b.volumeUsd - a.volumeUsd;
+      return b.tradeCount - a.tradeCount;
+    });
   return { byToken, totalVolumeUsd: total, pricedCount };
 }
 
 /**
- * Apply period / custom To filter to a full TradingVolumeDetail payload.
+ * Resolve [from, to] for trading volume.
+ * Custom range uses user From+To with From ≤ To ≤ today (no earliest lock).
+ * Period pills still floor at earliest trade when present.
+ */
+export function resolveTradingVolumeRange(opts: {
+  periodDays: number;
+  earliestTradeAt: string | null;
+  customFrom?: string | null;
+  customTo?: string | null;
+  today?: string;
+}): PeriodRange | null {
+  const today = opts.today ?? todayDateOnly();
+  const earliest = opts.earliestTradeAt ? toDateOnly(opts.earliestTradeAt) : null;
+
+  if (opts.customFrom) {
+    let to = opts.customTo ? toDateOnly(opts.customTo) : today;
+    if (to > today) to = today;
+    let from = toDateOnly(opts.customFrom);
+    if (from > to) from = to;
+    return {
+      from,
+      to,
+      baseline: earliest ?? from,
+      isAll: false,
+    };
+  }
+
+  if (!earliest) return null;
+
+  return resolvePeriodRange({
+    periodDays: opts.periodDays,
+    baselineAt: earliest,
+    customTo: opts.customTo,
+    today,
+  });
+}
+
+/**
+ * Apply period / custom From+To filter to a full TradingVolumeDetail payload.
  */
 export function applyTradingVolumePeriod(
   detail: TradingVolumeDetail,
   opts: {
     periodDays: TradingVolumePeriodDays;
+    customFrom?: string | null;
     customTo?: string | null;
     today?: string;
   },
 ): TradingVolumePeriodView | null {
   const today = opts.today ?? todayDateOnly();
   const earliest = detail.earliestTradeAt ? toDateOnly(detail.earliestTradeAt) : null;
-  if (!earliest) {
+  const hasCustomRange = Boolean(opts.customFrom);
+
+  if (!earliest && !hasCustomRange) {
     return {
       totalVolumeUsd: 0,
       tradeCount: 0,
@@ -167,16 +254,17 @@ export function applyTradingVolumePeriod(
     };
   }
 
-  const range = resolvePeriodRange({
+  const range = resolveTradingVolumeRange({
     periodDays: opts.periodDays,
-    baselineAt: earliest,
+    earliestTradeAt: detail.earliestTradeAt,
+    customFrom: opts.customFrom,
     customTo: opts.customTo,
     today,
   });
   if (!range) return null;
 
   const { from, to, isAll } = range;
-  const showingLiveAll = isAll && !opts.customTo;
+  const showingLiveAll = isAll && !hasCustomRange && !opts.customTo;
 
   const chartHistory = rebuildHistoryInWindow(detail.history, from, to);
   const trades = detail.trades.filter(t => {
@@ -197,19 +285,18 @@ export function applyTradingVolumePeriod(
       chartHistory,
       byToken: detail.byToken,
       trades,
-      methodologyNote:
-        'Full synced trade history · From = earliest trade (not wallet connect).',
+      methodologyNote: 'Full synced trade history.',
     };
   }
 
+  const unpricedInList = trades.filter(t => t.volumeUsd == null);
   const { byToken, totalVolumeUsd, pricedCount } = rebuildByTokenFromAtoms(
     detail.atoms,
     from,
     to,
+    unpricedInList,
   );
-  // Approximate unpriced in-window from ratio if needed; prefer counting from filtered trades list
-  const unpricedInList = trades.filter(t => t.volumeUsd == null).length;
-  const tradeCount = pricedCount + unpricedInList;
+  const tradeCount = pricedCount + unpricedInList.length;
   const activityPct =
     detail.totalTxCount > 0 && tradeCount > 0
       ? round2((tradeCount / detail.totalTxCount) * 100)
@@ -219,7 +306,7 @@ export function applyTradingVolumePeriod(
     totalVolumeUsd,
     tradeCount,
     pricedTradeCount: pricedCount,
-    unpricedTradeCount: unpricedInList,
+    unpricedTradeCount: unpricedInList.length,
     activityPct,
     periodLabel: formatPeriodLabel(from, to, false),
     from,
@@ -227,23 +314,10 @@ export function applyTradingVolumePeriod(
     chartHistory,
     byToken,
     trades,
-    methodologyNote:
-      'Period volume from synced trade aggregates · From = earliest trade (not wallet connect).',
+    methodologyNote: hasCustomRange
+      ? 'Custom range volume from synced trade aggregates.'
+      : 'Period volume from synced trade aggregates.',
   };
-}
-
-export function resolveTradingVolumeRange(opts: {
-  periodDays: number;
-  earliestTradeAt: string | null;
-  customTo?: string | null;
-  today?: string;
-}) {
-  return resolvePeriodRange({
-    periodDays: opts.periodDays,
-    baselineAt: opts.earliestTradeAt,
-    customTo: opts.customTo,
-    today: opts.today,
-  });
 }
 
 export { toDateOnly, todayDateOnly, subtractDays, clampDateOnly };

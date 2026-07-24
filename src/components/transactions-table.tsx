@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,7 +32,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Download,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -54,6 +53,7 @@ import {
   Coins,
   Receipt,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   transactionTypes,
   networks,
@@ -62,6 +62,11 @@ import {
   getClientNameByAddress,
 } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import {
+  buildTransactionsReportPayload,
+  downloadReportExcel,
+  downloadReportPdf,
+} from '@/lib/export/download-report';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
 import {
   filterVisibleTransactions,
@@ -713,16 +718,66 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
     return result;
   }, [allTransactions, activityFilter, typeFilter, dateFrom, dateTo, tokenSearch, amountMin, amountMax, networkSearch, hashSearch, sortField, sortDir]);
 
+  // Total value of filtered transactions
+  const totalFilteredValue = useMemo(() => {
+    return filteredTransactions.reduce((sum, tx) => sum + tx.value, 0);
+  }, [filteredTransactions]);
+
+  const handleDownloadExcel = useCallback(() => {
+    try {
+      const payload = buildTransactionsReportPayload({
+        title: 'Transactions',
+        subtitle: 'Filtered wallet transactions',
+        filenameBase: 'sentinel-transactions',
+        transactions: filteredTransactions,
+        extraSummary: [
+          {
+            label: 'Filtered total (USD)',
+            value: `$${totalFilteredValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          },
+        ],
+      });
+      if (!payload) {
+        toast.info('No transactions to export');
+        return;
+      }
+      downloadReportExcel(payload);
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Failed to export Excel');
+    }
+  }, [filteredTransactions, totalFilteredValue]);
+
+  const handleDownloadPdf = useCallback(() => {
+    try {
+      const payload = buildTransactionsReportPayload({
+        title: 'Transactions',
+        subtitle: 'Filtered wallet transactions',
+        filenameBase: 'sentinel-transactions',
+        transactions: filteredTransactions,
+        extraSummary: [
+          {
+            label: 'Filtered total (USD)',
+            value: `$${totalFilteredValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          },
+        ],
+      });
+      if (!payload) {
+        toast.info('No transactions to export');
+        return;
+      }
+      downloadReportPdf(payload);
+      toast.success('PDF report downloaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
+    }
+  }, [filteredTransactions, totalFilteredValue]);
+
   const totalPages = Math.ceil(filteredTransactions.length / rowsPerPage);
   const paginatedTransactions = filteredTransactions.slice(
     (currentPage - 1) * rowsPerPage,
     currentPage * rowsPerPage
   );
-
-  // Total value of filtered transactions
-  const totalFilteredValue = useMemo(() => {
-    return filteredTransactions.reduce((sum, tx) => sum + tx.value, 0);
-  }, [filteredTransactions]);
 
   const toggleSort = (field: keyof Transaction) => {
     if (sortField === field) {
@@ -858,6 +913,7 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
                 variant="outline"
                 size="sm"
                 className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+                onClick={handleDownloadPdf}
               >
                 <FileText className="h-4 w-4 ml-1" />
                 Download PDF
@@ -866,6 +922,7 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
                 variant="outline"
                 size="sm"
                 className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+                onClick={handleDownloadExcel}
               >
                 <FileSpreadsheet className="h-4 w-4 ml-1" />
                 Download Excel

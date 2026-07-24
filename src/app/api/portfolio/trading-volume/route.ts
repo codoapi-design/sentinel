@@ -2,7 +2,7 @@
  * GET /api/portfolio/trading-volume?walletId=
  *
  * Full trading-volume detail: summary, daily history, by-token breakdown, recent trades.
- * Uses all synced trade-classified txs (not limited to since connected).
+ * Uses all synced trade-classified txs.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     const { data: transactions, error: txError } = await supabase
       .from('transactions')
       .select(
-        'id, tx_hash, type, direction, value_usd, value_eth, method_id, method_name, protocol, to_addr, from_addr, timestamp, date, network, token_symbol, token_address, counterparty, counterparty_label',
+        'id, tx_hash, type, direction, value_usd, value_eth, method_id, method_name, protocol, to_addr, from_addr, timestamp, date, network, token_symbol, token_name, token_address, token_value, price_usd, counterparty, counterparty_label, raw_data',
       )
       .eq('wallet_id', wallet.id);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -12,6 +12,7 @@ import {
   Wallet,
   Fuel,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   type Transaction,
   type Client,
@@ -23,6 +24,12 @@ import {
   SUMMARY_TOTAL_INFLOW,
   SUMMARY_TOTAL_OUTFLOW,
 } from '@/lib/finance/labels';
+import {
+  buildTransactionsReportPayload,
+  downloadReportExcel,
+  downloadReportPdf,
+} from '@/lib/export/download-report';
+import { captureExportCharts } from '@/lib/export/capture-chart';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { AIAnalysisSection } from './ai-analysis-section';
@@ -84,6 +91,8 @@ const SECTION_TO_METRIC: Record<SectionPageProps['sectionType'], CashflowMetric>
 export function SectionPage({ sectionType, onBack, clients = [] }: SectionPageProps) {
   const config = sectionConfig[sectionType];
   const Icon = config.icon;
+  const pageRef = useRef<HTMLDivElement>(null);
+  const chartCaptureRef = useRef<HTMLDivElement>(null);
 
   const allTransactions = useActiveTransactions();
 
@@ -119,8 +128,78 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
     setFilteredData(data);
   }, []);
 
+  const buildExportPayload = useCallback(() => {
+    const filteredTotal =
+      sectionType === 'flow'
+        ? filteredData.reduce(
+            (sum, tx) => sum + (isRevenueType(tx.type) ? tx.value : -tx.value),
+            0,
+          )
+        : filteredData.reduce((sum, tx) => sum + tx.value, 0);
+    return buildTransactionsReportPayload({
+      title: config.title,
+      subtitle: config.description,
+      filenameBase: `sentinel-${sectionType}`,
+      transactions: filteredData,
+      extraSummary: [
+        {
+          label: config.totalLabel,
+          value: `$${filteredTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+        },
+      ],
+    });
+  }, [config, sectionType, filteredData]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    try {
+      const payload = buildExportPayload();
+      if (!payload) {
+        toast.info('No transactions to export');
+        return;
+      }
+      const charts = await captureExportCharts(pageRef.current, {
+        background: '#0f1011',
+      });
+      if (charts.length > 0) {
+        payload.charts = charts;
+      }
+      downloadReportExcel(payload);
+      toast.success(
+        charts.length > 0
+          ? 'Excel report downloaded (with charts)'
+          : 'Excel report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
+    }
+  }, [buildExportPayload]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    try {
+      const payload = buildExportPayload();
+      if (!payload) {
+        toast.info('No transactions to export');
+        return;
+      }
+      const charts = await captureExportCharts(pageRef.current, {
+        background: '#0f1011',
+      });
+      if (charts.length > 0) {
+        payload.charts = charts;
+      }
+      downloadReportPdf(payload);
+      toast.success(
+        charts.length > 0
+          ? 'PDF report downloaded (with charts)'
+          : 'PDF report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
+    }
+  }, [buildExportPayload]);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={pageRef}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -145,6 +224,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
             variant="outline"
             size="sm"
             className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+            onClick={() => void handleDownloadPdf()}
           >
             <FileText className="h-4 w-4 ml-1" />
             Download PDF
@@ -153,6 +233,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
             variant="outline"
             size="sm"
             className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+            onClick={() => void handleDownloadExcel()}
           >
             <FileSpreadsheet className="h-4 w-4 ml-1" />
             Download Excel
@@ -193,7 +274,10 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
       </Card>
 
       {/* Period cash-flow movement (classified txs, not market revaluation) */}
-      <CashflowChart metric={SECTION_TO_METRIC[sectionType]} />
+      <CashflowChart
+        metric={SECTION_TO_METRIC[sectionType]}
+        chartCaptureRef={chartCaptureRef}
+      />
 
       {/* AI Analysis Section */}
       <AIAnalysisSection

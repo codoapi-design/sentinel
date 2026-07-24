@@ -239,7 +239,10 @@ export function ActivityDonutChart({
           : 'No activity distribution in the current filter set.';
 
   return (
-    <div className="bg-[#0f1011] border border-white/5 rounded-xl">
+    <div
+      className="bg-[#0f1011] border border-white/5 rounded-xl"
+      data-export-chart={title}
+    >
       <div className="p-4 pb-2">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div>
@@ -257,7 +260,7 @@ export function ActivityDonutChart({
               </p>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" data-export-ignore>
             {!locked && (
               <div className="flex items-center gap-1 bg-[#191a1b] rounded-lg p-1">
                 <Button
@@ -323,7 +326,10 @@ export function ActivityDonutChart({
           </div>
         ) : (
           <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-            <div className="h-[220px] w-full lg:w-[240px] lg:shrink-0 relative" dir="ltr">
+            <div
+              className="h-[220px] w-full lg:w-[240px] lg:shrink-0 relative"
+              dir="ltr"
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -362,6 +368,9 @@ export function ActivityDonutChart({
                 <div
                   key={slice.name}
                   className="flex items-center justify-between gap-3 text-xs py-1"
+                  data-export-legend-item={`${slice.name} ${
+                    metric === 'volume' ? formatUsd(slice.volume) : slice.count
+                  } (${slice.percent.toFixed(0)}%)`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <div

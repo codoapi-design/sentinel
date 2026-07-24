@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,10 +15,18 @@ import {
   TrendingUp,
   Coins,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   type Transaction,
 } from '@/lib/mock-data';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
+import {
+  buildTransactionsReportPayload,
+  downloadReportExcel,
+  downloadReportPdf,
+} from '@/lib/export/download-report';
+import { captureExportCharts } from '@/lib/export/capture-chart';
+import { buildTypeFilterStatsSummary } from '@/lib/export/filter-stats-summary';
 import { useActiveTransactions } from '@/hooks/use-active-transactions';
 import { ColumnFilterTable } from './column-filter-table';
 import { TypeTransactionFilterStats } from './transaction-filter-stats';
@@ -76,6 +84,7 @@ interface TypeDetailPageProps {
 }
 
 export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
+  const pageRef = useRef<HTMLDivElement>(null);
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
   /** False until ColumnFilterTable emits — charts fall back to typeTransactions. */
   const [filtersReady, setFiltersReady] = useState(false);
@@ -112,8 +121,68 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
     setFilteredData(data);
   }, []);
 
+  const handleDownloadExcel = useCallback(async () => {
+    try {
+      const payload = buildTransactionsReportPayload({
+        title: `Type · ${typeLabel}`,
+        subtitle: typeDescription,
+        filenameBase: `sentinel-type-${typeId}`,
+        transactions: statsTransactions,
+      });
+      if (!payload) {
+        toast.info('No transactions to export');
+        return;
+      }
+      payload.summary = buildTypeFilterStatsSummary(statsTransactions);
+      const charts = await captureExportCharts(pageRef.current, {
+        background: '#0f1011',
+      });
+      if (charts.length > 0) {
+        payload.charts = charts;
+      }
+      downloadReportExcel(payload);
+      toast.success(
+        charts.length > 0
+          ? 'Excel report downloaded (with charts)'
+          : 'Excel report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
+    }
+  }, [typeLabel, typeDescription, typeId, statsTransactions]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    try {
+      const payload = buildTransactionsReportPayload({
+        title: `Type · ${typeLabel}`,
+        subtitle: typeDescription,
+        filenameBase: `sentinel-type-${typeId}`,
+        transactions: statsTransactions,
+      });
+      if (!payload) {
+        toast.info('No transactions to export');
+        return;
+      }
+      payload.summary = buildTypeFilterStatsSummary(statsTransactions);
+      const charts = await captureExportCharts(pageRef.current, {
+        background: '#0f1011',
+      });
+      if (charts.length > 0) {
+        payload.charts = charts;
+      }
+      downloadReportPdf(payload);
+      toast.success(
+        charts.length > 0
+          ? 'PDF report downloaded (with charts)'
+          : 'PDF report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
+    }
+  }, [typeLabel, typeDescription, typeId, statsTransactions]);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={pageRef}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -141,6 +210,7 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
             variant="outline"
             size="sm"
             className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+            onClick={() => void handleDownloadPdf()}
           >
             <FileText className="h-4 w-4 ml-1" />
             Download PDF
@@ -149,6 +219,7 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
             variant="outline"
             size="sm"
             className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+            onClick={() => void handleDownloadExcel()}
           >
             <FileSpreadsheet className="h-4 w-4 ml-1" />
             Download Excel

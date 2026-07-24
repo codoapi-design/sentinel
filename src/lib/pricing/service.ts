@@ -377,12 +377,19 @@ export class PricingService {
         }),
       );
 
-      const primary = enrichedTransfers[0];
+      const primary = enrichedTransfers.reduce<(typeof enrichedTransfers)[0] | undefined>(
+        (best, t) => {
+          const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : 0;
+          const b = best && typeof best.valueUsd === 'number' && best.valueUsd > 0 ? best.valueUsd : 0;
+          return u >= b ? t : best;
+        },
+        enrichedTransfers[0],
+      );
       return {
         ...tx,
         tokenTransfers: enrichedTransfers,
-        priceUsd: primary?.priceUsd ?? null,
-        valueUsd: primary?.valueUsd ?? null,
+        priceUsd: primary?.priceUsd && primary.priceUsd > 0 ? primary.priceUsd : null,
+        valueUsd: primary?.valueUsd && primary.valueUsd > 0 ? primary.valueUsd : null,
       };
     }
 

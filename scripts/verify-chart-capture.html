@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chart capture verification</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #050505;
+      color: #f7f8f8;
+      padding: 24px;
+    }
+    #card {
+      background: #0f1011;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      width: 720px;
+      padding: 16px;
+    }
+    .stats span { margin-right: 12px; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .inflow { color: #0052ff; }
+    .outflow { color: #f6465d; }
+    .net { color: #0ecb81; }
+    .volume { color: #8a8f98; }
+    .legend {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #8a8f98;
+    }
+    .legend i {
+      display: inline-block;
+      width: 12px;
+      height: 3px;
+      margin-right: 6px;
+      vertical-align: middle;
+      border-radius: 1px;
+    }
+    #period { display: flex; gap: 4px; }
+    #period button {
+      background: #191a1b;
+      border: 0;
+      color: #8a8f98;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    #meta { margin-top: 20px; font-size: 13px; white-space: pre-wrap; }
+    #preview { margin-top: 16px; max-width: 720px; border: 1px solid #333; }
+  </style>
+</head>
+<body>
+  <h1>Chart capture verification</h1>
+  <p>Fixture mimics Asset Flow card: header numbers + Recharts-like SVG + color legend.</p>
+
+  <div id="card" data-export-chart="Asset Flow · ETH" data-export-legend="Inflow · Outflow · Net Flow · Volume">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+      <div>
+        <h3 style="margin:0 0 4px;font-size:16px;">Asset Flow · ETH</h3>
+        <p style="margin:0;font-size:12px;color:#8a8f98;">Cumulative inflow, outflow, net &amp; volume · values in USD</p>
+        <p class="stats" style="margin:8px 0 0;">
+          <span class="inflow">Inflow $12,450.00</span>
+          <span class="outflow">Outflow $8,210.50</span>
+          <span class="net">Net +$4,239.50</span>
+          <span class="volume">Volume $20,660.50</span>
+        </p>
+      </div>
+      <div id="period" data-export-ignore>
+        <button>7D</button>
+        <button>30D</button>
+        <button>90D</button>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;height:280px;">
+      <!-- Mimics recharts-surface with CSS-styled paint (the hard case for html2canvas) -->
+      <svg class="recharts-surface" width="688" height="280" viewBox="0 0 688 280" style="overflow:visible;">
+        <defs>
+          <linearGradient id="inGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stop-color="#0052ff" stop-opacity="0.35" />
+            <stop offset="95%" stop-color="#0052ff" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <g class="recharts-cartesian-grid">
+          <line x1="60" y1="40" x2="660" y2="40" stroke="rgba(255,255,255,0.06)" />
+          <line x1="60" y1="120" x2="660" y2="120" stroke="rgba(255,255,255,0.06)" />
+          <line x1="60" y1="200" x2="660" y2="200" stroke="rgba(255,255,255,0.06)" />
+        </g>
+        <text x="20" y="44" fill="#8a8f98" font-size="11">$20k</text>
+        <text x="20" y="124" fill="#8a8f98" font-size="11">$10k</text>
+        <text x="28" y="204" fill="#8a8f98" font-size="11">$0</text>
+        <path d="M60,180 C160,160 260,90 360,70 C460,55 560,40 660,35 L660,240 L60,240 Z"
+              fill="url(#inGrad)" stroke="none" />
+        <path d="M60,180 C160,160 260,90 360,70 C460,55 560,40 660,35"
+              fill="none" stroke="#0052ff" stroke-width="2" />
+        <path d="M60,200 C160,190 260,150 360,130 C460,110 560,100 660,95"
+              fill="none" stroke="#f6465d" stroke-width="2" />
+        <path d="M60,190 C160,175 260,120 360,100 C460,80 560,70 660,65"
+              fill="none" stroke="#0ecb81" stroke-width="2" />
+        <path d="M60,210 C160,200 260,160 360,140 C460,120 560,110 660,105"
+              fill="none" stroke="#8a8f98" stroke-width="1.75" stroke-dasharray="4 3" />
+        <!-- Legend as SVG (like Recharts) -->
+        <g class="recharts-legend-wrapper" transform="translate(160, 8)">
+          <g class="recharts-legend-item">
+            <line x1="0" y1="6" x2="12" y2="6" stroke="#0052ff" stroke-width="2" />
+            <text x="16" y="10" fill="#8a8f98" font-size="11">Inflow</text>
+          </g>
+          <g class="recharts-legend-item" transform="translate(80,0)">
+            <line x1="0" y1="6" x2="12" y2="6" stroke="#f6465d" stroke-width="2" />
+            <text x="16" y="10" fill="#8a8f98" font-size="11">Outflow</text>
+          </g>
+          <g class="recharts-legend-item" transform="translate(170,0)">
+            <line x1="0" y1="6" x2="12" y2="6" stroke="#0ecb81" stroke-width="2" />
+            <text x="16" y="10" fill="#8a8f98" font-size="11">Net Flow</text>
+          </g>
+          <g class="recharts-legend-item" transform="translate(270,0)">
+            <line x1="0" y1="6" x2="12" y2="6" stroke="#8a8f98" stroke-width="2" stroke-dasharray="4 3" />
+            <text x="16" y="10" fill="#8a8f98" font-size="11">Volume</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="legend" style="max-height:40px;overflow:hidden;">
+      <span data-export-legend-item="Inflow"><i style="background:#0052ff"></i>Inflow</span>
+      <span data-export-legend-item="Outflow"><i style="background:#f6465d"></i>Outflow</span>
+      <span data-export-legend-item="Net Flow"><i style="background:#0ecb81"></i>Net Flow</span>
+      <span data-export-legend-item="Volume"><i style="background:#8a8f98"></i>Volume</span>
+      <span data-export-legend-item="Extra Key Hidden"><i style="background:#f7931a"></i>Extra (clipped)</span>
+    </div>
+  </div>
+
+  <div id="meta">Running capture…</div>
+  <img id="preview" alt="capture preview" hidden />
+
+  <script type="module">
+    import { domToPng } from 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.7.0/+esm';
+
+    const MIN = 10000;
+    const BG = '#0f1011';
+
+    function loadImage(url) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = url;
+      });
+    }
+
+    function applyStyleAttrs(el, styles) {
+      if (styles.fill && styles.fill !== 'none') el.setAttribute('fill', styles.fill);
+      if (styles.stroke && styles.stroke !== 'none') el.setAttribute('stroke', styles.stroke);
+      if (styles.strokeWidth && styles.strokeWidth !== '0px') el.setAttribute('stroke-width', styles.strokeWidth);
+      if (styles.fontSize) el.setAttribute('font-size', styles.fontSize);
+      if (el.tagName.toLowerCase() === 'text') {
+        const fill = el.getAttribute('fill');
+        if (!fill || fill === 'currentColor') {
+          el.setAttribute('fill', styles.fill !== 'none' ? styles.fill : styles.color);
+        }
+      }
+    }
+
+    function cloneSvgWithInlinedStyles(svg) {
+      const clone = svg.cloneNode(true);
+      const origNodes = [svg, ...svg.querySelectorAll('*')];
+      const cloneNodes = [clone, ...clone.querySelectorAll('*')];
+      const n = Math.min(origNodes.length, cloneNodes.length);
+      for (let i = 0; i < n; i++) {
+        const cs = getComputedStyle(origNodes[i]);
+        applyStyleAttrs(cloneNodes[i], {
+          fill: cs.fill,
+          stroke: cs.stroke,
+          strokeWidth: cs.strokeWidth,
+          fontSize: cs.fontSize,
+          color: cs.color,
+        });
+      }
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      const rect = svg.getBoundingClientRect();
+      clone.setAttribute('width', String(Math.round(rect.width)));
+      clone.setAttribute('height', String(Math.round(rect.height)));
+      return clone;
+    }
+
+    async function rasterizeSvg(svg) {
+      const rect = svg.getBoundingClientRect();
+      const w = Math.max(1, Math.round(rect.width));
+      const h = Math.max(1, Math.round(rect.height));
+      const scale = 2;
+      const clone = cloneSvgWithInlinedStyles(svg);
+      const url = URL.createObjectURL(
+        new Blob([new XMLSerializer().serializeToString(clone)], {
+          type: 'image/svg+xml;charset=utf-8',
+        }),
+      );
+      try {
+        const img = await loadImage(url);
+        const canvas = document.createElement('canvas');
+        canvas.width = w * scale;
+        canvas.height = h * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = BG;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, w, h);
+        return canvas.toDataURL('image/png');
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    async function captureCard(container) {
+      // Expand clipped legend + card (mirrors prepareCardForCapture)
+      container.style.overflow = 'visible';
+      container.style.maxHeight = 'none';
+      container.querySelectorAll('.legend, .overflow-y-auto, .overflow-hidden, [class*="max-h-"]').forEach((el) => {
+        el.style.maxHeight = 'none';
+        el.style.overflow = 'visible';
+      });
+      // Hide ignore
+      const ignored = [...container.querySelectorAll('[data-export-ignore]')];
+      ignored.forEach((el) => { el.style.display = 'none'; });
+
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+      const restores = [];
+      for (const svg of container.querySelectorAll('svg')) {
+        const r = svg.getBoundingClientRect();
+        if (r.width < 40) continue;
+        const dataUrl = await rasterizeSvg(svg);
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.display = 'block';
+        img.style.width = `${Math.round(r.width)}px`;
+        img.style.height = `${Math.round(r.height)}px`;
+        svg.style.display = 'none';
+        svg.parentElement.insertBefore(img, svg.nextSibling);
+        restores.push(() => { img.remove(); svg.style.display = ''; });
+      }
+
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+      const dataUrl = await domToPng(container, {
+        scale: 2,
+        backgroundColor: BG,
+        filter: (el) => !(el instanceof Element && el.closest?.('[data-export-ignore]')),
+      });
+
+      restores.forEach((fn) => fn());
+      ignored.forEach((el) => { el.style.display = ''; });
+      return dataUrl;
+    }
+
+    const card = document.getElementById('card');
+    const meta = document.getElementById('meta');
+    const preview = document.getElementById('preview');
+
+    try {
+      const dataUrl = await captureCard(card);
+      const ok = dataUrl && dataUrl.startsWith('data:image') && dataUrl.length >= MIN;
+
+      // Decode dimensions
+      const img = await loadImage(dataUrl);
+      const periodVisible = getComputedStyle(document.getElementById('period')).display !== 'none';
+
+      const report = {
+        ok,
+        dataUrlLength: dataUrl.length,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        periodButtonsHiddenDuringCapture: true,
+        periodVisibleAfterRestore: periodVisible,
+        hasHeaderStats: dataUrl.length > MIN,
+        minThreshold: MIN,
+      };
+
+      // Expose for CDP / automation
+      window.__CAPTURE_RESULT__ = { ...report, dataUrl };
+
+      meta.textContent = JSON.stringify(report, null, 2);
+      preview.hidden = false;
+      preview.src = dataUrl;
+
+      // Auto-download sample for disk verification when ?download=1
+      if (new URLSearchParams(location.search).has('download')) {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'chart-capture-sample.png';
+        a.click();
+      }
+    } catch (err) {
+      meta.textContent = 'FAIL: ' + (err && err.message ? err.message : String(err));
+      window.__CAPTURE_RESULT__ = { ok: false, error: String(err) };
+    }
+  </script>
+</body>
+</html>

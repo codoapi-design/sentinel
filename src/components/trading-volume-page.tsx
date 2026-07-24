@@ -1,7 +1,8 @@
 'use client';
 
-import { useId, useMemo, useState, useEffect } from 'react';
+import { useId, useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   ArrowRight,
   ArrowLeftRight,
@@ -9,6 +10,8 @@ import {
   AlertCircle,
   RefreshCw,
   ExternalLink,
+  FileText,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -19,6 +22,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { toast } from 'sonner';
 import { useTradingVolumeDetail } from '@/hooks/use-trading-volume-detail';
 import {
   applyTradingVolumePeriod,
@@ -27,6 +31,14 @@ import {
   type TradingVolumePeriodDays,
 } from '@/lib/finance/trading-volume-period';
 import { InvestmentReturnPeriodControls } from '@/components/investment-return-period-controls';
+import { AIAnalysisSection } from '@/components/ai-analysis-section';
+import type { Transaction } from '@/lib/mock-data';
+import {
+  downloadReportExcel,
+  downloadReportPdf,
+  type ReportPayload,
+} from '@/lib/export/download-report';
+import { captureChartCard } from '@/lib/export/capture-chart';
 
 interface TradingVolumePageProps {
   onBack: () => void;
@@ -92,34 +104,41 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
   const reactId = useId().replace(/:/g, '');
   const { detail, isLoading, error, refetch } = useTradingVolumeDetail();
   const gradId = `tradingVolGrad-${reactId}`;
+  const chartCaptureRef = useRef<HTMLDivElement>(null);
 
   const [activePeriod, setActivePeriod] = useState<TradingVolumePeriodDays>(0);
+  const [customFrom, setCustomFrom] = useState<string | null>(null);
   const [customTo, setCustomTo] = useState<string | null>(null);
+  const [draftFrom, setDraftFrom] = useState('');
   const [draftTo, setDraftTo] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [listTab, setListTab] = useState<'tokens' | 'trades'>('tokens');
 
   const earliestDate = detail?.earliestTradeAt ? toDateOnly(detail.earliestTradeAt) : '';
   const today = todayDateOnly();
-  const isCustomActive = customTo != null && customTo !== today;
-  const effectiveTo = customTo || today;
+  const isCustomActive = customFrom != null;
 
   useEffect(() => {
-    if (!earliestDate || !customTo) return;
-    let next = customTo;
-    if (next < earliestDate) next = earliestDate;
-    if (next > today) next = today;
-    if (next !== customTo) setCustomTo(next === today ? null : next);
-  }, [earliestDate, today, customTo]);
+    if (!customFrom && !customTo) return;
+    let nextFrom = customFrom;
+    let nextTo = customTo ?? today;
+    if (nextTo > today) nextTo = today;
+    if (nextFrom && nextFrom > nextTo) nextFrom = nextTo;
+    if (nextFrom !== customFrom) setCustomFrom(nextFrom);
+    if (nextTo !== (customTo ?? today)) {
+      setCustomTo(nextTo === today && !customFrom ? null : nextTo);
+    }
+  }, [today, customFrom, customTo]);
 
   const filtered = useMemo(() => {
     if (!detail) return null;
     return applyTradingVolumePeriod(detail, {
       periodDays: activePeriod,
-      customTo: effectiveTo,
+      customFrom,
+      customTo,
       today,
     });
-  }, [detail, activePeriod, effectiveTo, today]);
+  }, [detail, activePeriod, customFrom, customTo, today]);
 
   const chartData = useMemo(
     () =>
@@ -134,7 +153,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
   const maxVol = chartData.length ? Math.max(...chartData.map(d => d.volume), 0) : 0;
   const pad = Math.max(maxVol * 0.08, 1);
 
-  const sinceLabel = detail?.earliestTradeAt
+  const earliestTradeLabel = detail?.earliestTradeAt
     ? new Date(detail.earliestTradeAt).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
@@ -145,6 +164,156 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
   const showingLiveAll = activePeriod === 0 && !isCustomActive;
   const byToken = filtered?.byToken ?? [];
   const trades = filtered?.trades ?? [];
+
+  /** Trade rows as Transaction shape for AIAnalysisSection context */
+  const analysisTransactions = useMemo((): Transaction[] => {
+    return trades.map(tx => ({
+      id: tx.id,
+      date: tx.date,
+      timestamp: tx.timestamp,
+      type: 'trade' as const,
+      typeLabel: 'Trade',
+      activity: tx.methodName || 'Swap',
+      methodName: tx.methodName,
+      token: tx.tokenSymbol,
+      quantity: 0,
+      price: 0,
+      value: tx.volumeUsd ?? 0,
+      network: tx.network,
+      networkLabel: networkLabel(tx.network),
+      txHash: tx.hash,
+      counterparty: tx.counterparty || '',
+      counterpartyLabel: tx.counterpartyLabel || shortAddr(tx.counterparty),
+    }));
+  }, [trades]);
+
+  const buildExportPayload = useCallback((): ReportPayload | null => {
+    if (!detail || !filtered) return null;
+    return {
+      title: 'Trading Volume',
+      subtitle: filtered.periodLabel
+        ? `${filtered.periodLabel} · all synced trade history`
+        : earliestTradeLabel
+          ? `All synced history · earliest trade ${earliestTradeLabel}`
+          : 'All synced trade history',
+      filenameBase: 'sentinel-trading-volume',
+      summary: [
+        { label: 'Total volume (USD)', value: formatUsd(filtered.totalVolumeUsd) },
+        { label: 'Trade transactions', value: String(filtered.tradeCount) },
+        { label: 'Priced trades', value: String(filtered.pricedTradeCount) },
+        { label: 'Unpriced trades', value: String(filtered.unpricedTradeCount) },
+        {
+          label: 'Share of activity',
+          value:
+            filtered.activityPct != null ? `${filtered.activityPct.toFixed(1)}%` : '—',
+        },
+      ],
+      tables: [
+        {
+          title: 'Volume by token',
+          headers: [
+            'Token',
+            'Network',
+            'Address',
+            'Volume (USD)',
+            'Share %',
+            'Trades',
+            'Unpriced',
+          ],
+          rows: byToken.map(row => [
+            row.tokenSymbol,
+            networkLabel(row.network),
+            row.tokenAddress || '',
+            row.unpriced ? '' : row.volumeUsd.toFixed(2),
+            row.unpriced ? '' : row.pct.toFixed(1),
+            row.tradeCount,
+            row.unpriced ? 'yes' : 'no',
+          ]),
+        },
+        {
+          title: 'Trades',
+          headers: [
+            'Date',
+            'Token',
+            'Network',
+            'Counterparty',
+            'Volume (USD)',
+            'Tx hash',
+            'Method',
+          ],
+          rows: trades.map(tx => [
+            tx.date,
+            tx.tokenSymbol,
+            networkLabel(tx.network),
+            tx.counterpartyLabel || tx.counterparty || '',
+            tx.volumeUsd != null ? tx.volumeUsd.toFixed(2) : '',
+            tx.hash,
+            tx.methodName || '',
+          ]),
+        },
+      ],
+    };
+  }, [detail, filtered, byToken, trades, earliestTradeLabel]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    try {
+      const payload = buildExportPayload();
+      if (!payload) {
+        toast.info('No trading volume data to export');
+        return;
+      }
+      const chartResult = await captureChartCard(chartCaptureRef.current, {
+        background: '#0f1011',
+      });
+      if (chartResult) {
+        payload.charts = [
+          {
+            title: showingLiveAll ? 'Volume over time' : 'Volume in selected period',
+            dataUrl: chartResult.dataUrl,
+            caption: chartResult.caption,
+          },
+        ];
+      }
+      downloadReportExcel(payload);
+      toast.success(
+        chartResult
+          ? 'Excel report downloaded (with chart)'
+          : 'Excel report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
+    }
+  }, [buildExportPayload, showingLiveAll]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    try {
+      const payload = buildExportPayload();
+      if (!payload) {
+        toast.info('No trading volume data to export');
+        return;
+      }
+      const chartResult = await captureChartCard(chartCaptureRef.current, {
+        background: '#0f1011',
+      });
+      if (chartResult) {
+        payload.charts = [
+          {
+            title: showingLiveAll ? 'Volume over time' : 'Volume in selected period',
+            dataUrl: chartResult.dataUrl,
+            caption: chartResult.caption,
+          },
+        ];
+      }
+      downloadReportPdf(payload);
+      toast.success(
+        chartResult
+          ? 'PDF report downloaded (with chart)'
+          : 'PDF report downloaded',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
+    }
+  }, [buildExportPayload, showingLiveAll]);
 
   if (isLoading && !detail) {
     return (
@@ -160,7 +329,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
   if (error && !detail) {
     return (
       <div className="space-y-6">
-        <PageHeader onBack={onBack} sinceLabel={null} />
+        <PageHeader onBack={onBack} earliestTradeLabel={null} exportDisabled />
         <div className="bg-[#0f1011] border border-[#f6465d]/20 rounded-xl p-6 flex items-center gap-3">
           <AlertCircle className="h-5 w-5 text-[#f6465d]" />
           <div className="flex-1">
@@ -182,7 +351,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
   if (!detail || detail.tradeCount === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader onBack={onBack} sinceLabel={null} />
+        <PageHeader onBack={onBack} earliestTradeLabel={null} exportDisabled />
         <Card className="bg-[#0f1011] border-white/5">
           <CardContent className="p-8 text-center">
             <div className="w-12 h-12 rounded-xl bg-[#a855f7]/10 flex items-center justify-center mx-auto mb-4">
@@ -191,8 +360,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
             <h3 className="text-lg font-medium text-[#f7f8f8] mb-2">No trading volume yet</h3>
             <p className="text-sm text-[#8a8f98] max-w-md mx-auto">
               No swap / DEX trades found in synced history. Sync your wallet to classify
-              trade activity — volume is measured across all synced trades, not only since
-              connect.
+              trade activity — volume covers all synced trades.
             </p>
           </CardContent>
         </Card>
@@ -216,49 +384,61 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
       mono: true,
     },
     {
-      label: 'Share of activity',
-      value: heroActivityPct != null ? `${heroActivityPct.toFixed(1)}%` : '—',
+      label: 'Unpriced trades',
+      value: String(filtered?.unpricedTradeCount ?? detail.unpricedTradeCount),
       mono: true,
     },
     {
-      label: 'Tokens traded',
-      value: String(byToken.length),
+      label: 'Share of activity',
+      value: heroActivityPct != null ? `${heroActivityPct.toFixed(1)}%` : '—',
       mono: true,
     },
   ];
 
   const handlePeriodClick = (days: TradingVolumePeriodDays) => {
     setActivePeriod(days);
+    setCustomFrom(null);
     setCustomTo(null);
+    setDraftFrom('');
     setDraftTo('');
   };
 
   const handleFilterOpenChange = (open: boolean) => {
     setFilterOpen(open);
     if (open) {
-      setDraftTo(customTo && customTo !== today ? customTo : '');
+      setDraftFrom(customFrom || earliestDate || '');
+      setDraftTo(customTo && customTo !== today ? customTo : today);
     }
   };
 
   const handleApplyCustom = () => {
-    if (!draftTo) return;
-    let next = draftTo;
-    if (earliestDate && next < earliestDate) next = earliestDate;
-    if (next > today) next = today;
+    if (!draftFrom) return;
+    let nextTo = draftTo || today;
+    if (nextTo > today) nextTo = today;
+    let nextFrom = draftFrom;
+    if (nextFrom > nextTo) nextFrom = nextTo;
     setActivePeriod(0);
-    setCustomTo(next === today ? null : next);
+    setCustomFrom(nextFrom);
+    setCustomTo(nextTo);
     setFilterOpen(false);
   };
 
   const handleClearCustom = () => {
+    setCustomFrom(null);
     setCustomTo(null);
+    setDraftFrom('');
     setDraftTo('');
     setFilterOpen(false);
   };
 
   return (
     <div className="space-y-6">
-      <PageHeader onBack={onBack} sinceLabel={sinceLabel} />
+      <PageHeader
+        onBack={onBack}
+        earliestTradeLabel={earliestTradeLabel}
+        onDownloadPdf={handleDownloadPdf}
+        onDownloadExcel={handleDownloadExcel}
+      />
 
       {/* Hero */}
       <Card className="bg-[#0f1011] border-white/5 overflow-hidden relative">
@@ -289,8 +469,8 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
               </div>
               <p className="text-xs text-[#8a8f98] mt-3 max-w-2xl leading-relaxed">
                 {filtered?.periodLabel
-                  ? `${filtered.periodLabel} · all synced trade history (not limited to since connected)`
-                  : 'All synced trade history (not limited to since connected)'}
+                  ? `${filtered.periodLabel} · all synced trade history`
+                  : 'All synced trade history'}
               </p>
             </div>
 
@@ -306,6 +486,11 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
               onDraftToChange={setDraftTo}
               onApplyCustom={handleApplyCustom}
               onClearCustom={handleClearCustom}
+              fromEditable
+              draftFrom={draftFrom}
+              onDraftFromChange={setDraftFrom}
+              fromFieldLabel="From"
+              fromAriaLabel="Start date"
             />
           </div>
         </CardContent>
@@ -329,14 +514,24 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
       </div>
 
       {/* Chart */}
-      <div className="bg-[#0f1011] border border-white/5 rounded-xl">
+      <div
+        ref={chartCaptureRef}
+        className="bg-[#0f1011] border border-white/5 rounded-xl"
+        data-export-chart={
+          showingLiveAll ? 'Volume over time' : 'Volume in selected period'
+        }
+      >
         <div className="p-4 pb-0">
           <h3 className="text-[#f7f8f8] text-base font-medium">
             {showingLiveAll ? 'Volume over time' : 'Volume in selected period'}
           </h3>
           <p className="text-xs text-[#8a8f98] mt-1">
             Cumulative trading volume in USD
-            {filtered?.periodLabel ? ` · ${filtered.periodLabel}` : sinceLabel ? ` · from ${sinceLabel}` : ''}
+            {filtered?.periodLabel
+              ? ` · ${filtered.periodLabel}`
+              : earliestTradeLabel
+                ? ` · from ${earliestTradeLabel}`
+                : ''}
           </p>
           {filtered?.methodologyNote && (
             <p className="text-[10px] text-[#8a8f98]/70 mt-1 max-w-2xl leading-relaxed">
@@ -345,7 +540,10 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
           )}
         </div>
         <div className="p-4 pt-2">
-          <div className="h-[280px] sm:h-[320px] w-full relative" dir="ltr">
+          <div
+            className="h-[280px] sm:h-[320px] w-full relative"
+            dir="ltr"
+          >
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 4, bottom: 4 }}>
@@ -433,7 +631,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
               </h3>
               <p className="text-xs text-[#8a8f98] mt-0.5">
                 {listTab === 'tokens'
-                  ? 'Priced trade notional grouped by token · sorted by volume'
+                  ? 'Trade notional by token · unpriced groups listed separately · sorted by volume'
                   : 'Newest trade-classified transactions in this window'}
               </p>
             </div>
@@ -466,7 +664,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
           {listTab === 'tokens' ? (
             byToken.length === 0 ? (
               <div className="p-8 text-center">
-                <p className="text-sm text-[#8a8f98]">No priced token volume in this window.</p>
+                <p className="text-sm text-[#8a8f98]">No token volume in this window.</p>
               </div>
             ) : (
               <>
@@ -492,21 +690,29 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
                                 {row.tokenSymbol.slice(0, 3).toUpperCase()}
                               </div>
                               <div>
-                                <p className="font-medium text-[#f7f8f8]">{row.tokenSymbol}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-[#f7f8f8]">{row.tokenSymbol}</p>
+                                  {row.unpriced && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-[#8a8f98]">
+                                      Unpriced
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[11px] text-[#8a8f98]">
                                   {networkLabel(row.network)}
+                                  {row.tokenAddress ? ` · ${shortAddr(row.tokenAddress)}` : ''}
                                 </p>
                               </div>
                             </div>
                           </td>
                           <td
                             className="px-4 py-3 text-right font-mono-num font-medium"
-                            style={{ color: ACCENT }}
+                            style={{ color: row.unpriced ? '#8a8f98' : ACCENT }}
                           >
-                            {formatUsd(row.volumeUsd)}
+                            {row.unpriced ? 'Unpriced' : formatUsd(row.volumeUsd)}
                           </td>
                           <td className="px-4 py-3 text-right font-mono-num text-[#d0d6e0]">
-                            {row.pct.toFixed(1)}%
+                            {row.unpriced ? '—' : `${row.pct.toFixed(1)}%`}
                           </td>
                           <td className="px-4 py-3 text-right text-[#8a8f98] font-mono-num">
                             {row.tradeCount}
@@ -524,16 +730,29 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
                           {row.tokenSymbol.slice(0, 3).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-[#f7f8f8] truncate">{row.tokenSymbol}</p>
-                          <p className="text-[11px] text-[#8a8f98]">{networkLabel(row.network)}</p>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <p className="font-medium text-[#f7f8f8] truncate">{row.tokenSymbol}</p>
+                            {row.unpriced && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-[#8a8f98] shrink-0">
+                                Unpriced
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-[#8a8f98]">
+                            {networkLabel(row.network)}
+                            {row.tokenAddress ? ` · ${shortAddr(row.tokenAddress)}` : ''}
+                          </p>
                         </div>
                         <span className="text-xs text-[#8a8f98] font-mono-num shrink-0">
-                          {row.pct.toFixed(1)}%
+                          {row.unpriced ? '—' : `${row.pct.toFixed(1)}%`}
                         </span>
                       </div>
                       <div className="flex items-baseline justify-between">
-                        <span className="text-lg font-bold font-mono-num" style={{ color: ACCENT }}>
-                          {formatUsd(row.volumeUsd)}
+                        <span
+                          className="text-lg font-bold font-mono-num"
+                          style={{ color: row.unpriced ? '#8a8f98' : ACCENT }}
+                        >
+                          {row.unpriced ? 'Unpriced' : formatUsd(row.volumeUsd)}
                         </span>
                         <span className="text-xs text-[#8a8f98]">
                           {row.tradeCount} trade{row.tradeCount === 1 ? '' : 's'}
@@ -581,6 +800,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
                             <p className="font-medium text-[#f7f8f8]">{tx.tokenSymbol}</p>
                             <p className="text-[11px] text-[#8a8f98]">
                               {networkLabel(tx.network)}
+                              {tx.tokenAddress ? ` · ${shortAddr(tx.tokenAddress)}` : ''}
                               {tx.methodName ? ` · ${tx.methodName}` : ''}
                             </p>
                           </td>
@@ -591,7 +811,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
                             className="px-4 py-3 text-right font-mono-num font-medium"
                             style={{ color: tx.volumeUsd != null ? ACCENT : '#8a8f98' }}
                           >
-                            {tx.volumeUsd != null ? formatUsd(tx.volumeUsd) : '—'}
+                            {tx.volumeUsd != null ? formatUsd(tx.volumeUsd) : 'Unpriced'}
                           </td>
                           <td className="px-4 py-3 text-right">
                             {url ? (
@@ -625,7 +845,8 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
                         <div className="min-w-0">
                           <p className="font-medium text-[#f7f8f8]">{tx.tokenSymbol}</p>
                           <p className="text-[11px] text-[#8a8f98]">
-                            {networkLabel(tx.network)} ·{' '}
+                            {networkLabel(tx.network)}
+                            {tx.tokenAddress ? ` · ${shortAddr(tx.tokenAddress)}` : ''} ·{' '}
                             {new Date(`${tx.date}T00:00:00.000Z`).toLocaleDateString('en-US', {
                               month: 'short',
                               day: 'numeric',
@@ -637,7 +858,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
                           className="font-mono-num font-medium shrink-0"
                           style={{ color: tx.volumeUsd != null ? ACCENT : '#8a8f98' }}
                         >
-                          {tx.volumeUsd != null ? formatUsd(tx.volumeUsd) : '—'}
+                          {tx.volumeUsd != null ? formatUsd(tx.volumeUsd) : 'Unpriced'}
                         </span>
                       </div>
                       <p className="text-[11px] text-[#8a8f98]">
@@ -668,43 +889,81 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
         <p className="text-[11px] text-[#8a8f98] leading-relaxed">
           <span className="text-[#d0d6e0] font-medium">Methodology. </span>
           {detail.methodology}{' '}
-          {filtered?.methodologyNote} Period start is never before the earliest synced trade.
+          {filtered?.methodologyNote} Custom From can be any date up to To / today.
           Trading volume is excluded from Inflow / Outflow.
         </p>
       </div>
+
+      {/* AI Analysis */}
+      <AIAnalysisSection
+        transactions={analysisTransactions}
+        sectionTitle="Trading Volume"
+        sectionColor={ACCENT}
+        sectionType="trading-volume"
+      />
     </div>
   );
 }
 
 function PageHeader({
   onBack,
-  sinceLabel,
+  earliestTradeLabel,
+  onDownloadPdf,
+  onDownloadExcel,
+  exportDisabled = false,
 }: {
   onBack: () => void;
-  sinceLabel: string | null;
+  earliestTradeLabel: string | null;
+  onDownloadPdf?: () => void | Promise<void>;
+  onDownloadExcel?: () => void | Promise<void>;
+  exportDisabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <button
-        type="button"
-        onClick={onBack}
-        className="w-9 h-9 rounded-lg bg-[#0f1011] border border-white/5 flex items-center justify-center hover:bg-[#191a1b] transition-colors"
-        aria-label="Back to dashboard"
-      >
-        <ArrowRight className="h-4 w-4 text-[#8a8f98]" />
-      </button>
-      <div className="flex items-center gap-2.5">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#a855f7]/10">
-          <ArrowLeftRight className="h-5 w-5 text-[#a855f7]" />
+    <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="w-9 h-9 rounded-lg bg-[#0f1011] border border-white/5 flex items-center justify-center hover:bg-[#191a1b] transition-colors"
+          aria-label="Back to dashboard"
+        >
+          <ArrowRight className="h-4 w-4 text-[#8a8f98]" />
+        </button>
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#a855f7]/10">
+            <ArrowLeftRight className="h-5 w-5 text-[#a855f7]" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-[#f7f8f8]">Trading volume</h2>
+            <p className="text-xs text-[#8a8f98]">
+              {earliestTradeLabel
+                ? `All synced history · earliest trade ${earliestTradeLabel}`
+                : 'All synced trade history'}
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-[#f7f8f8]">Trading volume</h2>
-          <p className="text-xs text-[#8a8f98]">
-            {sinceLabel
-              ? `All synced history · from ${sinceLabel}`
-              : 'All synced trade history (not since connected)'}
-          </p>
-        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+          onClick={onDownloadPdf}
+          disabled={exportDisabled || !onDownloadPdf}
+        >
+          <FileText className="h-4 w-4 ml-1" />
+          Download PDF
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-[#191a1b] border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
+          onClick={onDownloadExcel}
+          disabled={exportDisabled || !onDownloadExcel}
+        >
+          <FileSpreadsheet className="h-4 w-4 ml-1" />
+          Download Excel
+        </Button>
       </div>
     </div>
   );
