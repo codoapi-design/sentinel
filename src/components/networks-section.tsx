@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Globe,
@@ -17,26 +17,34 @@ import { cn } from '@/lib/utils';
 import {
   computeFinancialSummary,
 } from '@/lib/finance/summary';
+import {
+  filterVisibleTransactions,
+  isHiddenSpamOrDustTx,
+} from '@/lib/finance/visibility';
 import { TablePagination } from '@/components/table-pagination';
 import { useTablePagination } from '@/hooks/use-table-pagination';
+import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
+import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
+import {
+  NetworksPageFilterStats,
+  type NetworkFilterStatRow,
+} from '@/components/networks-filter-stats';
 
 interface NetworksSectionProps {
   transactions: Transaction[];
   onNetworkClick: (networkId: string) => void;
+  onFilteredDataChange?: (data: NetworkStats[]) => void;
 }
 
-interface NetworkStats {
-  networkId: string;
-  networkLabel: string;
-  totalRevenue: number;
-  totalExpenses: number;
-  totalVolume: number;
-  txCount: number;
-  netFlow: number;
-  gasFees: number;
+export interface NetworkStats extends NetworkFilterStatRow {
   lastTxDate: string | null;
   topToken: string | null;
   color: string;
+}
+
+interface NetworksTabProps {
+  transactions: Transaction[];
+  onNetworkClick: (networkId: string) => void;
 }
 
 const networkColors: Record<string, string> = {
@@ -47,10 +55,60 @@ const networkColors: Record<string, string> = {
   bsc: '#f0b90b',
 };
 
-export function NetworksSection({ transactions, onNetworkClick }: NetworksSectionProps) {
+/**
+ * Full sidebar Networks view: filter-bound 2×4 stats + table.
+ * Stats track the same visible list as NetworksSection (spam/$0).
+ */
+export function NetworksTab({
+  transactions,
+  onNetworkClick,
+}: NetworksTabProps) {
+  const [filteredData, setFilteredData] = useState<NetworkStats[]>([]);
+  const [filtersReady, setFiltersReady] = useState(false);
+
+  const handleFilteredDataChange = useCallback((data: NetworkStats[]) => {
+    setFiltersReady(true);
+    setFilteredData(data);
+  }, []);
+
+  const statsNetworks = filtersReady ? filteredData : [];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Networks</h2>
+        <p className="text-sm text-[#8a8f98]">
+          All networks you&apos;ve transacted on and details per network
+        </p>
+      </div>
+      <NetworksPageFilterStats networks={statsNetworks} />
+      <NetworksSection
+        transactions={transactions}
+        onNetworkClick={onNetworkClick}
+        onFilteredDataChange={handleFilteredDataChange}
+      />
+    </div>
+  );
+}
+
+export function NetworksSection({
+  transactions,
+  onNetworkClick,
+  onFilteredDataChange,
+}: NetworksSectionProps) {
+  const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
+  const hasHiddenItems = useMemo(
+    () => transactions.some((tx) => isHiddenSpamOrDustTx(tx, false)),
+    [transactions],
+  );
+  const visibleTransactions = useMemo(
+    () => filterVisibleTransactions(transactions, showSpamAndDust),
+    [transactions, showSpamAndDust],
+  );
+
   const networkStats = useMemo((): NetworkStats[] => {
     const byNetwork = new Map<string, Transaction[]>();
-    for (const tx of transactions) {
+    for (const tx of visibleTransactions) {
       const list = byNetwork.get(tx.network) || [];
       list.push(tx);
       byNetwork.set(tx.network, list);
@@ -86,7 +144,11 @@ export function NetworksSection({ transactions, onNetworkClick }: NetworksSectio
 
     result.sort((a, b) => b.txCount - a.txCount);
     return result;
-  }, [transactions]);
+  }, [visibleTransactions]);
+
+  useEffect(() => {
+    onFilteredDataChange?.(networkStats);
+  }, [networkStats, onFilteredDataChange]);
 
   const {
     page,
@@ -100,15 +162,31 @@ export function NetworksSection({ transactions, onNetworkClick }: NetworksSectio
     return (
       <Card className="bg-[#0f1011] border-white/5">
         <CardHeader className="pb-4">
-          <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
-            <Globe className="h-5 w-5 text-[#627eea]" />
-            Networks
-          </CardTitle>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
+                <Globe className="h-5 w-5 text-[#627eea]" />
+                Networks
+              </CardTitle>
+              {hasHiddenItems && !showSpamAndDust ? (
+                <p className="text-[10px] text-[#8a8f98] mt-1">spam & $0 hidden</p>
+              ) : null}
+            </div>
+            <ShowSpamDustToggle compact />
+          </div>
         </CardHeader>
         <CardContent className="text-center py-8">
           <Globe className="h-10 w-10 text-[#28282c] mx-auto mb-3" />
-          <p className="text-sm text-[#8a8f98]">No transactions yet</p>
-          <p className="text-xs text-[#8a8f98]/60 mt-1">Networks you interact with will appear here automatically</p>
+          <p className="text-sm text-[#8a8f98]">
+            {hasHiddenItems && !showSpamAndDust && visibleTransactions.length === 0
+              ? 'No networks to show'
+              : 'No transactions yet'}
+          </p>
+          <p className="text-xs text-[#8a8f98]/60 mt-1">
+            {hasHiddenItems && !showSpamAndDust && visibleTransactions.length === 0
+              ? 'Enable Show spam & $0 if you expect dust'
+              : 'Networks you interact with will appear here automatically'}
+          </p>
         </CardContent>
       </Card>
     );
@@ -117,12 +195,20 @@ export function NetworksSection({ transactions, onNetworkClick }: NetworksSectio
   return (
     <Card className="bg-[#0f1011] border-white/5">
       <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
-            <Globe className="h-5 w-5 text-[#627eea]" />
-            Networks
-          </CardTitle>
-          <span className="text-xs text-[#8a8f98]">{networkStats.length} network</span>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
+              <Globe className="h-5 w-5 text-[#627eea]" />
+              Networks
+            </CardTitle>
+            {hasHiddenItems && !showSpamAndDust ? (
+              <p className="text-[10px] text-[#8a8f98] mt-1">spam & $0 hidden</p>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <ShowSpamDustToggle compact />
+            <span className="text-xs text-[#8a8f98]">{networkStats.length} network</span>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-0">

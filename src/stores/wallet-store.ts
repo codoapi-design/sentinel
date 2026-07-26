@@ -740,12 +740,27 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             }),
         }));
 
-        // Derive counterparties as clients so UI sections stay consistent
-        const clientMap = new Map<string, Client>();
-        for (const tx of normalized) {
-          const key = (tx.counterparty || '').toLowerCase();
-          if (!key || !key.startsWith('0x')) continue;
-          if (!clientMap.has(key)) {
+        set(state => {
+          const existing = state.clientsMap[walletId] || [];
+          const existingByKey = new Map(
+            existing.map(c => [(c.address || '').toLowerCase(), c]),
+          );
+
+          // Rebuild counterparties from txs, but preserve existing custom names
+          const clientMap = new Map<string, Client>();
+          for (const tx of normalized) {
+            const key = (tx.counterparty || '').toLowerCase();
+            if (!key || !key.startsWith('0x')) continue;
+            if (clientMap.has(key)) continue;
+
+            const prev = existingByKey.get(key);
+            if (prev) {
+              // Keep prior client entry (custom name, notes, color, id)
+              clientMap.set(key, prev);
+              continue;
+            }
+
+            // Auto-label unnamed addresses only
             clientMap.set(key, {
               id: `client-auto-${key.slice(2, 8)}`,
               name: tx.counterpartyLabel || `${key.slice(0, 6)}...${key.slice(-4)}`,
@@ -755,12 +770,27 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               createdAt: new Date().toISOString().split('T')[0],
             });
           }
-        }
 
-        set(state => ({
-          transactionsMap: { ...state.transactionsMap, [walletId]: normalized },
-          clientsMap: { ...state.clientsMap, [walletId]: Array.from(clientMap.values()) },
-        }));
+          // Retain user-defined clients that are not in the current tx set
+          for (const [key, client] of existingByKey) {
+            if (clientMap.has(key)) continue;
+            if (
+              client.id.startsWith('client-auto-') ||
+              client.id.startsWith('addr-')
+            ) {
+              continue;
+            }
+            clientMap.set(key, client);
+          }
+
+          return {
+            transactionsMap: { ...state.transactionsMap, [walletId]: normalized },
+            clientsMap: {
+              ...state.clientsMap,
+              [walletId]: Array.from(clientMap.values()),
+            },
+          };
+        });
       },
 
       setClients: (walletId: string, clients: Client[]) => {

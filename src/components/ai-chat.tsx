@@ -1,23 +1,31 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  MessageCircle, X, Send, Bot, User, Trash2,
+  X, Send, Bot, User, Trash2,
   AlertCircle, Sparkles, Copy, Check, Zap,
 } from 'lucide-react';
 import { useAIStore } from '@/stores/ai-store';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { FloatingChatButton } from './floating-chat-button';
 
 export function AIChat() {
   const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Portal to document.body so dashboard flex layout cannot stretch/offset the FAB.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const {
     messages,
@@ -126,35 +134,14 @@ export function AIChat() {
     return 'Smart Accountant is thinking...';
   };
 
-  return (
+  const chatUi = (
     <>
-      {/* Chat Bubble */}
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 left-6 z-50 group relative"
-        >
-          <div className="w-14 h-14 bg-[#0052ff] hover:bg-[#0045dd] rounded-full shadow-lg shadow-[#0052ff]/25 flex items-center justify-center text-white transition-all duration-300 hover:scale-105">
-            <MessageCircle className="h-6 w-6" />
-          </div>
-          {/* Notification dot for remaining chats */}
-          {usage.remainingChats < Infinity && (
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#0ecb81] rounded-full flex items-center justify-center">
-              <span className="text-[9px] font-bold text-white">
-                {usage.remainingChats > 99 ? '99+' : usage.remainingChats}
-              </span>
-            </div>
-          )}
-          {/* Tooltip */}
-          <div className="absolute bottom-full left-0 mb-2 px-3 py-1.5 bg-[#191a1b] border border-white/10 rounded-lg text-xs text-[#d0d6e0] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            Smart Accountant — Ask me anything
-          </div>
-        </button>
-      )}
+      {/* Chat Bubble — always when closed; never gated on wallets/plan/tab */}
+      {!isOpen && <FloatingChatButton onClick={() => setIsOpen(true)} />}
 
       {/* Chat Panel */}
       {isOpen && (
-        <div className="fixed bottom-6 left-6 z-50 w-[420px] max-w-[calc(100vw-3rem)] h-[580px] max-h-[calc(100vh-6rem)] bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">
+        <div className="fixed bottom-6 left-6 z-[100] w-[420px] max-w-[calc(100vw-3rem)] h-[580px] max-h-[calc(100vh-6rem)] bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0f1011]">
             <div className="flex items-center gap-3">
@@ -423,4 +410,7 @@ export function AIChat() {
       )}
     </>
   );
+
+  if (!mounted) return null;
+  return createPortal(chatUi, document.body);
 }

@@ -5,7 +5,8 @@
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import type ExcelJS from 'exceljs';
-import type { Transaction } from '@/lib/mock-data';
+import type { Client, Transaction } from '@/lib/mock-data';
+import { resolveCounterpartyDisplay } from '@/lib/clients/display';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 
 export type ReportKV = { label: string; value: string };
@@ -38,6 +39,8 @@ export type TransactionReportOpts = {
   subtitle?: string;
   filenameBase: string;
   transactions: Transaction[];
+  /** Named clients for counterparty display in export rows. */
+  clients?: Client[];
   /** Extra summary rows prepended before auto totals. */
   extraSummary?: ReportKV[];
   charts?: ReportChartImage[];
@@ -1217,7 +1220,13 @@ export function buildTransactionsReportPayload(
           tx.price,
           tx.value,
           tx.networkLabel || tx.network,
-          tx.counterpartyLabel || tx.counterparty || '',
+          resolveCounterpartyDisplay(
+            {
+              counterparty: tx.counterparty,
+              counterpartyLabel: tx.counterpartyLabel,
+            },
+            opts.clients,
+          ),
           tx.txHash,
         ]),
       },

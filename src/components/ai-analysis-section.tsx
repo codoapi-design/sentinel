@@ -13,7 +13,8 @@ import {
   Lightbulb, AlertTriangle, Sparkles, FileText, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { type Transaction } from '@/lib/mock-data';
+import { type Transaction, type Client } from '@/lib/mock-data';
+import { resolveCounterpartyDisplay } from '@/lib/clients/display';
 
 // ============================================================
 // Types
@@ -108,7 +109,7 @@ function calculateSummaryStats(transactions: Transaction[]): Record<string, numb
 // Helper: Calculate grouped data
 // ============================================================
 
-function calculateGroupedData(transactions: Transaction[]) {
+function calculateGroupedData(transactions: Transaction[], clients: Client[] = []) {
   // Group by date
   const byDateMap: Record<string, number> = {};
   transactions.forEach(tx => {
@@ -140,10 +141,16 @@ function calculateGroupedData(transactions: Transaction[]) {
     .sort(([, a], [, b]) => b - a)
     .map(([network, value], i) => ({ network, value: Math.round(value * 100) / 100, fill: CHART_COLORS[i % CHART_COLORS.length] }));
 
-  // Group by counterparty
+  // Group by counterparty — prefer named clients
   const byCounterpartyMap: Record<string, number> = {};
   transactions.forEach(tx => {
-    const label = tx.counterpartyLabel || tx.counterparty || 'Unknown';
+    const label = resolveCounterpartyDisplay(
+      {
+        counterparty: tx.counterparty,
+        counterpartyLabel: tx.counterpartyLabel,
+      },
+      clients,
+    );
     byCounterpartyMap[label] = (byCounterpartyMap[label] || 0) + (tx.value || 0);
   });
   const byCounterparty = Object.entries(byCounterpartyMap)
@@ -161,6 +168,7 @@ function calculateGroupedData(transactions: Transaction[]) {
 interface AIAnalysisSectionProps {
   // For inline mode (SectionPage) — manages its own state
   transactions?: Transaction[];
+  clients?: Client[];
   sectionTitle?: string;
   sectionColor?: string;
   sectionType?: string;
@@ -181,6 +189,7 @@ interface AIAnalysisSectionProps {
 
 export function AIAnalysisSection({
   transactions,
+  clients = [],
   sectionTitle,
   sectionColor = '#0052ff',
   sectionType,
@@ -217,7 +226,7 @@ export function AIAnalysisSection({
 
     try {
       const summaryStats = calculateSummaryStats(transactions);
-      const groupedData = calculateGroupedData(transactions);
+      const groupedData = calculateGroupedData(transactions, clients);
 
       const context = {
         userId: 'user-session',
@@ -234,6 +243,7 @@ export function AIAnalysisSection({
           transactions: transactions.slice(0, 50),
           summaryStats,
           groupedData,
+          clients,
         }),
       });
 
@@ -254,7 +264,7 @@ export function AIAnalysisSection({
     } finally {
       setInternalLoading(false);
     }
-  }, [transactions, sectionType]);
+  }, [transactions, clients, sectionType]);
 
   // Trend icon helper
   const getTrendIcon = (direction: string) => {

@@ -85,11 +85,8 @@ export const networks = [
   { value: 'bsc', label: 'BSC' },
 ];
 
-// Helper: get client name by address
-export function getClientNameByAddress(address: string, clients: Client[]): string | null {
-  const client = clients.find(c => c.address.toLowerCase() === address.toLowerCase());
-  return client ? client.name : null;
-}
+// Helper: get client name by address (meaningful custom names only)
+export { getClientNameByAddress } from '@/lib/clients/display';
 
 // Telegram notification settings defaults
 export const defaultTelegramSettings = {
@@ -240,12 +237,10 @@ export const pricingTiers: PricingTier[] = [
       'AI Assistant — Unlimited messages',
       'Real-time sync (every 30 seconds)',
       'Custom reports for any period',
-      'Instant alerts + Webhooks',
+      'Instant alerts',
       'Advanced AI classification',
       'PDF, CSV & Excel export',
-      'Automated tax analysis (FIFO/LIFO)',
-      'API Access',
-      'Priority support + Dedicated accountant',
+      'Priority support',
     ],
     limits: {
       wallets: 25,

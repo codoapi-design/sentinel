@@ -13,10 +13,6 @@ export const USER_SCOPED_STORAGE_KEYS = [
   'cryptobooks-wallets',
   'cryptobooks-ai',
   'cryptobooks_subscription',
-  'cryptobooks_api_keys',
-  'cryptobooks_support',
-  'cryptobooks_tax',
-  'cryptobooks_webhooks',
   UI_PREFERENCES_STORAGE_KEY,
 ] as const;
 

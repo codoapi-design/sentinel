@@ -7,6 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDataWithAgent, type AgentContext } from '@/lib/ai/agent';
+import { resolveCounterpartyDisplay } from '@/lib/clients/display';
+import type { Client } from '@/lib/mock-data';
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,11 +19,13 @@ export async function POST(request: NextRequest) {
       transactions,
       summaryStats,
       groupedData,
+      clients = [],
     }: {
       context: AgentContext;
       transactions: Array<Record<string, unknown>>;
       summaryStats: Record<string, number>;
       groupedData: Record<string, unknown>;
+      clients?: Client[];
     } = body;
 
     // Validate required fields
@@ -53,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     // Calculate summary stats if not provided
     const stats = summaryStats || calculateSummaryStats(transactions);
-    const groups = groupedData || calculateGroupedData(transactions);
+    const groups = groupedData || calculateGroupedData(transactions, clients);
 
     // Call the AI agent
     const result = await analyzeDataWithAgent(context, transactions, stats, groups);
@@ -104,7 +108,10 @@ function calculateSummaryStats(transactions: Array<Record<string, unknown>>): Re
 // Helper: Calculate grouped data
 // ============================================================
 
-function calculateGroupedData(transactions: Array<Record<string, unknown>>): Record<string, unknown> {
+function calculateGroupedData(
+  transactions: Array<Record<string, unknown>>,
+  clients: Client[] = [],
+): Record<string, unknown> {
   // Group by date
   const byDateMap: Record<string, number> = {};
   transactions.forEach(tx => {
@@ -136,10 +143,16 @@ function calculateGroupedData(transactions: Array<Record<string, unknown>>): Rec
     .sort(([, a], [, b]) => b - a)
     .map(([network, value]) => ({ network, value: Math.round(value * 100) / 100 }));
 
-  // Group by counterparty
+  // Group by counterparty — prefer named clients
   const byCounterpartyMap: Record<string, number> = {};
   transactions.forEach(tx => {
-    const label = (tx.counterpartyLabel as string) || (tx.counterparty as string) || 'Unknown';
+    const label = resolveCounterpartyDisplay(
+      {
+        counterparty: tx.counterparty as string | null | undefined,
+        counterpartyLabel: tx.counterpartyLabel as string | null | undefined,
+      },
+      clients,
+    );
     byCounterpartyMap[label] = (byCounterpartyMap[label] || 0) + ((tx.value as number) || 0);
   });
   const byCounterparty = Object.entries(byCounterpartyMap)

@@ -32,7 +32,8 @@ import {
 } from '@/lib/finance/trading-volume-period';
 import { InvestmentReturnPeriodControls } from '@/components/investment-return-period-controls';
 import { AIAnalysisSection } from '@/components/ai-analysis-section';
-import type { Transaction } from '@/lib/mock-data';
+import type { Client, Transaction } from '@/lib/mock-data';
+import { resolveCounterpartyDisplay } from '@/lib/clients/display';
 import {
   downloadReportExcel,
   downloadReportPdf,
@@ -42,6 +43,7 @@ import { captureChartCard } from '@/lib/export/capture-chart';
 
 interface TradingVolumePageProps {
   onBack: () => void;
+  clients?: Client[];
 }
 
 const ACCENT = '#a855f7';
@@ -100,7 +102,7 @@ function explorerTxUrl(network: string, hash: string): string | null {
   return base ? `${base}${hash}` : null;
 }
 
-export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
+export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePageProps) {
   const reactId = useId().replace(/:/g, '');
   const { detail, isLoading, error, refetch } = useTradingVolumeDetail();
   const gradId = `tradingVolGrad-${reactId}`;
@@ -183,9 +185,15 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
       networkLabel: networkLabel(tx.network),
       txHash: tx.hash,
       counterparty: tx.counterparty || '',
-      counterpartyLabel: tx.counterpartyLabel || shortAddr(tx.counterparty),
+      counterpartyLabel: resolveCounterpartyDisplay(
+        {
+          counterparty: tx.counterparty,
+          counterpartyLabel: tx.counterpartyLabel,
+        },
+        clients,
+      ),
     }));
-  }, [trades]);
+  }, [trades, clients]);
 
   const buildExportPayload = useCallback((): ReportPayload | null => {
     if (!detail || !filtered) return null;
@@ -245,7 +253,13 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
             tx.date,
             tx.tokenSymbol,
             networkLabel(tx.network),
-            tx.counterpartyLabel || tx.counterparty || '',
+            resolveCounterpartyDisplay(
+              {
+                counterparty: tx.counterparty,
+                counterpartyLabel: tx.counterpartyLabel,
+              },
+              clients,
+            ),
             tx.volumeUsd != null ? tx.volumeUsd.toFixed(2) : '',
             tx.hash,
             tx.methodName || '',
@@ -253,7 +267,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
         },
       ],
     };
-  }, [detail, filtered, byToken, trades, earliestTradeLabel]);
+  }, [detail, filtered, byToken, trades, earliestTradeLabel, clients]);
 
   const handleDownloadExcel = useCallback(async () => {
     try {
@@ -805,7 +819,13 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
                             </p>
                           </td>
                           <td className="px-4 py-3 text-xs text-[#8a8f98]">
-                            {tx.counterpartyLabel || shortAddr(tx.counterparty)}
+                            {resolveCounterpartyDisplay(
+                              {
+                                counterparty: tx.counterparty,
+                                counterpartyLabel: tx.counterpartyLabel,
+                              },
+                              clients,
+                            )}
                           </td>
                           <td
                             className="px-4 py-3 text-right font-mono-num font-medium"
@@ -862,7 +882,13 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
                         </span>
                       </div>
                       <p className="text-[11px] text-[#8a8f98]">
-                        {tx.counterpartyLabel || shortAddr(tx.counterparty)}
+                        {resolveCounterpartyDisplay(
+                          {
+                            counterparty: tx.counterparty,
+                            counterpartyLabel: tx.counterpartyLabel,
+                          },
+                          clients,
+                        )}
                       </p>
                       {url && (
                         <a
@@ -897,6 +923,7 @@ export function TradingVolumePage({ onBack }: TradingVolumePageProps) {
       {/* AI Analysis */}
       <AIAnalysisSection
         transactions={analysisTransactions}
+        clients={clients}
         sectionTitle="Trading Volume"
         sectionColor={ACCENT}
         sectionType="trading-volume"

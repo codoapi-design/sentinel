@@ -11,7 +11,6 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   registration_enabled: 'true',
   email_verification_required: 'true',
   max_wallets_per_user: '10',
-  max_api_keys_per_user: '5',
   ai_model: 'openai/o4-mini',
   ai_daily_limit: '50',
   ai_max_tokens: '4096',

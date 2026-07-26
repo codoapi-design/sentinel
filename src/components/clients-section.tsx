@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -35,24 +34,14 @@ import { TablePagination } from '@/components/table-pagination';
 import { useTablePagination } from '@/hooks/use-table-pagination';
 import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
+import { ClientsPageFilterStats } from '@/components/clients-filter-stats';
 
 const clientColors = [
   '#ff007a', '#0052ff', '#0ecb81', '#f6465d', '#f7931a',
   '#627eea', '#b6509e', '#00d395', '#2775ca', '#8a8f98',
 ];
 
-interface ClientsSectionProps {
-  clients: Client[];
-  transactions: Transaction[];
-  onClientClick: (identifier: string) => void;
-  onDefineClient?: (address: string) => void;
-  onClientsChange?: (clients: Client[]) => void;
-  showToolbar?: boolean;
-  defineAddress?: string | null;
-  onDefineConsumed?: () => void;
-}
-
-interface CounterpartyStats {
+export interface CounterpartyStats {
   address: string;
   label: string;
   isDefined: boolean;
@@ -66,6 +55,84 @@ interface CounterpartyStats {
   topToken: string | null;
 }
 
+interface ClientsSectionProps {
+  clients: Client[];
+  transactions: Transaction[];
+  onClientClick: (identifier: string) => void;
+  onDefineClient?: (address: string) => void;
+  onClientsChange?: (clients: Client[]) => void;
+  showToolbar?: boolean;
+  defineAddress?: string | null;
+  onDefineConsumed?: () => void;
+  onFilteredDataChange?: (data: CounterpartyStats[]) => void;
+}
+
+interface ClientsTabProps {
+  clients: Client[];
+  transactions: Transaction[];
+  onClientClick: (identifier: string) => void;
+  onDefineClient?: (address: string) => void;
+  onClientsChange?: (clients: Client[]) => void;
+  defineAddress?: string | null;
+  onDefineConsumed?: () => void;
+}
+
+/**
+ * Full sidebar Clients view: filter-bound 2×4 stats + table.
+ * Stats track the same visible list as ClientsSection (spam/$0 + search).
+ */
+export function ClientsTab({
+  clients,
+  transactions,
+  onClientClick,
+  onDefineClient,
+  onClientsChange,
+  defineAddress,
+  onDefineConsumed,
+}: ClientsTabProps) {
+  const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
+  const visibleTransactions = useMemo(
+    () => filterVisibleTransactions(transactions, showSpamAndDust),
+    [transactions, showSpamAndDust],
+  );
+
+  const [filteredData, setFilteredData] = useState<CounterpartyStats[]>([]);
+  const [filtersReady, setFiltersReady] = useState(false);
+
+  const handleFilteredDataChange = useCallback((data: CounterpartyStats[]) => {
+    setFiltersReady(true);
+    setFilteredData(data);
+  }, []);
+
+  const statsClients = filtersReady ? filteredData : [];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Clients</h2>
+        <p className="text-sm text-[#8a8f98]">
+          All wallets you&apos;ve interacted with — name them for easy recognition
+        </p>
+      </div>
+      <ClientsPageFilterStats
+        clients={statsClients}
+        transactions={visibleTransactions}
+      />
+      <ClientsSection
+        clients={clients}
+        transactions={transactions}
+        onClientClick={onClientClick}
+        onDefineClient={onDefineClient}
+        onClientsChange={onClientsChange}
+        showToolbar={true}
+        defineAddress={defineAddress}
+        onDefineConsumed={onDefineConsumed}
+        onFilteredDataChange={handleFilteredDataChange}
+      />
+    </div>
+  );
+}
+
 export function ClientsSection({
   clients,
   transactions,
@@ -75,6 +142,7 @@ export function ClientsSection({
   showToolbar = false,
   defineAddress,
   onDefineConsumed,
+  onFilteredDataChange,
 }: ClientsSectionProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showDialog, setShowDialog] = useState(false);
@@ -244,6 +312,10 @@ export function ClientsSection({
       (cp.isDefined && cp.client?.notes.toLowerCase().includes(q))
     );
   }, [allCounterparties, searchQuery]);
+
+  useEffect(() => {
+    onFilteredDataChange?.(filteredCounterparties);
+  }, [filteredCounterparties, onFilteredDataChange]);
 
   const {
     page,

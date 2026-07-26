@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  type Client,
   type Transaction,
 } from '@/lib/mock-data';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
@@ -81,9 +82,10 @@ const typeConfig: Record<string, {
 interface TypeDetailPageProps {
   typeId: string;
   onBack: () => void;
+  clients?: Client[];
 }
 
-export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
+export function TypeDetailPage({ typeId, onBack, clients = [] }: TypeDetailPageProps) {
   const pageRef = useRef<HTMLDivElement>(null);
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
   /** False until ColumnFilterTable emits — charts fall back to typeTransactions. */
@@ -128,6 +130,7 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
         subtitle: typeDescription,
         filenameBase: `sentinel-type-${typeId}`,
         transactions: statsTransactions,
+        clients,
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -149,7 +152,7 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
     }
-  }, [typeLabel, typeDescription, typeId, statsTransactions]);
+  }, [typeLabel, typeDescription, typeId, statsTransactions, clients]);
 
   const handleDownloadPdf = useCallback(async () => {
     try {
@@ -158,6 +161,7 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
         subtitle: typeDescription,
         filenameBase: `sentinel-type-${typeId}`,
         transactions: statsTransactions,
+        clients,
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -179,7 +183,7 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
-  }, [typeLabel, typeDescription, typeId, statsTransactions]);
+  }, [typeLabel, typeDescription, typeId, statsTransactions, clients]);
 
   return (
     <div className="space-y-6" ref={pageRef}>
@@ -227,23 +231,6 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
         </div>
       </div>
 
-      {/* Transaction Table */}
-      <Card className="bg-[#0f1011] border-white/5">
-        <CardContent className="p-0">
-          <div className="p-4 border-b border-white/5">
-            <h3 className="text-sm font-medium text-[#f7f8f8]">Transactions of {typeLabel}</h3>
-            <p className="text-xs text-[#8a8f98] mt-0.5">
-              All transactions of type {typeLabel}
-            </p>
-          </div>
-          <ColumnFilterTable
-            transactions={typeTransactions}
-            showTypeColumn={true}
-            onFilteredDataChange={handleFilteredDataChange}
-          />
-        </CardContent>
-      </Card>
-
       {/* Filter-bound type stats (same set as table) */}
       <TypeTransactionFilterStats transactions={statsTransactions} />
 
@@ -268,9 +255,28 @@ export function TypeDetailPage({ typeId, onBack }: TypeDetailPageProps) {
         />
       </div>
 
+      {/* Transaction Table */}
+      <Card className="bg-[#0f1011] border-white/5">
+        <CardContent className="p-0">
+          <div className="p-4 border-b border-white/5">
+            <h3 className="text-sm font-medium text-[#f7f8f8]">Transactions of {typeLabel}</h3>
+            <p className="text-xs text-[#8a8f98] mt-0.5">
+              All transactions of type {typeLabel}
+            </p>
+          </div>
+          <ColumnFilterTable
+            transactions={typeTransactions}
+            showTypeColumn={true}
+            onFilteredDataChange={handleFilteredDataChange}
+            clients={clients}
+          />
+        </CardContent>
+      </Card>
+
       {/* AI Analysis */}
       <AIAnalysisSection
         transactions={statsTransactions}
+        clients={clients}
         sectionTitle={`Transactions of ${typeLabel}`}
         sectionColor={typeColor}
         sectionType={isNetPositive ? 'revenue' : 'expenses'}

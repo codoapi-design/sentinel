@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,6 +61,7 @@ import {
   type Client,
   getClientNameByAddress,
 } from '@/lib/mock-data';
+import { resolveCounterpartyDisplay } from '@/lib/clients/display';
 import { cn } from '@/lib/utils';
 import {
   buildTransactionsReportPayload,
@@ -74,6 +75,7 @@ import {
 } from '@/lib/finance/visibility';
 import { ON_CHAIN_ACTIVITY_LABELS } from '@/lib/finance/activity';
 import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
+import { TransactionsPageFilterStats } from '@/components/transaction-filter-stats';
 
 const typeColors: Record<string, string> = {
   income: 'bg-[#0ecb81]/10 text-[#0ecb81] border-[#0ecb81]/20',
@@ -484,6 +486,7 @@ function TransactionDetailModal({
   onCopyHash,
   onCopyCounterparty,
   copiedField,
+  clients = [],
 }: {
   tx: Transaction | null;
   open: boolean;
@@ -491,6 +494,7 @@ function TransactionDetailModal({
   onCopyHash: (text: string) => void;
   onCopyCounterparty: (text: string) => void;
   copiedField: string | null;
+  clients?: Client[];
 }) {
   if (!tx) return null;
 
@@ -508,6 +512,14 @@ function TransactionDetailModal({
     };
     return `${explorers[network] || 'https://etherscan.io'}/tx/${hash}`;
   };
+
+  const counterpartyDisplay = resolveCounterpartyDisplay(
+    {
+      counterparty: tx.counterparty,
+      counterpartyLabel: tx.counterpartyLabel,
+    },
+    clients,
+  );
 
   const detailItems = [
     { icon: <Calendar className="h-4 w-4 text-[#8a8f98]" />, label: 'Date', value: tx.date },
@@ -600,7 +612,7 @@ function TransactionDetailModal({
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#d0d6e0] font-medium">{tx.counterpartyLabel}</span>
+              <span className="text-xs text-[#d0d6e0] font-medium">{counterpartyDisplay}</span>
             </div>
             <p className="font-mono text-[11px] text-[#8a8f98] break-all" dir="ltr">{tx.counterparty}</p>
           </div>
@@ -622,14 +634,76 @@ function TransactionDetailModal({
 }
 
 // ────────────────────────────────────────────────
+// Sidebar Transactions tab (stats always visible)
+// ────────────────────────────────────────────────
+interface TransactionsTabProps {
+  clients?: Client[];
+  transactions?: Transaction[];
+}
+
+/**
+ * Full sidebar Transactions view: filter-bound 2×5 stats + table.
+ * Stats initialize from the full list immediately (no empty wait for filtersReady).
+ */
+export function TransactionsTab({
+  clients = [],
+  transactions = [],
+}: TransactionsTabProps) {
+  const [filteredData, setFilteredData] = useState<Transaction[]>(transactions);
+  const [filtersReady, setFiltersReady] = useState(false);
+
+  useEffect(() => {
+    if (!filtersReady) {
+      setFilteredData(transactions);
+    }
+  }, [transactions, filtersReady]);
+
+  const handleFilteredDataChange = useCallback((data: Transaction[]) => {
+    setFiltersReady(true);
+    setFilteredData(data);
+  }, []);
+
+  const statsTransactions = filtersReady ? filteredData : transactions;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Transactions</h2>
+        <p className="text-sm text-[#8a8f98]">View and filter all your transactions</p>
+      </div>
+      <TransactionsPageFilterStats
+        transactions={statsTransactions}
+        clients={clients}
+      />
+      <TransactionsTable
+        clients={clients}
+        transactions={transactions}
+        onFilteredDataChange={handleFilteredDataChange}
+      />
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
 // Main TransactionsTable Component
 // ────────────────────────────────────────────────
 interface TransactionsTableProps {
   clients?: Client[];
   transactions?: Transaction[];
+  /**
+   * @deprecated Prefer wrapping with `TransactionsTab` for the sidebar tab.
+   * When true, also render stats above the table (kept for compatibility).
+   */
+  showFilterStats?: boolean;
+  onFilteredDataChange?: (data: Transaction[]) => void;
 }
 
-export function TransactionsTable({ clients = [], transactions = [] }: TransactionsTableProps) {
+export function TransactionsTable({
+  clients = [],
+  transactions = [],
+  showFilterStats = false,
+  onFilteredDataChange,
+}: TransactionsTableProps) {
   // Purely presentational: transactions are supplied by the parent dashboard
   // (real synced data from the store, or demo mock data). No data is generated here.
   const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
@@ -718,6 +792,10 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
     return result;
   }, [allTransactions, activityFilter, typeFilter, dateFrom, dateTo, tokenSearch, amountMin, amountMax, networkSearch, hashSearch, sortField, sortDir]);
 
+  useEffect(() => {
+    onFilteredDataChange?.(filteredTransactions);
+  }, [filteredTransactions, onFilteredDataChange]);
+
   // Total value of filtered transactions
   const totalFilteredValue = useMemo(() => {
     return filteredTransactions.reduce((sum, tx) => sum + tx.value, 0);
@@ -730,6 +808,7 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
         subtitle: 'Filtered wallet transactions',
         filenameBase: 'sentinel-transactions',
         transactions: filteredTransactions,
+        clients,
         extraSummary: [
           {
             label: 'Filtered total (USD)',
@@ -755,6 +834,7 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
         subtitle: 'Filtered wallet transactions',
         filenameBase: 'sentinel-transactions',
         transactions: filteredTransactions,
+        clients,
         extraSummary: [
           {
             label: 'Filtered total (USD)',
@@ -896,7 +976,13 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
   };
 
   return (
-    <>
+    <div className="space-y-4">
+      {showFilterStats && (
+        <TransactionsPageFilterStats
+          transactions={filteredTransactions}
+          clients={clients}
+        />
+      )}
       <Card className="bg-[#0f1011] border-white/5">
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1242,6 +1328,13 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
                         <div className="flex flex-col">
                           {(() => {
                             const clientName = getClientNameByAddress(tx.counterparty, clients);
+                            const display = resolveCounterpartyDisplay(
+                              {
+                                counterparty: tx.counterparty,
+                                counterpartyLabel: tx.counterpartyLabel,
+                              },
+                              clients,
+                            );
                             return clientName ? (
                               <>
                                 <span className="text-[11px] text-[#b6509e] font-medium">{clientName}</span>
@@ -1262,7 +1355,7 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
                               </>
                             ) : (
                               <>
-                                <span className="text-[11px] text-[#d0d6e0] font-medium">{tx.counterpartyLabel}</span>
+                                <span className="text-[11px] text-[#d0d6e0] font-medium">{display}</span>
                                 <div className="flex items-center gap-1">
                                   <span className="text-[9px] text-[#8a8f98] font-mono" dir="ltr">{truncateHash(tx.counterparty)}</span>
                                   <button
@@ -1397,7 +1490,8 @@ export function TransactionsTable({ clients = [], transactions = [] }: Transacti
         onCopyHash={(text) => copyModalField(text, 'hash')}
         onCopyCounterparty={(text) => copyModalField(text, 'counterparty')}
         copiedField={copiedField}
+        clients={clients}
       />
-    </>
+    </div>
   );
 }

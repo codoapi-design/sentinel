@@ -154,6 +154,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
         subtitle: `Asset transactions · ${asset.symbol}`,
         filenameBase: `sentinel-asset-${asset.symbol.toLowerCase()}`,
         transactions: statsTransactions,
+        clients,
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -176,7 +177,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
     }
-  }, [asset, statsTransactions, buildAssetSummary]);
+  }, [asset, statsTransactions, buildAssetSummary, clients]);
 
   const handleDownloadPdf = useCallback(async () => {
     if (!asset) {
@@ -189,6 +190,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
         subtitle: `Asset transactions · ${asset.symbol}`,
         filenameBase: `sentinel-asset-${asset.symbol.toLowerCase()}`,
         transactions: statsTransactions,
+        clients,
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -210,7 +212,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
-  }, [asset, statsTransactions, buildAssetSummary]);
+  }, [asset, statsTransactions, buildAssetSummary, clients]);
 
   if (!asset) {
     return (
@@ -268,24 +270,6 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
           </Button>
         </div>
       </div>
-
-      {/* Transactions Table for this Asset */}
-      <Card className="bg-[#0f1011] border-white/5">
-        <CardContent className="p-0">
-          <div className="p-4 border-b border-white/5">
-            <h3 className="text-sm font-medium text-[#f7f8f8]">Transactions of {asset.name}</h3>
-            <p className="text-xs text-[#8a8f98] mt-0.5">
-              All transactions related to {asset.symbol}
-            </p>
-          </div>
-          <ColumnFilterTable
-            transactions={assetTransactions}
-            showTypeColumn={true}
-            onFilteredDataChange={handleFilteredDataChange}
-            clients={clients}
-          />
-        </CardContent>
-      </Card>
 
       {/* Asset + filter metric chips: always 2×5, no orphan cells */}
       <div className="space-y-2">
@@ -392,8 +376,27 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
         />
       </div>
 
+      {/* Transactions Table for this Asset */}
+      <Card className="bg-[#0f1011] border-white/5">
+        <CardContent className="p-0">
+          <div className="p-4 border-b border-white/5">
+            <h3 className="text-sm font-medium text-[#f7f8f8]">Transactions of {asset.name}</h3>
+            <p className="text-xs text-[#8a8f98] mt-0.5">
+              All transactions related to {asset.symbol}
+            </p>
+          </div>
+          <ColumnFilterTable
+            transactions={assetTransactions}
+            showTypeColumn={true}
+            onFilteredDataChange={handleFilteredDataChange}
+            clients={clients}
+          />
+        </CardContent>
+      </Card>
+
       <AIAnalysisSection
         transactions={statsTransactions}
+        clients={clients}
         sectionTitle={`Transactions of ${asset.name}`}
         sectionColor={asset.color}
         sectionType={'revenue' as const}

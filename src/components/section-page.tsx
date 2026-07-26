@@ -141,6 +141,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
       subtitle: config.description,
       filenameBase: `sentinel-${sectionType}`,
       transactions: filteredData,
+      clients,
       extraSummary: [
         {
           label: config.totalLabel,
@@ -148,7 +149,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
         },
       ],
     });
-  }, [config, sectionType, filteredData]);
+  }, [config, sectionType, filteredData, clients]);
 
   const handleDownloadExcel = useCallback(async () => {
     try {
@@ -282,6 +283,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
       {/* AI Analysis Section */}
       <AIAnalysisSection
         transactions={filteredData}
+        clients={clients}
         sectionTitle={config.title}
         sectionColor={config.color}
         sectionType={sectionType}

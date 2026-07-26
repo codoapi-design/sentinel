@@ -36,9 +36,15 @@ interface ClientDetailPageProps {
   client: Client;
   onBack: () => void;
   onDefineClient?: (address: string) => void;
+  clients?: Client[];
 }
 
-export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetailPageProps) {
+export function ClientDetailPage({
+  client,
+  onBack,
+  onDefineClient,
+  clients = [],
+}: ClientDetailPageProps) {
   const pageRef = useRef<HTMLDivElement>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [filteredData, setFilteredData] = useState<Transaction[]>([]);
@@ -93,6 +99,7 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
         subtitle: client.address,
         filenameBase: 'sentinel-client',
         transactions: statsTransactions,
+        clients,
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -114,7 +121,7 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
     }
-  }, [client.name, client.address, statsTransactions]);
+  }, [client.name, client.address, statsTransactions, clients]);
 
   const handleDownloadPdf = useCallback(async () => {
     try {
@@ -123,6 +130,7 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
         subtitle: client.address,
         filenameBase: 'sentinel-client',
         transactions: statsTransactions,
+        clients,
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -144,7 +152,7 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
-  }, [client.name, client.address, statsTransactions]);
+  }, [client.name, client.address, statsTransactions, clients]);
 
   return (
     <div className="space-y-6" ref={pageRef}>
@@ -231,6 +239,17 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
         </div>
       </div>
 
+      {/* Filter-bound client stats (same set as table) */}
+      <ClientTransactionFilterStats transactions={statsTransactions} />
+
+      {/* Client Flow — shared chart with Asset Details */}
+      <RelationshipPerformanceChart
+        transactions={chartTransactions}
+        title={`Client Flow · ${client.name}`}
+        subtitle="Cumulative inflow, outflow, net & volume · values in USD"
+        methodology="Based on filtered transactions with this client (synced wallet data)."
+      />
+
       {/* Transaction Table */}
       <Card className="bg-[#0f1011] border-white/5">
         <CardContent className="p-0">
@@ -244,24 +263,15 @@ export function ClientDetailPage({ client, onBack, onDefineClient }: ClientDetai
             transactions={clientTransactions}
             showTypeColumn={true}
             onFilteredDataChange={handleFilteredDataChange}
+            clients={clients}
           />
         </CardContent>
       </Card>
 
-      {/* Filter-bound client stats (same set as table) */}
-      <ClientTransactionFilterStats transactions={statsTransactions} />
-
-      {/* Client Flow — shared chart with Asset Details */}
-      <RelationshipPerformanceChart
-        transactions={chartTransactions}
-        title={`Client Flow · ${client.name}`}
-        subtitle="Cumulative inflow, outflow, net & volume · values in USD"
-        methodology="Based on filtered transactions with this client (synced wallet data)."
-      />
-
       {/* AI Analysis */}
       <AIAnalysisSection
         transactions={statsTransactions}
+        clients={clients}
         sectionTitle={`Transactions of ${client.name}`}
         sectionColor={client.color}
         sectionType={isNetPositive ? 'revenue' : 'expenses'}

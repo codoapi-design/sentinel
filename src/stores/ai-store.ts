@@ -443,14 +443,18 @@ export const useAIStore = create<AIState & AIActions>()(
         if (!walletCtx?.activeWalletId) return null;
 
         try {
-          const raw = localStorage.getItem('cryptobooks-wallets');
+          const raw =
+            localStorage.getItem('sentinel-wallets') ||
+            localStorage.getItem('cryptobooks-wallets');
           if (!raw) return null;
 
           const parsed = JSON.parse(raw);
-          const transactions = parsed?.state?.transactionsMap?.[walletCtx.activeWalletId];
+          const walletId = walletCtx.activeWalletId;
+          const transactions = parsed?.state?.transactionsMap?.[walletId];
           if (!Array.isArray(transactions) || transactions.length === 0) return null;
 
-          return buildTransactionSummary(transactions);
+          const clients = parsed?.state?.clientsMap?.[walletId] || [];
+          return buildTransactionSummary(transactions, clients);
         } catch {
           return null;
         }

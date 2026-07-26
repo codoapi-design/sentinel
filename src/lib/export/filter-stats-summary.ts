@@ -3,30 +3,31 @@
  */
 
 import type { ReportKV } from '@/lib/export/download-report';
+import { type Transaction, type Client } from '@/lib/mock-data';
 import {
-  type Transaction,
-  type Client,
-  getClientNameByAddress,
-} from '@/lib/mock-data';
+  isBlankCounterparty,
+  resolveCounterpartyDisplay,
+} from '@/lib/clients/display';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
-import { truncateAddress } from '@/lib/wallet/address-validation';
 
 const EMPTY = '—';
 
-function isBlankCounterparty(value: string | null | undefined): boolean {
-  if (!value) return true;
-  const trimmed = value.trim();
-  if (!trimmed) return true;
-  const lower = trimmed.toLowerCase();
-  return (
-    lower === 'unknown' ||
-    lower === 'n/a' ||
-    lower === 'na' ||
-    lower === '-' ||
-    lower === '—' ||
-    lower === 'null' ||
-    lower === 'none'
-  );
+function findMode(values: string[]): { label: string; count: number } | null {
+  if (values.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [value, count] of counts) {
+    if (count > bestCount) {
+      best = value;
+      bestCount = count;
+    }
+  }
+  if (!best) return null;
+  return { label: best, count: bestCount };
 }
 
 function formatHumanDuration(fromDate: string, toDate: string): string {
@@ -54,35 +55,19 @@ function formatHumanDuration(fromDate: string, toDate: string): string {
   return dayCount === 1 ? '1 day' : `${dayCount} days`;
 }
 
-function findMode(values: string[]): { label: string; count: number } | null {
-  if (values.length === 0) return null;
-  const counts = new Map<string, number>();
-  for (const value of values) {
-    counts.set(value, (counts.get(value) || 0) + 1);
-  }
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [value, count] of counts) {
-    if (count > bestCount) {
-      best = value;
-      bestCount = count;
-    }
-  }
-  if (!best) return null;
-  return { label: best, count: bestCount };
-}
-
 function counterpartyDisplay(
   tx: Transaction,
   clients: Client[],
 ): { key: string; label: string } | null {
   if (isBlankCounterparty(tx.counterparty)) return null;
   const key = tx.counterparty.toLowerCase();
-  const clientName = getClientNameByAddress(tx.counterparty, clients);
-  const label =
-    clientName ||
-    (!isBlankCounterparty(tx.counterpartyLabel) ? tx.counterpartyLabel : null) ||
-    truncateAddress(tx.counterparty);
+  const label = resolveCounterpartyDisplay(
+    {
+      counterparty: tx.counterparty,
+      counterpartyLabel: tx.counterpartyLabel,
+    },
+    clients,
+  );
   return { key, label };
 }
 

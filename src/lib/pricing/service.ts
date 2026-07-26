@@ -7,14 +7,13 @@
 
 import { getApiKey } from '@/lib/env';
 import type { WalletTransaction } from '@/lib/blockchain/types';
+import {
+  STABLECOINS,
+  isStablecoinSymbol as checkStablecoinSymbol,
+} from '@/lib/finance/stablecoins';
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 const PRO_BASE = 'https://pro-api.coingecko.com/api/v3';
-
-/** Stablecoins priced at $1 */
-const STABLECOINS = new Set([
-  'USDC', 'USDT', 'DAI', 'BUSD', 'USDD', 'FRAX', 'LUSD', 'TUSD', 'USDP', 'GUSD',
-]);
 
 /** Native token CoinGecko IDs per chain */
 const NATIVE_COIN_IDS: Record<number, string> = {
@@ -286,7 +285,7 @@ export class PricingService {
   }
 
   isStablecoinSymbol(symbol: string): boolean {
-    return STABLECOINS.has(symbol.toUpperCase());
+    return checkStablecoinSymbol(symbol);
   }
 
   /**

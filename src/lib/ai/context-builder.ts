@@ -11,6 +11,7 @@
 
 import { getModelSpec, DEFAULT_MODEL_ID } from './models';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
+import { resolveCounterpartyDisplay } from '@/lib/clients/display';
 
 // ============================================================
 // Types
@@ -176,7 +177,8 @@ export function buildTransactionSummary(
     counterparty: string;
     counterpartyLabel?: string;
     date: string;
-  }>
+  }>,
+  clients: Array<{ name: string; address: string }> = [],
 ): TransactionSummary {
   let totalIncome = 0;
   let totalExpenses = 0;
@@ -222,8 +224,14 @@ export function buildTransactionSummary(
     networkMap[networkLabel].value += val;
     networkMap[networkLabel].count++;
 
-    // Counterparty aggregation
-    const cpLabel = tx.counterpartyLabel || tx.counterparty;
+    // Counterparty aggregation — prefer named clients
+    const cpLabel = resolveCounterpartyDisplay(
+      {
+        counterparty: tx.counterparty,
+        counterpartyLabel: tx.counterpartyLabel,
+      },
+      clients,
+    );
     if (!counterpartyMap[cpLabel]) counterpartyMap[cpLabel] = { value: 0, count: 0 };
     counterpartyMap[cpLabel].value += val;
     counterpartyMap[cpLabel].count++;
@@ -292,10 +300,6 @@ export function getPageContextDescription(page: string, section?: string): PageC
     reports: {
       description: 'Reports page — financial reports and analysis',
       relevantData: 'Inflow, outflow, flow, and gas fee reports',
-    },
-    tax: {
-      description: 'Tax page — capital gains and losses',
-      relevantData: 'Tax calculations, capital gains, and cost basis',
     },
     settings: {
       description: 'Settings page — account and subscription',

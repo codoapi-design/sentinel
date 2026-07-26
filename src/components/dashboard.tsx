@@ -1,35 +1,30 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from './sidebar';
 import { PortfolioOverview } from './portfolio-overview';
 import { PortfolioChart } from './portfolio-chart';
-import { AssetsTable } from './assets-table';
-import { TransactionsTable } from './transactions-table';
+import { AssetsTable, AssetsTab } from './assets-table';
+import { TransactionsTable, TransactionsTab } from './transactions-table';
 import { TelegramSettings } from './telegram-settings';
 import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
-import { WebhooksSettings } from './webhooks-settings';
-import { TaxAnalysis } from './tax-analysis';
-import { ApiAccess } from './api-access';
-import { SupportCenter } from './support-center';
 import { AIChat } from './ai-chat';
-import { AIAnalysisSection, type AnalysisResponse } from './ai-analysis-section';
 import { SectionPage } from './section-page';
 import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
 import type { InvestmentReturnAssetParams } from '@/hooks/use-investment-return-asset';
 import { TradingVolumePage } from './trading-volume-page';
 import { AssetDetailPage } from './asset-detail-page';
-import { ClientsSection } from './clients-section';
+import { ClientsSection, ClientsTab } from './clients-section';
 import { ClientDetailPage } from './client-detail-page';
-import { NetworksSection } from './networks-section';
+import { NetworksSection, NetworksTab } from './networks-section';
 import { NetworkDetailPage } from './network-detail-page';
-import { TypesSection } from './types-section';
+import { TypesSection, TypesTab } from './types-section';
 import { TypeDetailPage } from './type-detail-page';
 import { WalletBar } from './wallet-bar';
 import { Button } from '@/components/ui/button';
-import { LogOut, Loader2, RefreshCw, BarChart3, Shield } from 'lucide-react';
+import { LogOut, Loader2, RefreshCw, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { networks, type Client } from '@/lib/mock-data';
 import { useWalletStore } from '@/stores/wallet-store';
@@ -37,6 +32,7 @@ import { useAIStore } from '@/stores/ai-store';
 import { useWalletAutoSync } from '@/hooks/use-wallet-auto-sync';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
 import { filterVisibleTransactions } from '@/lib/finance/visibility';
+import { resolveCounterpartyDisplay } from '@/lib/clients/display';
 
 interface DashboardProps {
   onLogout: () => void;
@@ -53,11 +49,6 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const [activeNetwork, setActiveNetwork] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
   const [defineAddressTrigger, setDefineAddressTrigger] = useState<string | null>(null);
-
-  // AI Analysis state
-  const [showAnalysis, setShowAnalysis] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
-  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
 
   // Wallet store
   const {
@@ -215,108 +206,6 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     setDefineAddressTrigger(null);
   };
 
-  // Trigger AI analysis
-  const handleAnalyzeData = useCallback(async () => {
-    setIsAnalysisLoading(true);
-    setShowAnalysis(true);
-    setAnalysisResult(null);
-
-    try {
-      const txs = displayTransactions;
-      if (txs.length === 0) {
-        throw new Error('No transactions to analyze');
-      }
-
-      const values = txs.map(tx => tx.value || 0);
-      const totalValue = values.reduce((sum, v) => sum + v, 0);
-      const avgValue = values.length > 0 ? totalValue / values.length : 0;
-      const summaryStats = {
-        totalValue: Math.round(totalValue * 100) / 100,
-        avgValue: Math.round(avgValue * 100) / 100,
-        maxValue: values.length > 0 ? Math.round(Math.max(...values) * 100) / 100 : 0,
-        minValue: values.length > 0 ? Math.round(Math.min(...values) * 100) / 100 : 0,
-        count: txs.length,
-      };
-
-      const byDateMap: Record<string, number> = {};
-      txs.forEach(tx => {
-        const date = (tx.date || '').slice(0, 10);
-        byDateMap[date] = (byDateMap[date] || 0) + (tx.value || 0);
-      });
-      const byDate = Object.entries(byDateMap)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }));
-
-      const byTokenMap: Record<string, number> = {};
-      txs.forEach(tx => {
-        const token = tx.token || 'UNKNOWN';
-        byTokenMap[token] = (byTokenMap[token] || 0) + (tx.value || 0);
-      });
-      const byToken = Object.entries(byTokenMap)
-        .sort(([, a], [, b]) => b - a)
-        .map(([token, value]) => ({ token, value: Math.round(value * 100) / 100 }));
-
-      const byNetworkMap: Record<string, number> = {};
-      txs.forEach(tx => {
-        const network = tx.networkLabel || tx.network || 'Unknown';
-        byNetworkMap[network] = (byNetworkMap[network] || 0) + (tx.value || 0);
-      });
-      const byNetwork = Object.entries(byNetworkMap)
-        .sort(([, a], [, b]) => b - a)
-        .map(([network, value]) => ({ network, value: Math.round(value * 100) / 100 }));
-
-      const byCounterpartyMap: Record<string, number> = {};
-      txs.forEach(tx => {
-        const label = tx.counterpartyLabel || tx.counterparty || 'Unknown';
-        byCounterpartyMap[label] = (byCounterpartyMap[label] || 0) + (tx.value || 0);
-      });
-      const byCounterparty = Object.entries(byCounterpartyMap)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 8)
-        .map(([label, value]) => ({ label, value: Math.round(value * 100) / 100 }));
-
-      const context = {
-        userId: isDemo ? 'demo-user' : 'user-session',
-        plan: currentPlan,
-        page: activeTab,
-        sectionType: activeSection || 'revenue',
-      };
-
-      const response = await fetch('/api/ai/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          context,
-          transactions: txs.slice(0, 50),
-          summaryStats,
-          groupedData: { byDate, byToken, byNetwork, byCounterparty },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Analysis failed (${response.status})`);
-      }
-
-      const result = await response.json();
-      if (result.success && result.data) {
-        setAnalysisResult(result.data as AnalysisResponse);
-      } else {
-        throw new Error(result.error || 'Data analysis failed');
-      }
-    } catch (err) {
-      console.error('Analysis error:', err);
-      setAnalysisResult(null);
-    } finally {
-      setIsAnalysisLoading(false);
-    }
-  }, [displayTransactions, currentPlan, activeTab, activeSection, isDemo]);
-
-  const handleCloseAnalysis = useCallback(() => {
-    setShowAnalysis(false);
-    setAnalysisResult(null);
-    setIsAnalysisLoading(false);
-  }, []);
-
   const getActiveClientObj = (): Client | null => {
     if (!activeClient) return null;
     const clientById = displayClients.find(c => c.id === activeClient);
@@ -325,10 +214,15 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     if (clientByAddress) return clientByAddress;
     if (activeClient.startsWith('0x')) {
       const tx = displayTransactions.find(t => t.counterparty.toLowerCase() === activeClient!.toLowerCase());
-      const truncateAddr = `${activeClient.slice(0, 6)}...${activeClient.slice(-4)}`;
       return {
         id: `addr-${activeClient}`,
-        name: tx?.counterpartyLabel || truncateAddr,
+        name: resolveCounterpartyDisplay(
+          {
+            counterparty: activeClient,
+            counterpartyLabel: tx?.counterpartyLabel,
+          },
+          displayClients,
+        ),
         address: activeClient,
         notes: '',
         color: '#8a8f98',
@@ -376,10 +270,6 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
       case 'networks': return 'Networks';
       case 'types': return 'Types';
       case 'settings': return 'Settings';
-      case 'webhooks': return 'Webhooks';
-      case 'tax': return 'Tax Analysis';
-      case 'api': return 'API Access';
-      case 'support': return 'Support';
       case 'subscription': return 'Subscription';
       default: return '';
     }
@@ -391,6 +281,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
         <TypeDetailPage
           typeId={activeType}
           onBack={handleBackFromType}
+          clients={displayClients}
         />
       );
     }
@@ -400,6 +291,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
         <NetworkDetailPage
           networkId={activeNetwork}
           onBack={handleBackFromNetwork}
+          clients={displayClients}
         />
       );
     }
@@ -411,6 +303,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
           client={clientObj}
           onBack={handleBackFromClient}
           onDefineClient={handleDefineClient}
+          clients={displayClients}
         />
       );
     }
@@ -444,7 +337,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     }
 
     if (activeSection === 'trading-volume') {
-      return <TradingVolumePage onBack={handleBackFromSection} />;
+      return <TradingVolumePage onBack={handleBackFromSection} clients={displayClients} />;
     }
 
     if (activeSection) {
@@ -484,78 +377,42 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
         );
       case 'transactions':
         return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Transactions</h2>
-              <p className="text-sm text-[#8a8f98]">View and filter all your transactions</p>
-            </div>
-            <TransactionsTable clients={displayClients} transactions={displayTransactions} />
-          </div>
+          <TransactionsTab
+            clients={displayClients}
+            transactions={displayTransactions}
+          />
         );
       case 'assets':
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Assets</h2>
-              <p className="text-sm text-[#8a8f98]">Details of all your digital assets</p>
-            </div>
-            <PortfolioOverview onSectionClick={handleSectionClick} />
-            <AssetsTable onAssetClick={handleAssetClick} />
-            <ClientsSection
-              clients={displayClients}
-              transactions={displayTransactions}
-              onClientClick={handleClientClick}
-            />
-          </div>
-        );
+        return <AssetsTab onAssetClick={handleAssetClick} />;
       case 'clients':
         return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Clients</h2>
-              <p className="text-sm text-[#8a8f98]">All wallets you've interacted with — name them for easy recognition</p>
-            </div>
-            <ClientsSection
-              clients={displayClients}
-              transactions={displayTransactions}
-              onClientClick={handleClientClick}
-              onDefineClient={handleDefineClient}
-              onClientsChange={(newClients) => {
-                if (activeWalletId) {
-                  useWalletStore.getState().setClients(activeWalletId, newClients);
-                }
-              }}
-              showToolbar={true}
-              defineAddress={defineAddressTrigger}
-              onDefineConsumed={handleDefineConsumed}
-            />
-          </div>
+          <ClientsTab
+            clients={displayClients}
+            transactions={displayTransactions}
+            onClientClick={handleClientClick}
+            onDefineClient={handleDefineClient}
+            onClientsChange={(newClients) => {
+              if (activeWalletId) {
+                useWalletStore.getState().setClients(activeWalletId, newClients);
+              }
+            }}
+            defineAddress={defineAddressTrigger}
+            onDefineConsumed={handleDefineConsumed}
+          />
         );
       case 'networks':
         return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Networks</h2>
-              <p className="text-sm text-[#8a8f98]">All networks you've transacted on and details per network</p>
-            </div>
-            <NetworksSection
-              transactions={displayTransactions}
-              onNetworkClick={handleNetworkClick}
-            />
-          </div>
+          <NetworksTab
+            transactions={displayTransactions}
+            onNetworkClick={handleNetworkClick}
+          />
         );
       case 'types':
         return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Transaction Types</h2>
-              <p className="text-sm text-[#8a8f98]">All transaction types and details per type</p>
-            </div>
-            <TypesSection
-              transactions={displayTransactions}
-              onTypeClick={handleTypeClick}
-            />
-          </div>
+          <TypesTab
+            transactions={displayTransactions}
+            onTypeClick={handleTypeClick}
+          />
         );
       case 'settings':
         return (
@@ -566,30 +423,6 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
             </div>
             <TelegramSettings />
             <EmailSettings />
-          </div>
-        );
-      case 'webhooks':
-        return (
-          <div className="space-y-6">
-            <WebhooksSettings />
-          </div>
-        );
-      case 'tax':
-        return (
-          <div className="space-y-6">
-            <TaxAnalysis />
-          </div>
-        );
-      case 'api':
-        return (
-          <div className="space-y-6">
-            <ApiAccess />
-          </div>
-        );
-      case 'support':
-        return (
-          <div className="space-y-6">
-            <SupportCenter />
           </div>
         );
       case 'subscription':
@@ -608,6 +441,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   };
 
   return (
+    <>
     <div className="flex min-h-screen bg-[#08090a] text-[#f7f8f8]" dir="ltr">
       {/* Demo Banner */}
       {isDemo && (
@@ -714,57 +548,10 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
           {renderContent()}
         </div>
       </main>
-
-      {/* AI Chat */}
-      <AIChat />
-
-      {/* Analyze Data floating button */}
-      {!showAnalysis && (
-        <button
-          onClick={handleAnalyzeData}
-          className="fixed bottom-6 left-6 z-50 group"
-          title="Analyze data with AI"
-        >
-          <div className="w-14 h-14 bg-[#191a1b] hover:bg-[#28282c] border border-white/10 rounded-full shadow-lg flex items-center justify-center text-[#0052ff] transition-all duration-300 hover:scale-105 hover:border-[#0052ff]/30">
-            <BarChart3 className="h-6 w-6" />
-          </div>
-          <div className="absolute bottom-full left-0 mb-2 px-3 py-1.5 bg-[#191a1b] border border-white/10 rounded-lg text-xs text-[#d0d6e0] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            Analyze with AI
-          </div>
-        </button>
-      )}
-
-      {/* AI Analysis Overlay */}
-      {showAnalysis && (
-        <AIAnalysisSection
-          analysis={analysisResult}
-          isLoading={isAnalysisLoading}
-          onClose={handleCloseAnalysis}
-          isOverlay={true}
-          sectionTitle={activeSection
-            ? activeSection === 'revenue'
-              ? 'Inflow'
-              : activeSection === 'expenses'
-                ? 'Outflow'
-                : activeSection === 'flow'
-                  ? 'Net Flow'
-                  : activeSection === 'investment-return' ||
-                      activeSection === 'investment-return-asset'
-                    ? 'Investment Return'
-                    : activeSection === 'trading-volume'
-                      ? 'Trading Volume'
-                      : 'Gas Fees'
-            : undefined
-          }
-          sectionType={
-            activeSection === 'investment-return' ||
-            activeSection === 'investment-return-asset' ||
-            activeSection === 'trading-volume'
-              ? undefined
-              : (activeSection || undefined)
-          }
-        />
-      )}
     </div>
+
+    {/* AI Chat — outside flex shell; portals to body */}
+    <AIChat />
+    </>
   );
 }

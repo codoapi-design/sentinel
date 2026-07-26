@@ -16,10 +16,6 @@ import {
   Menu,
   X,
   ChevronRight,
-  Webhook,
-  Calculator,
-  Key,
-  Headphones,
   Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -40,13 +36,7 @@ const navItems = [
   { id: 'networks', label: 'Networks', icon: Globe },
   { id: 'types', label: 'Types', icon: Tags },
   { id: 'settings', label: 'Settings', icon: Settings },
-];
-
-const enterpriseItems = [
-  { id: 'webhooks', label: 'Webhooks', icon: Webhook },
-  { id: 'tax', label: 'Tax Analysis', icon: Calculator },
-  { id: 'api', label: 'API Access', icon: Key },
-  { id: 'support', label: 'Support', icon: Headphones },
+  { id: 'subscription', label: 'Subscription', icon: CreditCard },
 ];
 
 export function Sidebar({ activeTab, onTabChange, isDemo, userName, userInitial }: SidebarProps) {
@@ -109,63 +99,6 @@ export function Sidebar({ activeTab, onTabChange, isDemo, userName, userInitial 
             </button>
           );
         })}
-      </nav>
-
-      <Separator className="bg-white/5" />
-
-      {/* Enterprise section */}
-      <div className="px-3 pt-2 pb-1">
-        {!collapsed && (
-          <p className="text-[10px] text-[#8a8f98] font-medium px-3 mb-1 uppercase tracking-wider">Enterprise</p>
-        )}
-      </div>
-      <nav className="px-3 space-y-1">
-        {enterpriseItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                onTabChange(item.id);
-                setMobileOpen(false);
-              }}
-              className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150',
-                isActive
-                  ? 'bg-[#0052ff]/10 text-[#0052ff]'
-                  : 'text-[#8a8f98] hover:text-[#d0d6e0] hover:bg-[#191a1b]'
-              )}
-            >
-              <Icon className="h-5 w-5 flex-shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-              {isActive && !collapsed && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#0052ff]" />
-              )}
-            </button>
-          );
-        })}
-      </nav>
-
-      <Separator className="bg-white/5" />
-
-      {/* Subscription */}
-      <nav className="px-3 py-2">
-        <button
-          onClick={() => {
-            onTabChange('subscription');
-            setMobileOpen(false);
-          }}
-          className={cn(
-            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150',
-            activeTab === 'subscription'
-              ? 'bg-[#0052ff]/10 text-[#0052ff]'
-              : 'text-[#8a8f98] hover:text-[#d0d6e0] hover:bg-[#191a1b]'
-          )}
-        >
-          <CreditCard className="h-5 w-5 flex-shrink-0" />
-          {!collapsed && <span>Subscription</span>}
-        </button>
       </nav>
 
       <Separator className="bg-white/5" />

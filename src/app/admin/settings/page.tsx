@@ -42,7 +42,6 @@ export default function AdminSettingsPage() {
     registrationEnabled: true,
     emailVerificationRequired: true,
     maxWalletsPerUser: '10',
-    maxApiKeysPerUser: '5',
     aiModel: 'openai/o4-mini',
     aiDailyLimit: '50',
     aiMaxTokens: '4096',
@@ -72,7 +71,6 @@ export default function AdminSettingsPage() {
               registrationEnabled: data.settings.registration_enabled !== 'false',
               emailVerificationRequired: data.settings.email_verification_required !== 'false',
               maxWalletsPerUser: data.settings.max_wallets_per_user || prev.maxWalletsPerUser,
-              maxApiKeysPerUser: data.settings.max_api_keys_per_user || prev.maxApiKeysPerUser,
               aiModel: data.settings.ai_model || prev.aiModel,
               aiDailyLimit: data.settings.ai_daily_limit || prev.aiDailyLimit,
               aiMaxTokens: data.settings.ai_max_tokens || prev.aiMaxTokens,
@@ -119,7 +117,6 @@ export default function AdminSettingsPage() {
             registration_enabled: settings.registrationEnabled,
             email_verification_required: settings.emailVerificationRequired,
             max_wallets_per_user: settings.maxWalletsPerUser,
-            max_api_keys_per_user: settings.maxApiKeysPerUser,
             ai_model: settings.aiModel,
             ai_daily_limit: settings.aiDailyLimit,
             ai_max_tokens: settings.aiMaxTokens,
@@ -372,10 +369,6 @@ export default function AdminSettingsPage() {
                   <label className="text-xs text-[#8a8f98] mb-1.5 block">Max Wallets per User</label>
                   <input type="number" value={settings.maxWalletsPerUser} onChange={(e) => setSettings({ ...settings, maxWalletsPerUser: e.target.value })} disabled={!isSuperAdmin} className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50 disabled:opacity-50" />
                 </div>
-                <div>
-                  <label className="text-xs text-[#8a8f98] mb-1.5 block">Max API Keys per User</label>
-                  <input type="number" value={settings.maxApiKeysPerUser} onChange={(e) => setSettings({ ...settings, maxApiKeysPerUser: e.target.value })} disabled={!isSuperAdmin} className="w-full bg-[#191a1b] border border-white/10 rounded-lg px-3 py-2 text-sm text-[#f7f8f8] focus:outline-none focus:border-[#0052ff]/50 disabled:opacity-50" />
-                </div>
               </div>
 
               <div className="pt-4 border-t border-white/5">
@@ -385,7 +378,6 @@ export default function AdminSettingsPage() {
                     <p className="text-xs text-[#8a8f98] mb-1">Starter</p>
                     <div className="text-[10px] text-[#d0d6e0] space-y-1">
                       <p>3 wallets</p>
-                      <p>1 API key</p>
                       <p>10 AI chats/day</p>
                     </div>
                   </div>
@@ -393,7 +385,6 @@ export default function AdminSettingsPage() {
                     <p className="text-xs text-[#0ecb81] mb-1">Pro</p>
                     <div className="text-[10px] text-[#d0d6e0] space-y-1">
                       <p>10 wallets</p>
-                      <p>3 API keys</p>
                       <p>50 AI chats/day</p>
                     </div>
                   </div>
@@ -401,7 +392,6 @@ export default function AdminSettingsPage() {
                     <p className="text-xs text-[#f7931a] mb-1">Enterprise</p>
                     <div className="text-[10px] text-[#d0d6e0] space-y-1">
                       <p>Unlimited wallets</p>
-                      <p>Unlimited API</p>
                       <p>Unlimited AI</p>
                     </div>
                   </div>

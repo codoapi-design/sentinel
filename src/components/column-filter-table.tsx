@@ -33,6 +33,7 @@ import {
   type Client,
   getClientNameByAddress,
 } from '@/lib/mock-data';
+import { resolveCounterpartyDisplay } from '@/lib/clients/display';
 import { cn } from '@/lib/utils';
 import { ON_CHAIN_ACTIVITY_LABELS } from '@/lib/finance/activity';
 
@@ -838,6 +839,13 @@ export function ColumnFilterTable({
                     <div className="flex flex-col">
                       {(() => {
                         const clientName = getClientNameByAddress(tx.counterparty, clients);
+                        const display = resolveCounterpartyDisplay(
+                          {
+                            counterparty: tx.counterparty,
+                            counterpartyLabel: tx.counterpartyLabel,
+                          },
+                          clients,
+                        );
                         return clientName ? (
                           <>
                             <span className="text-[11px] text-[#b6509e] font-medium">{clientName}</span>
@@ -845,7 +853,7 @@ export function ColumnFilterTable({
                           </>
                         ) : (
                           <>
-                            <span className="text-[11px] text-[#d0d6e0] font-medium">{tx.counterpartyLabel}</span>
+                            <span className="text-[11px] text-[#d0d6e0] font-medium">{display}</span>
                             <span className="text-[9px] text-[#8a8f98] font-mono" dir="ltr">{truncateHash(tx.counterparty)}</span>
                           </>
                         );

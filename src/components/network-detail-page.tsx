@@ -155,6 +155,7 @@ export function NetworkDetailPage({
         subtitle: `Transactions on ${networkLabel}`,
         filenameBase: `sentinel-network-${networkId}`,
         transactions: statsTransactions,
+        clients,
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -176,7 +177,7 @@ export function NetworkDetailPage({
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
     }
-  }, [networkLabel, networkId, statsTransactions, buildSummary]);
+  }, [networkLabel, networkId, statsTransactions, buildSummary, clients]);
 
   const handleDownloadPdf = useCallback(async () => {
     try {
@@ -185,6 +186,7 @@ export function NetworkDetailPage({
         subtitle: `Transactions on ${networkLabel}`,
         filenameBase: `sentinel-network-${networkId}`,
         transactions: statsTransactions,
+        clients,
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -206,7 +208,7 @@ export function NetworkDetailPage({
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
-  }, [networkLabel, networkId, statsTransactions, buildSummary]);
+  }, [networkLabel, networkId, statsTransactions, buildSummary, clients]);
 
   return (
     <div className="space-y-6" ref={pageRef}>
@@ -260,24 +262,6 @@ export function NetworkDetailPage({
         networkLabel={networkLabel}
       />
 
-      {/* Transaction Table */}
-      <Card className="bg-[#0f1011] border-white/5">
-        <CardContent className="p-0">
-          <div className="p-4 border-b border-white/5">
-            <h3 className="text-sm font-medium text-[#f7f8f8]">Transactions of {networkLabel}</h3>
-            <p className="text-xs text-[#8a8f98] mt-0.5">
-              All transactions on {networkLabel}
-            </p>
-          </div>
-          <ColumnFilterTable
-            transactions={networkTransactions}
-            showTypeColumn={true}
-            onFilteredDataChange={handleFilteredDataChange}
-            clients={clients}
-          />
-        </CardContent>
-      </Card>
-
       {/* Filter-bound network stats (same set as table) */}
       <NetworkTransactionFilterStats
         transactions={statsTransactions}
@@ -298,9 +282,28 @@ export function NetworkDetailPage({
         contextLabel={networkLabel}
       />
 
+      {/* Transaction Table */}
+      <Card className="bg-[#0f1011] border-white/5">
+        <CardContent className="p-0">
+          <div className="p-4 border-b border-white/5">
+            <h3 className="text-sm font-medium text-[#f7f8f8]">Transactions of {networkLabel}</h3>
+            <p className="text-xs text-[#8a8f98] mt-0.5">
+              All transactions on {networkLabel}
+            </p>
+          </div>
+          <ColumnFilterTable
+            transactions={networkTransactions}
+            showTypeColumn={true}
+            onFilteredDataChange={handleFilteredDataChange}
+            clients={clients}
+          />
+        </CardContent>
+      </Card>
+
       {/* AI Analysis */}
       <AIAnalysisSection
         transactions={statsTransactions}
+        clients={clients}
         sectionTitle={`Transactions of ${networkLabel}`}
         sectionColor={networkColor}
         sectionType={isNetPositive ? 'revenue' : 'expenses'}

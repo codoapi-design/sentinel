@@ -19,10 +19,13 @@ import {
 import {
   type Transaction,
   type Client,
-  getClientNameByAddress,
 } from '@/lib/mock-data';
+import {
+  isBlankCounterparty,
+  resolveCounterpartyDisplay,
+} from '@/lib/clients/display';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
-import { truncateAddress } from '@/lib/wallet/address-validation';
+import { SUMMARY_INFLOW, SUMMARY_OUTFLOW } from '@/lib/finance/labels';
 import { cn } from '@/lib/utils';
 
 interface TransactionFilterStatsProps {
@@ -41,22 +44,6 @@ const cardClass = 'bg-[#0f1011] border-white/5 min-h-[56px] min-w-0';
 const padClass = 'p-1.5 sm:p-2.5';
 const labelClass = 'text-[9px] sm:text-[10px] text-[#8a8f98] truncate';
 const valueClass = 'text-xs sm:text-sm font-semibold text-[#f7f8f8] leading-tight truncate';
-
-function isBlankCounterparty(value: string | null | undefined): boolean {
-  if (!value) return true;
-  const trimmed = value.trim();
-  if (!trimmed) return true;
-  const lower = trimmed.toLowerCase();
-  return (
-    lower === 'unknown' ||
-    lower === 'n/a' ||
-    lower === 'na' ||
-    lower === '-' ||
-    lower === '—' ||
-    lower === 'null' ||
-    lower === 'none'
-  );
-}
 
 function formatHumanDuration(fromDate: string, toDate: string): string {
   const from = new Date(`${fromDate}T00:00:00`);
@@ -107,11 +94,13 @@ function counterpartyDisplay(
 ): { key: string; label: string } | null {
   if (isBlankCounterparty(tx.counterparty)) return null;
   const key = tx.counterparty.toLowerCase();
-  const clientName = getClientNameByAddress(tx.counterparty, clients);
-  const label =
-    clientName ||
-    (!isBlankCounterparty(tx.counterpartyLabel) ? tx.counterpartyLabel : null) ||
-    truncateAddress(tx.counterparty);
+  const label = resolveCounterpartyDisplay(
+    {
+      counterparty: tx.counterparty,
+      counterpartyLabel: tx.counterpartyLabel,
+    },
+    clients,
+  );
   return { key, label };
 }
 
@@ -140,7 +129,14 @@ function StatCard({
   glow?: string;
 }) {
   return (
-    <Card className={cn(cardClass, glow && 'relative overflow-hidden')}>
+    <Card
+      className={cn(
+        cardClass,
+        // Override shadcn Card defaults (py-6 gap-6) so compact 2×5 grids stay visible.
+        'py-0 gap-0 shadow-none',
+        glow && 'relative overflow-hidden',
+      )}
+    >
       {glow && (
         <div
           className="absolute inset-0 pointer-events-none"
@@ -149,7 +145,7 @@ function StatCard({
           }}
         />
       )}
-      <CardContent className={cn(padClass, glow && 'relative z-10')}>
+      <CardContent className={cn(padClass, 'px-1.5 sm:px-2.5', glow && 'relative z-10')}>
         <div className="flex items-center gap-1 mb-0.5 sm:mb-1 min-w-0">
           {icon}
           <p className={labelClass}>{label}</p>
@@ -686,6 +682,222 @@ export function NetworkTransactionFilterStats({
           <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#f7f8f8] leading-tight truncate">
             {stats.avgValue == null ? EMPTY : `$${formatUsd(stats.avgValue)}`}
           </p>
+        </StatCard>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Main Transactions tab: 2×5 filter-bound stats (same set as the table).
+ * Row 1: Inflow · Outflow · Net Flow · Volume · Transactions
+ * Row 2: Active Period · Top Activity · Top Token · Top Network · Top Counterparty
+ */
+export function TransactionsPageFilterStats({
+  transactions,
+  clients = [],
+}: TransactionFilterStatsProps) {
+  const stats = useMemo(() => {
+    if (transactions.length === 0) {
+      return {
+        revenue: 0,
+        expense: 0,
+        netFlow: 0,
+        volume: 0,
+        txCount: 0,
+        duration: EMPTY,
+        dateRange: 'No data',
+        topActivity: null as ModeResult | null,
+        topToken: null as ModeResult | null,
+        topNetwork: null as ModeResult | null,
+        topCounterparty: null as ModeResult | null,
+      };
+    }
+
+    let revenue = 0;
+    let expense = 0;
+    let volume = 0;
+    for (const tx of transactions) {
+      const abs = txUsdValue(tx);
+      volume += abs;
+      if (isRevenueType(tx.type)) revenue += tx.value;
+      if (isExpenseType(tx.type)) expense += tx.value;
+    }
+
+    const dates = transactions.map((tx) => tx.date).filter(Boolean).sort();
+    const minDate = dates[0];
+    const maxDate = dates[dates.length - 1];
+
+    const counterparties = transactions
+      .map((tx) => counterpartyDisplay(tx, clients))
+      .filter((item): item is { key: string; label: string } => item !== null);
+
+    let topCounterparty: ModeResult | null = null;
+    if (counterparties.length > 0) {
+      const counts = new Map<string, { label: string; count: number }>();
+      for (const cp of counterparties) {
+        const existing = counts.get(cp.key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          counts.set(cp.key, { label: cp.label, count: 1 });
+        }
+      }
+      let best: { label: string; count: number } | null = null;
+      for (const entry of counts.values()) {
+        if (!best || entry.count > best.count) best = entry;
+      }
+      topCounterparty = best;
+    }
+
+    return {
+      revenue,
+      expense,
+      netFlow: revenue - expense,
+      volume,
+      txCount: transactions.length,
+      duration: formatHumanDuration(minDate, maxDate),
+      dateRange: `From ${minDate} to ${maxDate}`,
+      topActivity: findMode(
+        transactions.map((tx) => tx.activity || 'Transfer')
+      ),
+      topToken: findMode(transactions.map((tx) => tx.token).filter(Boolean)),
+      topNetwork: findMode(
+        transactions.map((tx) => tx.networkLabel || tx.network).filter(Boolean)
+      ),
+      topCounterparty,
+    };
+  }, [transactions, clients]);
+
+  const isNetPositive = stats.netFlow >= 0;
+  const empty = transactions.length === 0;
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+        <StatCard
+          icon={<ArrowDownLeft className="h-3 w-3 shrink-0 text-[#0ecb81]" />}
+          label={SUMMARY_INFLOW}
+          glow="rgba(14, 203, 129, 0.06)"
+        >
+          <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#0ecb81] leading-tight truncate">
+            {empty ? EMPTY : `$${formatUsd(stats.revenue)}`}
+          </p>
+        </StatCard>
+
+        <StatCard
+          icon={<ArrowUpRight className="h-3 w-3 shrink-0 text-[#f6465d]" />}
+          label={SUMMARY_OUTFLOW}
+          glow="rgba(246, 70, 93, 0.06)"
+        >
+          <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#f6465d] leading-tight truncate">
+            {empty ? EMPTY : `$${formatUsd(stats.expense)}`}
+          </p>
+        </StatCard>
+
+        <StatCard
+          icon={
+            isNetPositive ? (
+              <TrendingUp className="h-3 w-3 shrink-0 text-[#0ecb81]" />
+            ) : (
+              <TrendingDown className="h-3 w-3 shrink-0 text-[#f6465d]" />
+            )
+          }
+          label="Net Flow"
+          glow={
+            isNetPositive
+              ? 'rgba(14, 203, 129, 0.06)'
+              : 'rgba(246, 70, 93, 0.06)'
+          }
+        >
+          <p
+            className={cn(
+              'text-xs sm:text-sm font-semibold font-mono-num leading-tight truncate',
+              isNetPositive ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+            )}
+          >
+            {empty
+              ? EMPTY
+              : `${isNetPositive ? '+' : ''}$${formatUsd(stats.netFlow)}`}
+          </p>
+        </StatCard>
+
+        <StatCard
+          icon={<ArrowUpDown className="h-3 w-3 shrink-0 text-[#0052ff]" />}
+          label="Volume"
+        >
+          <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#0052ff] leading-tight truncate">
+            {empty ? EMPTY : `$${formatUsd(stats.volume)}`}
+          </p>
+        </StatCard>
+
+        <StatCard
+          icon={<FileText className="h-3 w-3 shrink-0 text-[#8a8f98]" />}
+          label="Transactions"
+        >
+          <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#f7f8f8] leading-tight truncate">
+            {stats.txCount}
+          </p>
+        </StatCard>
+      </div>
+
+      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+        <StatCard
+          icon={<CalendarRange className="h-3 w-3 shrink-0 text-[#8a8f98]" />}
+          label="Active Period"
+        >
+          <p className={valueClass}>{stats.duration}</p>
+          <p className="text-[9px] sm:text-[10px] text-[#8a8f98] mt-0.5 truncate">
+            {stats.dateRange}
+          </p>
+        </StatCard>
+
+        <StatCard
+          icon={<Activity className="h-3 w-3 shrink-0 text-[#f7931a]" />}
+          label="Top Activity"
+        >
+          <ModeValue mode={stats.topActivity} />
+        </StatCard>
+
+        <StatCard
+          icon={<Wallet className="h-3 w-3 shrink-0 text-[#f7931a]" />}
+          label="Top Token"
+        >
+          <ModeValue mode={stats.topToken} />
+        </StatCard>
+
+        <StatCard
+          icon={<Globe className="h-3 w-3 shrink-0 text-[#627eea]" />}
+          label="Top Network"
+        >
+          <ModeValue mode={stats.topNetwork} />
+        </StatCard>
+
+        <StatCard
+          icon={<Users className="h-3 w-3 shrink-0 text-[#0ecb81]" />}
+          label="Top Counterparty"
+        >
+          {stats.topCounterparty ? (
+            <div className="flex items-baseline gap-1 min-w-0">
+              <p
+                className={valueClass}
+                dir="ltr"
+                title={stats.topCounterparty.label}
+              >
+                {stats.topCounterparty.label}
+              </p>
+              <p className="text-[9px] sm:text-[10px] text-[#8a8f98] shrink-0">
+                ({stats.topCounterparty.count}×)
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className={valueClass}>{EMPTY}</p>
+              <p className="text-[9px] sm:text-[10px] text-[#8a8f98] mt-0.5">
+                No data
+              </p>
+            </>
+          )}
         </StatCard>
       </div>
     </div>

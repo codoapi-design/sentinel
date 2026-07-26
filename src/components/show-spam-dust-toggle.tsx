@@ -11,7 +11,7 @@ interface ShowSpamDustToggleProps {
 }
 
 /**
- * Global preference toggle — same state on Assets, Transactions, and Clients headers.
+ * Global preference toggle — same state on Assets, Transactions, Clients, Networks, and Types headers.
  * Default off: spam and $0 / dust are hidden from list UIs.
  */
 export function ShowSpamDustToggle({ className, compact }: ShowSpamDustToggleProps) {

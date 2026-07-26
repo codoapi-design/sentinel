@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ArrowUpRight,
@@ -18,26 +18,35 @@ import {
 } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
+import {
+  filterVisibleTransactions,
+  isHiddenSpamOrDustTx,
+} from '@/lib/finance/visibility';
 import { TablePagination } from '@/components/table-pagination';
 import { useTablePagination } from '@/hooks/use-table-pagination';
+import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
+import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
+import {
+  TypesPageFilterStats,
+  type TypeFilterStatRow,
+} from '@/components/types-filter-stats';
 
 interface TypesSectionProps {
   transactions: Transaction[];
   onTypeClick: (typeId: string) => void;
+  onFilteredDataChange?: (data: TypeStats[]) => void;
 }
 
-interface TypeStats {
-  typeId: string;
-  typeLabel: string;
+export interface TypeStats extends TypeFilterStatRow {
   typeIcon: string;
-  totalRevenue: number;
-  totalExpenses: number;
-  totalVolume: number;
-  txCount: number;
-  netFlow: number;
   lastTxDate: string | null;
   topToken: string | null;
   color: string;
+}
+
+interface TypesTabProps {
+  transactions: Transaction[];
+  onTypeClick: (typeId: string) => void;
 }
 
 const typeConfig: Record<string, { label: string; icon: string; color: string; IconComponent: typeof ArrowUpRight }> = {
@@ -49,12 +58,61 @@ const typeConfig: Record<string, { label: string; icon: string; color: string; I
   gas: { label: 'Gas Fee', icon: 'Gas', color: '#8a8f98', IconComponent: Fuel },
 };
 
-export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
-  // Build type stats from transactions
+/**
+ * Full sidebar Types view: filter-bound 2×4 stats + table.
+ * Stats track the same visible list as TypesSection (spam/$0).
+ */
+export function TypesTab({
+  transactions,
+  onTypeClick,
+}: TypesTabProps) {
+  const [filteredData, setFilteredData] = useState<TypeStats[]>([]);
+  const [filtersReady, setFiltersReady] = useState(false);
+
+  const handleFilteredDataChange = useCallback((data: TypeStats[]) => {
+    setFiltersReady(true);
+    setFilteredData(data);
+  }, []);
+
+  const statsTypes = filtersReady ? filteredData : [];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Transaction Types</h2>
+        <p className="text-sm text-[#8a8f98]">
+          All transaction types and details per type
+        </p>
+      </div>
+      <TypesPageFilterStats types={statsTypes} />
+      <TypesSection
+        transactions={transactions}
+        onTypeClick={onTypeClick}
+        onFilteredDataChange={handleFilteredDataChange}
+      />
+    </div>
+  );
+}
+
+export function TypesSection({
+  transactions,
+  onTypeClick,
+  onFilteredDataChange,
+}: TypesSectionProps) {
+  const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
+  const hasHiddenItems = useMemo(
+    () => transactions.some((tx) => isHiddenSpamOrDustTx(tx, false)),
+    [transactions],
+  );
+  const visibleTransactions = useMemo(
+    () => filterVisibleTransactions(transactions, showSpamAndDust),
+    [transactions, showSpamAndDust],
+  );
+
   const typeStats = useMemo((): TypeStats[] => {
     const statsMap = new Map<string, TypeStats & { tokenCounts: Record<string, number> }>();
 
-    transactions.forEach(tx => {
+    visibleTransactions.forEach(tx => {
       const key = tx.type;
       const existing = statsMap.get(key);
       const config = typeConfig[key];
@@ -93,18 +151,20 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
       }
     });
 
-    // Resolve topToken
     statsMap.forEach(stats => {
       const sorted = Object.entries(stats.tokenCounts).sort(([, a], [, b]) => b - a);
       stats.topToken = sorted[0]?.[0] || null;
     });
 
-    // Sort by tx count
     const result = Array.from(statsMap.values()).map(({ tokenCounts, ...rest }) => rest);
     result.sort((a, b) => b.txCount - a.txCount);
 
     return result;
-  }, [transactions]);
+  }, [visibleTransactions]);
+
+  useEffect(() => {
+    onFilteredDataChange?.(typeStats);
+  }, [typeStats, onFilteredDataChange]);
 
   const {
     page,
@@ -118,15 +178,31 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
     return (
       <Card className="bg-[#0f1011] border-white/5">
         <CardHeader className="pb-4">
-          <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
-            <Coins className="h-5 w-5 text-[#0052ff]" />
-            Type
-          </CardTitle>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
+                <Coins className="h-5 w-5 text-[#0052ff]" />
+                Type
+              </CardTitle>
+              {hasHiddenItems && !showSpamAndDust ? (
+                <p className="text-[10px] text-[#8a8f98] mt-1">spam & $0 hidden</p>
+              ) : null}
+            </div>
+            <ShowSpamDustToggle compact />
+          </div>
         </CardHeader>
         <CardContent className="text-center py-8">
           <Coins className="h-10 w-10 text-[#28282c] mx-auto mb-3" />
-          <p className="text-sm text-[#8a8f98]">No transactions yet</p>
-          <p className="text-xs text-[#8a8f98]/60 mt-1">Transaction types you interact with will appear here automatically</p>
+          <p className="text-sm text-[#8a8f98]">
+            {hasHiddenItems && !showSpamAndDust && visibleTransactions.length === 0
+              ? 'No types to show'
+              : 'No transactions yet'}
+          </p>
+          <p className="text-xs text-[#8a8f98]/60 mt-1">
+            {hasHiddenItems && !showSpamAndDust && visibleTransactions.length === 0
+              ? 'Enable Show spam & $0 if you expect dust'
+              : 'Transaction types you interact with will appear here automatically'}
+          </p>
         </CardContent>
       </Card>
     );
@@ -135,12 +211,20 @@ export function TypesSection({ transactions, onTypeClick }: TypesSectionProps) {
   return (
     <Card className="bg-[#0f1011] border-white/5">
       <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
-            <Coins className="h-5 w-5 text-[#0052ff]" />
-            Type
-          </CardTitle>
-          <span className="text-xs text-[#8a8f98]">{typeStats.length} type</span>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-[#f7f8f8] text-base flex items-center gap-2">
+              <Coins className="h-5 w-5 text-[#0052ff]" />
+              Type
+            </CardTitle>
+            {hasHiddenItems && !showSpamAndDust ? (
+              <p className="text-[10px] text-[#8a8f98] mt-1">spam & $0 hidden</p>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <ShowSpamDustToggle compact />
+            <span className="text-xs text-[#8a8f98]">{typeStats.length} type</span>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-0">
