@@ -156,6 +156,14 @@ export function NetworkDetailPage({
         filenameBase: `sentinel-network-${networkId}`,
         transactions: statsTransactions,
         clients,
+        aiScope: {
+          page: 'network-detail',
+          sectionType: 'network',
+          sectionTitle: `${networkLabel} activity`,
+          network: networkId,
+          period: 'all',
+          filters: { direction: isNetPositive ? 'net-inflow' : 'net-outflow' },
+        },
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -168,16 +176,20 @@ export function NetworkDetailPage({
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportExcel(payload);
+      const aiIncluded = await downloadReportExcel(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'Excel report downloaded (with charts)'
+        extras.length > 0
+          ? `Excel report downloaded (with ${extras.join(' + ')})`
           : 'Excel report downloaded',
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
     }
-  }, [networkLabel, networkId, statsTransactions, buildSummary, clients]);
+  }, [networkLabel, networkId, statsTransactions, buildSummary, clients, isNetPositive]);
 
   const handleDownloadPdf = useCallback(async () => {
     try {
@@ -187,6 +199,14 @@ export function NetworkDetailPage({
         filenameBase: `sentinel-network-${networkId}`,
         transactions: statsTransactions,
         clients,
+        aiScope: {
+          page: 'network-detail',
+          sectionType: 'network',
+          sectionTitle: `${networkLabel} activity`,
+          network: networkId,
+          period: 'all',
+          filters: { direction: isNetPositive ? 'net-inflow' : 'net-outflow' },
+        },
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -199,16 +219,20 @@ export function NetworkDetailPage({
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportPdf(payload);
+      const aiIncluded = await downloadReportPdf(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'PDF report downloaded (with charts)'
+        extras.length > 0
+          ? `PDF report downloaded (with ${extras.join(' + ')})`
           : 'PDF report downloaded',
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
-  }, [networkLabel, networkId, statsTransactions, buildSummary, clients]);
+  }, [networkLabel, networkId, statsTransactions, buildSummary, clients, isNetPositive]);
 
   return (
     <div className="space-y-6" ref={pageRef}>
@@ -304,9 +328,13 @@ export function NetworkDetailPage({
       <AIAnalysisSection
         transactions={statsTransactions}
         clients={clients}
-        sectionTitle={`Transactions of ${networkLabel}`}
+        sectionTitle={`${networkLabel} activity`}
         sectionColor={networkColor}
-        sectionType={isNetPositive ? 'revenue' : 'expenses'}
+        sectionType="network"
+        page="network-detail"
+        network={networkId}
+        period="all"
+        filters={{ direction: isNetPositive ? 'net-inflow' : 'net-outflow' }}
       />
     </div>
   );

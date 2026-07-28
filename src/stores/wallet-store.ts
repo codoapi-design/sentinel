@@ -49,28 +49,24 @@ export const PLAN_LIMITS: Record<string, {
   wallets: number;
   networks: number;
   transactions: number;
-  aiChats: number;
   syncIntervalMs: number;
 }> = {
   starter: {
     wallets: 1,
     networks: 1, // EVM address family only
     transactions: 500,
-    aiChats: 50,
     syncIntervalMs: 600_000, // 10 minutes
   },
   pro: {
     wallets: 5,
     networks: 5,
     transactions: 5000,
-    aiChats: 300,
     syncIntervalMs: 60_000, // 1 minute
   },
   business: {
     wallets: 25,
     networks: 10,
     transactions: Infinity,
-    aiChats: Infinity,
     syncIntervalMs: 30_000, // 30 seconds
   },
   // DB / legacy alias for Business
@@ -78,7 +74,6 @@ export const PLAN_LIMITS: Record<string, {
     wallets: 25,
     networks: 10,
     transactions: Infinity,
-    aiChats: Infinity,
     syncIntervalMs: 30_000,
   },
 };

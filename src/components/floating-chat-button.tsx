@@ -8,7 +8,7 @@ interface FloatingChatButtonProps {
 
 /**
  * Dedicated bottom-left chat FAB.
- * Always paints when mounted — no wallet/plan/tab gates.
+ * Always paints when mounted — no wallet / plan / tab gates.
  * Explicit w/h so flex parents cannot stretch it off-screen.
  */
 export function FloatingChatButton({ onClick }: FloatingChatButtonProps) {
@@ -17,8 +17,8 @@ export function FloatingChatButton({ onClick }: FloatingChatButtonProps) {
       type="button"
       onClick={onClick}
       className="fixed bottom-6 left-6 z-[100] w-14 h-14 bg-[#191a1b] hover:bg-[#28282c] border border-white/10 rounded-full shadow-lg flex items-center justify-center text-[#0052ff] transition-all duration-300 hover:scale-105 hover:border-[#0052ff]/30"
-      aria-label="Open chat"
-      title="Open chat"
+      aria-label="Open Sentinel AI chat"
+      title="Ask Sentinel AI"
       data-testid="floating-chat-button"
     >
       <MessageCircle className="h-6 w-6" />

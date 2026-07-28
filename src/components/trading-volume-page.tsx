@@ -32,7 +32,7 @@ import {
 } from '@/lib/finance/trading-volume-period';
 import { InvestmentReturnPeriodControls } from '@/components/investment-return-period-controls';
 import { AIAnalysisSection } from '@/components/ai-analysis-section';
-import type { Client, Transaction } from '@/lib/mock-data';
+import type { Client } from '@/lib/mock-data';
 import { resolveCounterpartyDisplay } from '@/lib/clients/display';
 import {
   downloadReportExcel,
@@ -167,36 +167,9 @@ export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePagePro
   const byToken = filtered?.byToken ?? [];
   const trades = filtered?.trades ?? [];
 
-  /** Trade rows as Transaction shape for AIAnalysisSection context */
-  const analysisTransactions = useMemo((): Transaction[] => {
-    return trades.map(tx => ({
-      id: tx.id,
-      date: tx.date,
-      timestamp: tx.timestamp,
-      type: 'trade' as const,
-      typeLabel: 'Trade',
-      activity: tx.methodName || 'Swap',
-      methodName: tx.methodName,
-      token: tx.tokenSymbol,
-      quantity: 0,
-      price: 0,
-      value: tx.volumeUsd ?? 0,
-      network: tx.network,
-      networkLabel: networkLabel(tx.network),
-      txHash: tx.hash,
-      counterparty: tx.counterparty || '',
-      counterpartyLabel: resolveCounterpartyDisplay(
-        {
-          counterparty: tx.counterparty,
-          counterpartyLabel: tx.counterpartyLabel,
-        },
-        clients,
-      ),
-    }));
-  }, [trades, clients]);
-
   const buildExportPayload = useCallback((): ReportPayload | null => {
     if (!detail || !filtered) return null;
+    const period = activePeriod === 0 ? 'all' : `${activePeriod}d`;
     return {
       title: 'Trading Volume',
       subtitle: filtered.periodLabel
@@ -205,6 +178,15 @@ export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePagePro
           ? `All synced history · earliest trade ${earliestTradeLabel}`
           : 'All synced trade history',
       filenameBase: 'sentinel-trading-volume',
+      aiScope: {
+        page: 'trading-volume',
+        sectionType: 'trading-volume',
+        sectionTitle: 'Trading Volume',
+        period,
+        filters: isCustomActive
+          ? { from: customFrom ?? today, to: customTo ?? today }
+          : undefined,
+      },
       summary: [
         { label: 'Total volume (USD)', value: formatUsd(filtered.totalVolumeUsd) },
         { label: 'Trade transactions', value: String(filtered.tradeCount) },
@@ -267,7 +249,19 @@ export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePagePro
         },
       ],
     };
-  }, [detail, filtered, byToken, trades, earliestTradeLabel, clients]);
+  }, [
+    detail,
+    filtered,
+    byToken,
+    trades,
+    earliestTradeLabel,
+    clients,
+    activePeriod,
+    isCustomActive,
+    customFrom,
+    customTo,
+    today,
+  ]);
 
   const handleDownloadExcel = useCallback(async () => {
     try {
@@ -288,10 +282,14 @@ export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePagePro
           },
         ];
       }
-      downloadReportExcel(payload);
+      const aiIncluded = await downloadReportExcel(payload);
+      const extras = [
+        chartResult ? 'chart' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        chartResult
-          ? 'Excel report downloaded (with chart)'
+        extras.length > 0
+          ? `Excel report downloaded (with ${extras.join(' + ')})`
           : 'Excel report downloaded',
       );
     } catch (err) {
@@ -318,10 +316,14 @@ export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePagePro
           },
         ];
       }
-      downloadReportPdf(payload);
+      const aiIncluded = await downloadReportPdf(payload);
+      const extras = [
+        chartResult ? 'chart' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        chartResult
-          ? 'PDF report downloaded (with chart)'
+        extras.length > 0
+          ? `PDF report downloaded (with ${extras.join(' + ')})`
           : 'PDF report downloaded',
       );
     } catch (err) {
@@ -922,11 +924,16 @@ export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePagePro
 
       {/* AI Analysis */}
       <AIAnalysisSection
-        transactions={analysisTransactions}
-        clients={clients}
         sectionTitle="Trading Volume"
         sectionColor={ACCENT}
         sectionType="trading-volume"
+        page="trading-volume"
+        period={activePeriod === 0 ? 'all' : `${activePeriod}d`}
+        filters={
+          isCustomActive
+            ? { from: customFrom ?? today, to: customTo ?? today }
+            : undefined
+        }
       />
     </div>
   );

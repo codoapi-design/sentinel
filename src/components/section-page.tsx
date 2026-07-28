@@ -142,6 +142,13 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
       filenameBase: `sentinel-${sectionType}`,
       transactions: filteredData,
       clients,
+      aiScope: {
+        page: sectionType,
+        sectionType,
+        sectionTitle: config.title,
+        period: 'all',
+        filters: { totalRows: sectionTransactions.length },
+      },
       extraSummary: [
         {
           label: config.totalLabel,
@@ -149,7 +156,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
         },
       ],
     });
-  }, [config, sectionType, filteredData, clients]);
+  }, [config, sectionType, filteredData, clients, sectionTransactions.length]);
 
   const handleDownloadExcel = useCallback(async () => {
     try {
@@ -164,10 +171,14 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportExcel(payload);
+      const aiIncluded = await downloadReportExcel(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'Excel report downloaded (with charts)'
+        extras.length > 0
+          ? `Excel report downloaded (with ${extras.join(' + ')})`
           : 'Excel report downloaded',
       );
     } catch (err) {
@@ -188,10 +199,14 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportPdf(payload);
+      const aiIncluded = await downloadReportPdf(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'PDF report downloaded (with charts)'
+        extras.length > 0
+          ? `PDF report downloaded (with ${extras.join(' + ')})`
           : 'PDF report downloaded',
       );
     } catch (err) {
@@ -287,6 +302,9 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
         sectionTitle={config.title}
         sectionColor={config.color}
         sectionType={sectionType}
+        page={sectionType}
+        period="all"
+        filters={{ totalRows: sectionTransactions.length }}
       />
     </div>
   );

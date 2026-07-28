@@ -4,12 +4,11 @@ import { useEffect, useState } from 'react';
 import { useAdminStore } from '@/stores/admin-store';
 import {
   Users, Wallet, CreditCard, TrendingUp, Activity,
-  UserPlus, AlertTriangle, Bot, Zap, Globe, ArrowUpRight,
-  ArrowDownRight, Clock, RefreshCw, Radio, Database,
+  UserPlus, Globe, Radio, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, BarChart, Bar,
+  PieChart, Pie, Cell,
 } from 'recharts';
 
 interface Stats {
@@ -23,8 +22,6 @@ interface Stats {
   usersGrowth: number;
   recentSignups: Array<{ email: string; created_at: string; plan: string }>;
   userGrowth: Array<{ date: string; count: number }>;
-  aiChatsTotal: number;
-  aiAnalysesTotal: number;
 }
 
 interface ProviderInfo {
@@ -139,7 +136,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Revenue + Quick Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
         <div className="bg-[#0c0d0e] border border-[#0ecb81]/10 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <CreditCard className="h-4 w-4 text-[#0ecb81]" />
@@ -147,22 +144,6 @@ export default function AdminDashboard() {
           </div>
           <p className="text-lg font-bold text-[#0ecb81]">${estimatedMRR.toLocaleString()}</p>
           <p className="text-[9px] text-[#8a8f98]">Pro x$29 + Enterprise x$99</p>
-        </div>
-        <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Bot className="h-4 w-4 text-[#627eea]" />
-            <span className="text-[10px] text-[#8a8f98]">AI Chats</span>
-          </div>
-          <p className="text-lg font-bold text-[#f7f8f8]">{(stats?.aiChatsTotal || 0).toLocaleString()}</p>
-          <p className="text-[9px] text-[#8a8f98]">Total since launch</p>
-        </div>
-        <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Zap className="h-4 w-4 text-[#f7931a]" />
-            <span className="text-[10px] text-[#8a8f98]">AI Analyses</span>
-          </div>
-          <p className="text-lg font-bold text-[#f7f8f8]">{(stats?.aiAnalysesTotal || 0).toLocaleString()}</p>
-          <p className="text-[9px] text-[#8a8f98]">Total since launch</p>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -324,32 +305,6 @@ export default function AdminDashboard() {
             {(!stats?.recentSignups || stats.recentSignups.length === 0) && (
               <div className="text-center py-4 text-xs text-[#8a8f98]">No recent signups</div>
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* AI Usage Overview */}
-      <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Bot className="h-4 w-4 text-[#627eea]" />
-          <h3 className="text-sm font-semibold text-[#f7f8f8]">AI Overview</h3>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white/[0.02] rounded-lg p-3">
-            <p className="text-lg font-bold text-[#f7f8f8]">{(stats?.aiChatsTotal || 0).toLocaleString()}</p>
-            <p className="text-[10px] text-[#8a8f98]">Total Chats</p>
-          </div>
-          <div className="bg-white/[0.02] rounded-lg p-3">
-            <p className="text-lg font-bold text-[#f7f8f8]">{(stats?.aiAnalysesTotal || 0).toLocaleString()}</p>
-            <p className="text-[10px] text-[#8a8f98]">Total Analyses</p>
-          </div>
-          <div className="bg-white/[0.02] rounded-lg p-3">
-            <p className="text-lg font-bold text-[#627eea]">openai/o4-mini</p>
-            <p className="text-[10px] text-[#8a8f98]">Model Used</p>
-          </div>
-          <div className="bg-white/[0.02] rounded-lg p-3">
-            <p className="text-lg font-bold text-[#f7931a]">OpenRouter</p>
-            <p className="text-[10px] text-[#8a8f98]">Service Provider</p>
           </div>
         </div>
       </div>

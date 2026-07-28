@@ -131,13 +131,11 @@ export interface PricingTier {
     wallets: number;
     networks: number;
     transactions: number;
-    aiChats: number;
     syncInterval: string;
     reports: string;
   };
   costBreakdown: {
     alchemy: number;
-    openai: number;
     infra: number;
     total: number;
   };
@@ -163,7 +161,6 @@ export const pricingTiers: PricingTier[] = [
       '1 Wallet',
       'EVM address only (Ethereum, Base, Arbitrum, OP, Polygon, BSC…)',
       'Up to 500 recorded transactions',
-      'AI Assistant — 100 messages/month',
       'Sync every 10 minutes',
       'Weekly & monthly reports via Telegram & Email',
       'Basic alerts (Telegram + Email)',
@@ -175,15 +172,13 @@ export const pricingTiers: PricingTier[] = [
       wallets: 1,
       networks: 1,
       transactions: 500,
-      aiChats: 100,
       syncInterval: '10 min',
       reports: 'Weekly & Monthly',
     },
     costBreakdown: {
       alchemy: 1.85,
-      openai: 0.06,
       infra: 2.50,
-      total: 4.41,
+      total: 4.35,
     },
     highlighted: false,
   },
@@ -198,7 +193,6 @@ export const pricingTiers: PricingTier[] = [
       'Up to 5 Wallets',
       'EVM + Solana + Tron addresses',
       'Up to 5,000 recorded transactions',
-      'AI Assistant — 500 messages/month',
       'Sync every minute',
       'Daily, weekly & monthly reports',
       'Advanced custom alerts',
@@ -210,15 +204,13 @@ export const pricingTiers: PricingTier[] = [
       wallets: 5,
       networks: 3,
       transactions: 5000,
-      aiChats: 500,
       syncInterval: '1 min',
       reports: 'Daily',
     },
     costBreakdown: {
       alchemy: 13.21,
-      openai: 0.30,
       infra: 4.49,
-      total: 18.00,
+      total: 17.70,
     },
     highlighted: true,
     badge: 'Most Popular',
@@ -234,11 +226,10 @@ export const pricingTiers: PricingTier[] = [
       'Up to 25 Wallets',
       'EVM + Solana + Tron + Bitcoin addresses',
       'Unlimited transactions',
-      'AI Assistant — Unlimited messages',
       'Real-time sync (every 30 seconds)',
       'Custom reports for any period',
       'Instant alerts',
-      'Advanced AI classification',
+      'Advanced classification',
       'PDF, CSV & Excel export',
       'Priority support',
     ],
@@ -246,15 +237,13 @@ export const pricingTiers: PricingTier[] = [
       wallets: 25,
       networks: 4,
       transactions: Infinity,
-      aiChats: Infinity,
       syncInterval: '30 sec',
       reports: 'Custom',
     },
     costBreakdown: {
       alchemy: 32.51,
-      openai: 2.40,
       infra: 14.26,
-      total: 49.17,
+      total: 46.77,
     },
     highlighted: false,
     badge: 'For Professionals',

@@ -56,10 +56,15 @@ const ALERT_KEYS = [
   'monthlyReport',
 ] as const;
 
+type EmailAlertKey = (typeof ALERT_KEYS)[number];
+
 function disableAllAlerts(prev: EmailSettingsState): EmailSettingsState {
   const next = { ...prev, enabled: false, verified: false };
+  // Alert entries carry different payloads per key, so the indexed write is
+  // narrowed to the shared `enabled` flag they all have.
+  const toggles = next as Record<EmailAlertKey, { enabled: boolean }>;
   for (const key of ALERT_KEYS) {
-    next[key] = { ...prev[key], enabled: false };
+    toggles[key] = { ...prev[key], enabled: false };
   }
   return next;
 }

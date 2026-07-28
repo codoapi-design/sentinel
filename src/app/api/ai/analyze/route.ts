@@ -1,164 +1,144 @@
 /**
  * POST /api/ai/analyze
  *
- * Analyze transaction data with the CryptoBooks AI agent.
- * Returns charts data, insights, warnings, suggestions, and a written report.
+ * Page and section analysis behind every "AI Data Analysis" button.
+ *
+ * The pipeline is deterministic end to end: the section context selects a tool
+ * bundle, the tools run against verified wallet data, and the narrative is
+ * written by the LLM when one is configured and by the deterministic renderer
+ * otherwise. The response is identical in shape either way.
+ *
+ * Body:
+ *   {
+ *     walletId: string,          // required, must belong to the caller
+ *     sectionType: string,       // e.g. "trading-volume", "revenue", "portfolio"
+ *     sectionTitle?: string,
+ *     asset?: string,
+ *     network?: string,
+ *     counterparty?: string,
+ *     typeId?: string,
+ *     period?: string | number,  // "30d" | "3m" | "all" | days
+ *     filters?: Record<string, string | number | boolean | null>,
+ *     includeHidden?: boolean    // include spam / dust rows
+ *   }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeDataWithAgent, type AgentContext } from '@/lib/ai/agent';
-import { resolveCounterpartyDisplay } from '@/lib/clients/display';
-import type { Client } from '@/lib/mock-data';
+
+import { isWalletContextError, recordAiUsage, runAnalysis } from '@/lib/ai/tools';
+import { createCookieServerClient } from '@/lib/supabase/server';
+
+interface AnalyzeRequestBody {
+  walletId?: unknown;
+  sectionType?: unknown;
+  sectionTitle?: unknown;
+  page?: unknown;
+  asset?: unknown;
+  network?: unknown;
+  counterparty?: unknown;
+  typeId?: unknown;
+  period?: unknown;
+  filters?: unknown;
+  includeHidden?: unknown;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-
+    const cookieClient = await createCookieServerClient();
     const {
-      context,
-      transactions,
-      summaryStats,
-      groupedData,
-      clients = [],
-    }: {
-      context: AgentContext;
-      transactions: Array<Record<string, unknown>>;
-      summaryStats: Record<string, number>;
-      groupedData: Record<string, unknown>;
-      clients?: Client[];
-    } = body;
+      data: { user },
+      error: authError,
+    } = await cookieClient.auth.getUser();
 
-    // Validate required fields
-    if (!context?.userId) {
-      return NextResponse.json(
-        { error: 'context.userId is required' },
-        { status: 400 }
-      );
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    if (!transactions || !Array.isArray(transactions)) {
-      return NextResponse.json(
-        { error: 'transactions array is required' },
-        { status: 400 }
-      );
+    let body: AnalyzeRequestBody;
+    try {
+      body = (await request.json()) as AnalyzeRequestBody;
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    if (!context.sectionType) {
-      return NextResponse.json(
-        { error: 'context.sectionType is required for analysis' },
-        { status: 400 }
-      );
+    const walletId = asString(body.walletId);
+    if (!walletId) {
+      return NextResponse.json({ error: 'walletId is required' }, { status: 400 });
     }
 
-    // Set default plan if not provided
-    if (!context.plan) {
-      context.plan = 'starter';
-    }
+    const result = await runAnalysis({
+      walletId,
+      userId: user.id,
+      mode: 'dashboard',
+      includeHidden: body.includeHidden === true,
+      sectionContext: {
+        sectionType: asString(body.sectionType),
+        sectionTitle: asString(body.sectionTitle),
+        page: asString(body.page),
+        asset: asString(body.asset),
+        network: asString(body.network),
+        counterparty: asString(body.counterparty),
+        typeId: asString(body.typeId),
+        period: asPeriod(body.period),
+        filters: asFilters(body.filters),
+      },
+    });
 
-    // Calculate summary stats if not provided
-    const stats = summaryStats || calculateSummaryStats(transactions);
-    const groups = groupedData || calculateGroupedData(transactions, clients);
-
-    // Call the AI agent
-    const result = await analyzeDataWithAgent(context, transactions, stats, groups);
+    // Tracking is observability only — a failed counter never fails a request.
+    await recordAiUsage({ userId: user.id, kind: 'analysis', usage: result.llm.usage });
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: {
+        narrative: result.narrative,
+        source: result.source,
+        insights: result.insights,
+        metrics: result.metrics,
+        confidence: result.confidence,
+        dataQuality: result.dataQuality,
+        toolsUsed: result.toolsUsed,
+        analysisMode: result.analysisMode,
+        periodDays: result.periodDays,
+        periodLabel: result.periodLabel,
+        generatedAt: result.generatedAt,
+      },
     });
   } catch (error) {
-    console.error('AI Analyze API error:', error);
-
-    // Check if it's a rate limit error
-    if (error instanceof Error && error.message.includes('Rate limit')) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded for analysis requests. Please upgrade your plan.' },
-        { status: 429 }
-      );
+    if (isWalletContextError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
+    console.error('[AI Analyze] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to process analysis request' },
+      {
+        error: 'Analysis failed',
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
 }
 
-// ============================================================
-// Helper: Calculate summary statistics
-// ============================================================
-
-function calculateSummaryStats(transactions: Array<Record<string, unknown>>): Record<string, number> {
-  const values = transactions.map(tx => (tx.value as number) || 0);
-  const totalValue = values.reduce((sum, v) => sum + v, 0);
-  const avgValue = values.length > 0 ? totalValue / values.length : 0;
-  const maxValue = values.length > 0 ? Math.max(...values) : 0;
-  const minValue = values.length > 0 ? Math.min(...values) : 0;
-
-  return {
-    totalValue: Math.round(totalValue * 100) / 100,
-    avgValue: Math.round(avgValue * 100) / 100,
-    maxValue: Math.round(maxValue * 100) / 100,
-    minValue: Math.round(minValue * 100) / 100,
-    count: transactions.length,
-  };
+function asString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
-// ============================================================
-// Helper: Calculate grouped data
-// ============================================================
+function asPeriod(value: unknown): string | number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return asString(value);
+}
 
-function calculateGroupedData(
-  transactions: Array<Record<string, unknown>>,
-  clients: Client[] = [],
-): Record<string, unknown> {
-  // Group by date
-  const byDateMap: Record<string, number> = {};
-  transactions.forEach(tx => {
-    const date = (tx.date as string) || '';
-    const key = date.length > 10 ? date.slice(0, 10) : date;
-    byDateMap[key] = (byDateMap[key] || 0) + ((tx.value as number) || 0);
-  });
-  const byDate = Object.entries(byDateMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }));
+function asFilters(value: unknown): Record<string, string | number | boolean | null> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
 
-  // Group by token
-  const byTokenMap: Record<string, number> = {};
-  transactions.forEach(tx => {
-    const token = (tx.token as string) || 'UNKNOWN';
-    byTokenMap[token] = (byTokenMap[token] || 0) + ((tx.value as number) || 0);
-  });
-  const byToken = Object.entries(byTokenMap)
-    .sort(([, a], [, b]) => b - a)
-    .map(([token, value]) => ({ token, value: Math.round(value * 100) / 100 }));
+  const filters: Record<string, string | number | boolean | null> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry === null || typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean') {
+      filters[key] = entry;
+    }
+  }
 
-  // Group by network
-  const byNetworkMap: Record<string, number> = {};
-  transactions.forEach(tx => {
-    const network = (tx.networkAr as string) || (tx.network as string) || 'Unknown';
-    byNetworkMap[network] = (byNetworkMap[network] || 0) + ((tx.value as number) || 0);
-  });
-  const byNetwork = Object.entries(byNetworkMap)
-    .sort(([, a], [, b]) => b - a)
-    .map(([network, value]) => ({ network, value: Math.round(value * 100) / 100 }));
-
-  // Group by counterparty — prefer named clients
-  const byCounterpartyMap: Record<string, number> = {};
-  transactions.forEach(tx => {
-    const label = resolveCounterpartyDisplay(
-      {
-        counterparty: tx.counterparty as string | null | undefined,
-        counterpartyLabel: tx.counterpartyLabel as string | null | undefined,
-      },
-      clients,
-    );
-    byCounterpartyMap[label] = (byCounterpartyMap[label] || 0) + ((tx.value as number) || 0);
-  });
-  const byCounterparty = Object.entries(byCounterpartyMap)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 8)
-    .map(([label, value]) => ({ label, value: Math.round(value * 100) / 100 }));
-
-  return { byDate, byToken, byNetwork, byCounterparty };
+  return Object.keys(filters).length > 0 ? filters : null;
 }

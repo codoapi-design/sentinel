@@ -155,6 +155,13 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
         filenameBase: `sentinel-asset-${asset.symbol.toLowerCase()}`,
         transactions: statsTransactions,
         clients,
+        aiScope: {
+          page: 'asset-detail',
+          sectionType: 'asset',
+          sectionTitle: `${asset.symbol} activity`,
+          asset: asset.symbol,
+          period: 'all',
+        },
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -168,10 +175,14 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportExcel(payload);
+      const aiIncluded = await downloadReportExcel(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'Excel report downloaded (with charts)'
+        extras.length > 0
+          ? `Excel report downloaded (with ${extras.join(' + ')})`
           : 'Excel report downloaded',
       );
     } catch (err) {
@@ -191,6 +202,13 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
         filenameBase: `sentinel-asset-${asset.symbol.toLowerCase()}`,
         transactions: statsTransactions,
         clients,
+        aiScope: {
+          page: 'asset-detail',
+          sectionType: 'asset',
+          sectionTitle: `${asset.symbol} activity`,
+          asset: asset.symbol,
+          period: 'all',
+        },
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -203,10 +221,14 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportPdf(payload);
+      const aiIncluded = await downloadReportPdf(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'PDF report downloaded (with charts)'
+        extras.length > 0
+          ? `PDF report downloaded (with ${extras.join(' + ')})`
           : 'PDF report downloaded',
       );
     } catch (err) {
@@ -397,9 +419,12 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
       <AIAnalysisSection
         transactions={statsTransactions}
         clients={clients}
-        sectionTitle={`Transactions of ${asset.name}`}
+        sectionTitle={`${asset.symbol} activity`}
         sectionColor={asset.color}
-        sectionType={'revenue' as const}
+        sectionType="asset"
+        page="asset-detail"
+        asset={asset.symbol}
+        period="all"
       />
     </div>
   );

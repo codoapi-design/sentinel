@@ -34,7 +34,6 @@ import {
 import { InvestmentReturnPeriodControls } from '@/components/investment-return-period-controls';
 import { AIAnalysisSection } from '@/components/ai-analysis-section';
 import type { InvestmentReturnAssetParams } from '@/hooks/use-investment-return-asset';
-import type { Transaction } from '@/lib/mock-data';
 import {
   downloadReportExcel,
   downloadReportPdf,
@@ -164,35 +163,10 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
   const assets = filtered?.assets ?? detail?.assets ?? [];
   const showingLiveAll = activePeriod === 0 && !isCustomActive;
 
-  /** Synthetic txs for AIAnalysisSection — asset PnL summary as analysis context */
-  const analysisTransactions = useMemo((): Transaction[] => {
-    return assets.map(asset => {
-      const opened = asset.openedAt || '';
-      const date = (asset.closedAt || opened).slice(0, 10) || today;
-      const ts = Date.parse(asset.closedAt || opened || `${today}T00:00:00.000Z`) || 0;
-      return {
-        id: `inv-return-${asset.key}`,
-        date,
-        timestamp: ts,
-        type: 'trade' as const,
-        typeLabel: 'Investment return',
-        activity: statusLabel(asset.status),
-        token: asset.tokenSymbol,
-        quantity: asset.quantityOpen,
-        price: 0,
-        value: asset.totalPnlUsd,
-        network: asset.network,
-        networkLabel: networkLabel(asset.network),
-        txHash: '',
-        counterparty: asset.status,
-        counterpartyLabel: asset.periodLabel || statusLabel(asset.status),
-      };
-    });
-  }, [assets, today]);
-
   const buildExportPayload = useCallback((): ReportPayload | null => {
     if (!detail?.trackingActive || !filtered) return null;
     const view = filtered;
+    const period = activePeriod === 0 ? 'all' : `${activePeriod}d`;
     return {
       title: 'Investment Return',
       subtitle: view.periodLabel
@@ -201,6 +175,13 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
           ? `Since connected · ${sinceLabel}`
           : 'Mark-to-market return since wallet connect',
       filenameBase: 'sentinel-investment-return',
+      aiScope: {
+        page: 'investment-return',
+        sectionType: 'investment-return',
+        sectionTitle: 'Investment Return',
+        period,
+        filters: isCustomActive ? { to: effectiveTo } : undefined,
+      },
       summary: [
         { label: 'Total PnL (USD)', value: formatSignedUsd(view.totalPnlUsd) },
         {
@@ -254,7 +235,7 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
         },
       ],
     };
-  }, [detail, filtered, assets, sinceLabel]);
+  }, [detail, filtered, assets, sinceLabel, activePeriod, isCustomActive, effectiveTo]);
 
   const handleDownloadExcel = useCallback(async () => {
     try {
@@ -277,10 +258,14 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
           },
         ];
       }
-      downloadReportExcel(payload);
+      const aiIncluded = await downloadReportExcel(payload);
+      const extras = [
+        chartResult ? 'chart' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        chartResult
-          ? 'Excel report downloaded (with chart)'
+        extras.length > 0
+          ? `Excel report downloaded (with ${extras.join(' + ')})`
           : 'Excel report downloaded',
       );
     } catch (err) {
@@ -309,10 +294,14 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
           },
         ];
       }
-      downloadReportPdf(payload);
+      const aiIncluded = await downloadReportPdf(payload);
+      const extras = [
+        chartResult ? 'chart' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        chartResult
-          ? 'PDF report downloaded (with chart)'
+        extras.length > 0
+          ? `PDF report downloaded (with ${extras.join(' + ')})`
           : 'PDF report downloaded',
       );
     } catch (err) {
@@ -800,10 +789,12 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
 
       {/* AI Analysis */}
       <AIAnalysisSection
-        transactions={analysisTransactions}
         sectionTitle="Investment Return"
         sectionColor="#0ecb81"
         sectionType="investment-return"
+        page="investment-return"
+        period={activePeriod === 0 ? 'all' : `${activePeriod}d`}
+        filters={isCustomActive ? { to: effectiveTo } : undefined}
       />
     </div>
   );

@@ -100,6 +100,14 @@ export function ClientDetailPage({
         filenameBase: 'sentinel-client',
         transactions: statsTransactions,
         clients,
+        aiScope: {
+          page: 'client-detail',
+          sectionType: 'counterparty',
+          sectionTitle: `Transactions with ${client.name}`,
+          counterparty: client.address,
+          period: 'all',
+          filters: { direction: isNetPositive ? 'net-inflow' : 'net-outflow' },
+        },
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -112,16 +120,20 @@ export function ClientDetailPage({
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportExcel(payload);
+      const aiIncluded = await downloadReportExcel(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'Excel report downloaded (with charts)'
+        extras.length > 0
+          ? `Excel report downloaded (with ${extras.join(' + ')})`
           : 'Excel report downloaded',
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
     }
-  }, [client.name, client.address, statsTransactions, clients]);
+  }, [client.name, client.address, statsTransactions, clients, isNetPositive]);
 
   const handleDownloadPdf = useCallback(async () => {
     try {
@@ -131,6 +143,14 @@ export function ClientDetailPage({
         filenameBase: 'sentinel-client',
         transactions: statsTransactions,
         clients,
+        aiScope: {
+          page: 'client-detail',
+          sectionType: 'counterparty',
+          sectionTitle: `Transactions with ${client.name}`,
+          counterparty: client.address,
+          period: 'all',
+          filters: { direction: isNetPositive ? 'net-inflow' : 'net-outflow' },
+        },
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -143,16 +163,20 @@ export function ClientDetailPage({
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportPdf(payload);
+      const aiIncluded = await downloadReportPdf(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'PDF report downloaded (with charts)'
+        extras.length > 0
+          ? `PDF report downloaded (with ${extras.join(' + ')})`
           : 'PDF report downloaded',
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
-  }, [client.name, client.address, statsTransactions, clients]);
+  }, [client.name, client.address, statsTransactions, clients, isNetPositive]);
 
   return (
     <div className="space-y-6" ref={pageRef}>
@@ -272,9 +296,13 @@ export function ClientDetailPage({
       <AIAnalysisSection
         transactions={statsTransactions}
         clients={clients}
-        sectionTitle={`Transactions of ${client.name}`}
+        sectionTitle={`Transactions with ${client.name}`}
         sectionColor={client.color}
-        sectionType={isNetPositive ? 'revenue' : 'expenses'}
+        sectionType="counterparty"
+        page="client-detail"
+        counterparty={client.address}
+        period="all"
+        filters={{ direction: isNetPositive ? 'net-inflow' : 'net-outflow' }}
       />
     </div>
   );

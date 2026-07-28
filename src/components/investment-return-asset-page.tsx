@@ -34,6 +34,7 @@ import {
   type InvestmentReturnPeriodDays,
 } from '@/lib/finance/investment-return-period';
 import { InvestmentReturnPeriodControls } from '@/components/investment-return-period-controls';
+import { AIAnalysisSection } from '@/components/ai-analysis-section';
 
 interface InvestmentReturnAssetPageProps {
   asset: InvestmentReturnAssetParams;
@@ -613,6 +614,18 @@ export function InvestmentReturnAssetPage({
           not full history before wallet add. Gas does not create lots.
         </p>
       </div>
+
+      {/* AI Analysis */}
+      <AIAnalysisSection
+        sectionTitle={`${asset.tokenSymbol} Investment Return`}
+        sectionColor="#0ecb81"
+        sectionType="investment-return"
+        page="investment-return"
+        asset={asset.tokenSymbol}
+        network={asset.network}
+        period={activePeriod === 0 ? 'all' : `${activePeriod}d`}
+        filters={isCustomActive ? { to: effectiveTo } : undefined}
+      />
     </div>
   );
 }

@@ -801,7 +801,7 @@ export function TransactionsTable({
     return filteredTransactions.reduce((sum, tx) => sum + tx.value, 0);
   }, [filteredTransactions]);
 
-  const handleDownloadExcel = useCallback(() => {
+  const handleDownloadExcel = useCallback(async () => {
     try {
       const payload = buildTransactionsReportPayload({
         title: 'Transactions',
@@ -809,6 +809,11 @@ export function TransactionsTable({
         filenameBase: 'sentinel-transactions',
         transactions: filteredTransactions,
         clients,
+        aiScope: {
+          page: 'transactions',
+          sectionType: 'transactions',
+          sectionTitle: 'Transactions',
+        },
         extraSummary: [
           {
             label: 'Filtered total (USD)',
@@ -820,14 +825,18 @@ export function TransactionsTable({
         toast.info('No transactions to export');
         return;
       }
-      downloadReportExcel(payload);
-      toast.success('Excel report downloaded');
+      const aiIncluded = await downloadReportExcel(payload);
+      toast.success(
+        aiIncluded
+          ? 'Excel report downloaded (with AI analysis)'
+          : 'Excel report downloaded',
+      );
     } catch {
       toast.error('Failed to export Excel');
     }
-  }, [filteredTransactions, totalFilteredValue]);
+  }, [filteredTransactions, totalFilteredValue, clients]);
 
-  const handleDownloadPdf = useCallback(() => {
+  const handleDownloadPdf = useCallback(async () => {
     try {
       const payload = buildTransactionsReportPayload({
         title: 'Transactions',
@@ -835,6 +844,11 @@ export function TransactionsTable({
         filenameBase: 'sentinel-transactions',
         transactions: filteredTransactions,
         clients,
+        aiScope: {
+          page: 'transactions',
+          sectionType: 'transactions',
+          sectionTitle: 'Transactions',
+        },
         extraSummary: [
           {
             label: 'Filtered total (USD)',
@@ -846,12 +860,16 @@ export function TransactionsTable({
         toast.info('No transactions to export');
         return;
       }
-      downloadReportPdf(payload);
-      toast.success('PDF report downloaded');
+      const aiIncluded = await downloadReportPdf(payload);
+      toast.success(
+        aiIncluded
+          ? 'PDF report downloaded (with AI analysis)'
+          : 'PDF report downloaded',
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
-  }, [filteredTransactions, totalFilteredValue]);
+  }, [filteredTransactions, totalFilteredValue, clients]);
 
   const totalPages = Math.ceil(filteredTransactions.length / rowsPerPage);
   const paginatedTransactions = filteredTransactions.slice(

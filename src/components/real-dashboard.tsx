@@ -10,7 +10,6 @@ import { TransactionsTable, TransactionsTab } from './transactions-table';
 import { TelegramSettings } from './telegram-settings';
 import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
-import { AIChat } from './ai-chat';
 import { SectionPage } from './section-page';
 import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
@@ -24,11 +23,13 @@ import { NetworkDetailPage } from './network-detail-page';
 import { TypesSection, TypesTab } from './types-section';
 import { TypeDetailPage } from './type-detail-page';
 import { WalletBar } from './wallet-bar';
+import { AIAnalysisSection } from './ai-analysis-section';
+import { AIChat } from './ai-chat';
+import { resolveDashboardChatContext, type AiPageContext } from '@/lib/ai-client';
 import { Button } from '@/components/ui/button';
 import { LogOut, Loader2, RefreshCw, BarChart3, Shield, Plus, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWalletStore } from '@/stores/wallet-store';
-import { useAIStore } from '@/stores/ai-store';
 import { useWalletAutoSync } from '@/hooks/use-wallet-auto-sync';
 import { useAuth } from '@/lib/auth-context';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
@@ -69,28 +70,16 @@ export function RealDashboard() {
     getActiveWallet,
     getActiveTransactions,
     getActiveClients,
-    currentPlan,
   } = useWalletStore();
 
   // Auto-sync hook
   const { triggerSync } = useWalletAutoSync();
-
-  // AI store
-  const { setCurrentPage, setCurrentPlan: setAIPlan } = useAIStore();
 
   // Load wallets from DB, then hydrate transactions from DB.
   // Only run a provider sync if this wallet has never been synced.
   useEffect(() => {
     loadWalletsFromDB();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    setCurrentPage(activeTab);
-  }, [activeTab, setCurrentPage]);
-
-  useEffect(() => {
-    setAIPlan(currentPlan);
-  }, [currentPlan, setAIPlan]);
 
   // Get active wallet data
   const activeWallet = getActiveWallet();
@@ -129,6 +118,21 @@ export function RealDashboard() {
       cancelled = true;
     };
   }, [activeWalletId, isLoadingWallets]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** What the user is looking at right now, so chat answers stay on the same subject. */
+  const chatContext = useMemo<AiPageContext>(
+    () =>
+      resolveDashboardChatContext({
+        activeTab,
+        activeSection,
+        activeAsset,
+        activeClient,
+        activeNetwork,
+        activeType,
+        investmentReturnAsset,
+      }),
+    [activeTab, activeSection, activeAsset, activeClient, activeNetwork, activeType, investmentReturnAsset]
+  );
 
   const handleLogout = async () => {
     toast.success('Logged out successfully');
@@ -287,7 +291,7 @@ export function RealDashboard() {
             {[
               { icon: '🔗', title: 'Connect', desc: 'Add your wallet address' },
               { icon: '📊', title: 'Track', desc: 'Auto-classify transactions' },
-              { icon: '🧠', title: 'Analyze', desc: 'AI-powered insights' },
+              { icon: '🧠', title: 'Analyze', desc: 'Insights coming soon' },
             ].map((step, i) => (
               <div key={i} className="bg-[#0f1011] border border-white/5 rounded-xl p-4 text-center">
                 <div className="text-2xl mb-2">{step.icon}</div>
@@ -439,42 +443,81 @@ export function RealDashboard() {
         );
       case 'transactions':
         return (
-          <TransactionsTab
-            clients={displayClients}
-            transactions={displayTransactions}
-          />
+          <div className="space-y-6">
+            <TransactionsTab
+              clients={displayClients}
+              transactions={displayTransactions}
+            />
+            <AIAnalysisSection
+              transactions={displayTransactions}
+              clients={displayClients}
+              sectionTitle="Transactions"
+              sectionType="transactions"
+              page="transactions"
+            />
+          </div>
         );
       case 'assets':
-        return <AssetsTab onAssetClick={handleAssetClick} />;
+        return (
+          <div className="space-y-6">
+            <AssetsTab onAssetClick={handleAssetClick} />
+            <AIAnalysisSection sectionTitle="Assets" sectionType="assets" page="assets" />
+          </div>
+        );
       case 'clients':
         return (
-          <ClientsTab
-            clients={displayClients}
-            transactions={displayTransactions}
-            onClientClick={handleClientClick}
-            onDefineClient={handleDefineClient}
-            onClientsChange={(newClients) => {
-              if (activeWalletId) {
-                useWalletStore.getState().setClients(activeWalletId, newClients);
-              }
-            }}
-            defineAddress={defineAddressTrigger}
-            onDefineConsumed={handleDefineConsumed}
-          />
+          <div className="space-y-6">
+            <ClientsTab
+              clients={displayClients}
+              transactions={displayTransactions}
+              onClientClick={handleClientClick}
+              onDefineClient={handleDefineClient}
+              onClientsChange={(newClients) => {
+                if (activeWalletId) {
+                  useWalletStore.getState().setClients(activeWalletId, newClients);
+                }
+              }}
+              defineAddress={defineAddressTrigger}
+              onDefineConsumed={handleDefineConsumed}
+            />
+            <AIAnalysisSection
+              transactions={displayTransactions}
+              clients={displayClients}
+              sectionTitle="Clients"
+              sectionType="clients"
+              page="clients"
+            />
+          </div>
         );
       case 'networks':
         return (
-          <NetworksTab
-            transactions={displayTransactions}
-            onNetworkClick={handleNetworkClick}
-          />
+          <div className="space-y-6">
+            <NetworksTab
+              transactions={displayTransactions}
+              onNetworkClick={handleNetworkClick}
+            />
+            <AIAnalysisSection
+              transactions={displayTransactions}
+              sectionTitle="Networks"
+              sectionType="networks"
+              page="networks"
+            />
+          </div>
         );
       case 'types':
         return (
-          <TypesTab
-            transactions={displayTransactions}
-            onTypeClick={handleTypeClick}
-          />
+          <div className="space-y-6">
+            <TypesTab
+              transactions={displayTransactions}
+              onTypeClick={handleTypeClick}
+            />
+            <AIAnalysisSection
+              transactions={displayTransactions}
+              sectionTitle="Transaction Types"
+              sectionType="transactions"
+              page="types"
+            />
+          </div>
         );
       case 'settings':
         return (
@@ -504,61 +547,61 @@ export function RealDashboard() {
 
   return (
     <>
-      {/* Flex shell only — AIChat must NOT be a flex child (stretches fixed FAB off-screen) */}
+      {/* Flex shell only — AIChat must NOT be a flex child (stretches the fixed FAB off-screen) */}
       <div className="flex min-h-screen bg-[#08090a] text-[#f7f8f8]" dir="ltr">
-        {/* Sidebar */}
-        <Sidebar activeTab={activeTab} onTabChange={handleTabChange} isDemo={false} userName={userName} userInitial={userInitial} />
+      {/* Sidebar */}
+      <Sidebar activeTab={activeTab} onTabChange={handleTabChange} isDemo={false} userName={userName} userInitial={userInitial} />
 
-        {/* Main Content */}
-        <main className="flex-1 min-w-0">
-          {/* Top bar */}
-          <header className="sticky top-0 z-30 h-14 bg-[#08090a]/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-4 lg:px-6">
-            <div className="flex items-center gap-3 pl-12 lg:pl-0">
-              <h1 className="text-sm font-medium text-[#d0d6e0]">
-                {getHeaderTitle()}
-              </h1>
-              {activeWallet && isAnySyncing && (
-                <div className="flex items-center gap-1.5 text-[10px] text-[#0052ff]">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  <span>Syncing...</span>
-                </div>
-              )}
-              {hasWallets && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-white/5"
-                  onClick={() => void triggerSync()}
-                  disabled={isAnySyncing}
-                  title="Sync from blockchain"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isAnySyncing ? 'animate-spin' : ''}`} />
-                </Button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <WalletBar />
+      {/* Main Content */}
+      <main className="flex-1 min-w-0">
+        {/* Top bar */}
+        <header className="sticky top-0 z-30 h-14 bg-[#08090a]/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-4 lg:px-6">
+          <div className="flex items-center gap-3 pl-12 lg:pl-0">
+            <h1 className="text-sm font-medium text-[#d0d6e0]">
+              {getHeaderTitle()}
+            </h1>
+            {activeWallet && isAnySyncing && (
+              <div className="flex items-center gap-1.5 text-[10px] text-[#0052ff]">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Syncing...</span>
+              </div>
+            )}
+            {hasWallets && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-[#191a1b] text-xs"
-                onClick={handleLogout}
+                className="h-7 w-7 p-0 text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-white/5"
+                onClick={() => void triggerSync()}
+                disabled={isAnySyncing}
+                title="Sync from blockchain"
               >
-                <LogOut className="h-4 w-4 mr-1" />
-                Exit
+                <RefreshCw className={`h-3.5 w-3.5 ${isAnySyncing ? 'animate-spin' : ''}`} />
               </Button>
-            </div>
-          </header>
-
-          {/* Content area */}
-          <div className="p-4 lg:p-6 max-w-7xl mx-auto">
-            {renderContent()}
+            )}
           </div>
-        </main>
+          <div className="flex items-center gap-2">
+            <WalletBar />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-[#191a1b] text-xs"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-4 w-4 mr-1" />
+              Exit
+            </Button>
+          </div>
+        </header>
+
+        {/* Content area */}
+        <div className="p-4 lg:p-6 max-w-7xl mx-auto">
+          {renderContent()}
+        </div>
+      </main>
       </div>
 
-      {/* AI Chat — outside flex shell; portals to body; always mounted */}
-      <AIChat />
+      {/* AI Chat — outside the flex shell; portals to body; always mounted */}
+      <AIChat pageContext={chatContext} />
     </>
   );
 }

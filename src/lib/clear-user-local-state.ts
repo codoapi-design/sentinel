@@ -4,14 +4,13 @@
  */
 
 import { useWalletStore } from '@/stores/wallet-store';
-import { useAIStore } from '@/stores/ai-store';
 import { useUiPreferencesStore, UI_PREFERENCES_STORAGE_KEY } from '@/stores/ui-preferences-store';
 
 /** Zustand persist keys + legacy keys that hold user-scoped data */
 export const USER_SCOPED_STORAGE_KEYS = [
   'sentinel-wallets',
   'cryptobooks-wallets',
-  'cryptobooks-ai',
+  'cryptobooks-ai', // legacy key from removed AI store
   'cryptobooks_subscription',
   UI_PREFERENCES_STORAGE_KEY,
 ] as const;
@@ -34,12 +33,6 @@ export function clearUserLocalState(nextUserId: string | null = null): void {
 
   try {
     useUiPreferencesStore.getState().reset();
-  } catch {
-    // ignore
-  }
-
-  try {
-    useAIStore.getState().clearChat();
   } catch {
     // ignore
   }

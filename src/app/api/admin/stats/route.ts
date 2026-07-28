@@ -59,14 +59,6 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(10);
 
-    // AI usage
-    const { data: aiUsageData } = await supabase
-      .from('ai_usage')
-      .select('chat_count, analysis_count');
-
-    const aiChatsTotal = (aiUsageData || []).reduce((sum, u) => sum + (u.chat_count || 0), 0);
-    const aiAnalysesTotal = (aiUsageData || []).reduce((sum, u) => sum + (u.analysis_count || 0), 0);
-
     // User growth (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -107,8 +99,6 @@ export async function GET() {
         : 0,
       recentSignups: recentSignups || [],
       userGrowth,
-      aiChatsTotal,
-      aiAnalysesTotal,
     });
   } catch (error) {
     console.error('Admin stats error:', error);

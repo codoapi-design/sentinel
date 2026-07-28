@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowLeft, Wallet, Activity, Bot, Mail, Shield,
+  ArrowLeft, Wallet, Activity, Mail, Shield,
   CheckCircle, XCircle, Ban, Clock,
 } from 'lucide-react';
 
@@ -28,7 +28,6 @@ export default function AdminUserDetailPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [wallets, setWallets] = useState<Array<Record<string, unknown>>>([]);
   const [transactions, setTransactions] = useState<Array<Record<string, unknown>>>([]);
-  const [aiUsage, setAiUsage] = useState<Record<string, unknown> | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +40,6 @@ export default function AdminUserDetailPage() {
           setProfile(data.profile);
           setWallets(data.wallets || []);
           setTransactions(data.transactions || []);
-          setAiUsage(data.aiUsage);
         }
       } catch (error) {
         console.error('Failed to fetch user:', error);
@@ -103,7 +101,6 @@ export default function AdminUserDetailPage() {
     { id: 'overview', label: 'Overview' },
     { id: 'wallets', label: `Wallets (${wallets.length})` },
     { id: 'transactions', label: `Transactions (${transactions.length})` },
-    { id: 'ai', label: 'AI Usage' },
   ];
 
   return (
@@ -126,7 +123,7 @@ export default function AdminUserDetailPage() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <Wallet className="h-4 w-4 text-[#f7931a] mb-2" />
           <p className="text-lg font-bold text-[#f7f8f8]">{profile.wallet_count}</p>
@@ -136,11 +133,6 @@ export default function AdminUserDetailPage() {
           <Activity className="h-4 w-4 text-[#627eea] mb-2" />
           <p className="text-lg font-bold text-[#f7f8f8]">{profile.transaction_count}</p>
           <p className="text-[10px] text-[#8a8f98]">Transactions</p>
-        </div>
-        <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-          <Bot className="h-4 w-4 text-[#0052ff] mb-2" />
-          <p className="text-lg font-bold text-[#f7f8f8]">{(aiUsage as Record<string, unknown>)?.chat_count as number || 0}</p>
-          <p className="text-[10px] text-[#8a8f98]">AI Chats</p>
         </div>
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
           <Clock className="h-4 w-4 text-[#0ecb81] mb-2" />
@@ -278,29 +270,6 @@ export default function AdminUserDetailPage() {
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {activeTab === 'ai' && aiUsage && (
-        <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-white/[0.02] rounded-lg p-3">
-              <p className="text-lg font-bold text-[#f7f8f8]">{(aiUsage.chat_count as number) || 0}</p>
-              <p className="text-[10px] text-[#8a8f98]">Chats</p>
-            </div>
-            <div className="bg-white/[0.02] rounded-lg p-3">
-              <p className="text-lg font-bold text-[#f7f8f8]">{(aiUsage.analysis_count as number) || 0}</p>
-              <p className="text-[10px] text-[#8a8f98]">Analyses</p>
-            </div>
-            <div className="bg-white/[0.02] rounded-lg p-3">
-              <p className="text-lg font-bold text-[#f7f8f8]">{((aiUsage.total_input_tokens as number) || 0).toLocaleString()}</p>
-              <p className="text-[10px] text-[#8a8f98]">Input Tokens</p>
-            </div>
-            <div className="bg-white/[0.02] rounded-lg p-3">
-              <p className="text-lg font-bold text-[#f7f8f8]">{((aiUsage.total_output_tokens as number) || 0).toLocaleString()}</p>
-              <p className="text-[10px] text-[#8a8f98]">Output Tokens</p>
-            </div>
-          </div>
         </div>
       )}
     </div>

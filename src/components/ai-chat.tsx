@@ -1,187 +1,268 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import {
-  X, Send, Bot, User, Trash2,
-  AlertCircle, Sparkles, Copy, Check, Zap,
-} from 'lucide-react';
-import { useAIStore } from '@/stores/ai-store';
-import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import {
+  AlertCircle,
+  Bot,
+  Check,
+  Copy,
+  LogIn,
+  RefreshCw,
+  Send,
+  Sparkles,
+  Trash2,
+  User,
+  WalletMinimal,
+  X,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { FloatingChatButton } from './floating-chat-button';
+import { useWalletStore } from '@/stores/wallet-store';
+import {
+  CONFIDENCE_COLORS,
+  CONFIDENCE_LABELS,
+  copyText,
+  describeAiError,
+  formatGeneratedAt,
+  requestChat,
+  type AiChatHistoryMessage,
+  type AiConfidence,
+  type AiErrorKind,
+  type AiErrorPresentation,
+  type AiNarrativeSource,
+  type AiPageContext,
+} from '@/lib/ai-client';
+import { cn } from '@/lib/utils';
 
-export function AIChat() {
+interface ChatMessageMeta {
+  source: AiNarrativeSource;
+  confidence: AiConfidence;
+  periodLabel: string;
+  toolCount: number;
+  generatedAt: number;
+}
+
+interface ChatEntry {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  meta?: ChatMessageMeta;
+}
+
+interface AIChatProps {
+  /** What the user is currently looking at — forwarded so answers stay on topic. */
+  pageContext?: AiPageContext;
+}
+
+const STARTER_PROMPTS = [
+  'Analyze my wallet',
+  'Why did my portfolio change?',
+  'Where did my capital go?',
+  'What should I monitor?',
+];
+
+const ERROR_ICONS: Record<AiErrorKind, typeof AlertCircle> = {
+  auth: LogIn,
+  wallet: WalletMinimal,
+  input: WalletMinimal,
+  failure: AlertCircle,
+};
+
+/** The runtime is stateless — the client owns the thread and replays it each turn. */
+const MAX_HISTORY_MESSAGES = 10;
+
+/** `false` while server-rendering, `true` once hydrated — the portal needs a DOM. */
+const subscribeToNothing = () => () => {};
+
+export function AIChat({ pageContext }: AIChatProps) {
+  const mounted = useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false
+  );
+
   const [isOpen, setIsOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [inputValue, setInputValue] = useState('');
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<ChatEntry[]>([]);
+  const [isThinking, setIsThinking] = useState(false);
+  const [error, setError] = useState<AiErrorPresentation | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  /** Last question sent, so a failed turn can be replayed. */
+  const [lastPrompt, setLastPrompt] = useState('');
 
-  // Portal to document.body so dashboard flex layout cannot stretch/offset the FAB.
+  const activeWalletId = useWalletStore(state => state.activeWalletId);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    setMounted(true);
+    const abort = abortRef;
+    const copyTimer = copyTimerRef;
+    return () => {
+      abort.current?.abort();
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
   }, []);
 
-  const {
-    messages,
-    isTyping,
-    chatError,
-    sendMessage,
-    clearChat,
-    usage,
-    currentPlan,
-    getModelName,
-    sendQuickAnalysis,
-    currentPage,
-    isStreaming,
-    streamingMessageId,
-    sendMessageStream,
-  } = useAIStore();
-
-  // Dynamic model name from store
-  const modelName = getModelName();
-
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, isTyping]);
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, isThinking, error]);
 
-  // Focus input when chat opens
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
+    if (!isOpen) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 80);
+    return () => clearTimeout(timer);
   }, [isOpen]);
 
-  const handleSend = async () => {
-    if (!inputValue.trim() || isTyping) return;
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen]);
 
-    const message = inputValue.trim();
-    setInputValue('');
-    // Use streaming for better UX, falls back to non-streaming
-    await sendMessageStream(message);
-  };
+  const send = useCallback(
+    async (rawMessage: string, options: { replayLast?: boolean } = {}) => {
+      const message = rawMessage.trim();
+      if (message.length === 0 || isThinking) return;
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+      if (!activeWalletId) {
+        setError({
+          kind: 'wallet',
+          title: 'No wallet connected',
+          message: 'Connect a wallet first — every answer is built from your verified wallet data.',
+          retryable: false,
+        });
+        return;
+      }
+
+      setLastPrompt(message);
+      setError(null);
+
+      const history: AiChatHistoryMessage[] = messages
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(entry => ({ role: entry.role, content: entry.content }));
+
+      if (!options.replayLast) {
+        setMessages(current => [
+          ...current,
+          { id: createId('user'), role: 'user', content: message },
+        ]);
+        setInput('');
+        resetTextareaHeight(inputRef.current);
+      }
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setIsThinking(true);
+
+      try {
+        const data = await requestChat(
+          {
+            walletId: activeWalletId,
+            message,
+            history,
+            pageContext,
+            mode: 'chat',
+          },
+          controller.signal
+        );
+
+        if (controller.signal.aborted) return;
+
+        setMessages(current => [
+          ...current,
+          {
+            id: createId('assistant'),
+            role: 'assistant',
+            content: data.message || data.narrative,
+            meta: {
+              source: data.source,
+              confidence: data.confidence,
+              periodLabel: data.periodLabel,
+              toolCount: data.toolsUsed.length,
+              generatedAt: data.generatedAt,
+            },
+          },
+        ]);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError(describeAiError(err));
+      } finally {
+        if (!controller.signal.aborted) setIsThinking(false);
+      }
+    },
+    [activeWalletId, isThinking, messages, pageContext]
+  );
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void send(input);
     }
   };
 
-  // Copy to clipboard for AI responses
-  const handleCopy = useCallback(async (messageId: string, content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopiedMessageId(messageId);
-      setTimeout(() => setCopiedMessageId(null), 2000);
-    } catch {
-      // Fallback for older browsers
-      const textArea = document.createElement('textarea');
-      textArea.value = content;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      setCopiedMessageId(messageId);
-      setTimeout(() => setCopiedMessageId(null), 2000);
-    }
+  const handleCopy = useCallback(async (id: string, content: string) => {
+    const ok = await copyText(content);
+    if (!ok) return;
+    setCopiedId(id);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopiedId(null), 2000);
   }, []);
 
-  // Quick analysis handler
-  const handleQuickAnalysis = useCallback(async () => {
-    if (isTyping) return;
+  const clearThread = useCallback(() => {
+    abortRef.current?.abort();
+    setMessages([]);
+    setError(null);
+    setIsThinking(false);
+    setLastPrompt('');
+  }, []);
 
-    // Build page-specific data description
-    const pageDataMap: Record<string, string> = {
-      dashboard: 'Dashboard data: Inflow, Outflow, Flow, and Gas Fees',
-      transactions: 'Transactions table data: All transactions with filtering and search',
-      assets: 'Assets data: Token portfolio, prices, and changes',
-      clients: 'Clients data: Transaction counterparties',
-      reports: 'Reports data: Financial reports and analysis',
-      tax: 'Tax data: Capital gains and losses calculations',
-    };
+  const contextLabel = useMemo(() => describeContext(pageContext), [pageContext]);
 
-    const pageData = pageDataMap[currentPage] || pageDataMap.dashboard;
-    await sendQuickAnalysis(pageData);
-  }, [isTyping, currentPage, sendQuickAnalysis]);
+  if (!mounted) return null;
 
-  const planLabels: Record<string, string> = {
-    starter: 'Starter',
-    pro: 'Pro',
-    enterprise: 'Business',
-    business: 'Business',
-  };
-
-  // Model-specific loading messages
-  const getLoadingMessage = () => {
-    if (modelName.includes('o4') || modelName.includes('o3')) {
-      return 'Model is thinking...';
-    }
-    if (modelName.includes('deepseek')) {
-      return 'DeepSeek is analyzing...';
-    }
-    if (modelName.includes('gemini')) {
-      return 'Gemini is processing...';
-    }
-    return 'Smart Accountant is thinking...';
-  };
-
-  const chatUi = (
+  const panel = (
     <>
-      {/* Chat Bubble — always when closed; never gated on wallets/plan/tab */}
       {!isOpen && <FloatingChatButton onClick={() => setIsOpen(true)} />}
 
-      {/* Chat Panel */}
       {isOpen && (
-        <div className="fixed bottom-6 left-6 z-[100] w-[420px] max-w-[calc(100vw-3rem)] h-[580px] max-h-[calc(100vh-6rem)] bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">
+        <div
+          className="fixed bottom-6 left-6 z-[100] w-[420px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-6rem)] bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up"
+          role="dialog"
+          aria-label="Sentinel AI chat"
+          data-testid="ai-chat-panel"
+        >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0f1011]">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[#0052ff]/10 flex items-center justify-center">
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/5 bg-[#0f1011]">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-[#0052ff]/10 flex items-center justify-center shrink-0">
                 <Bot className="h-5 w-5 text-[#0052ff]" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-bold text-[#f7f8f8]">Smart Accountant</p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold text-[#f7f8f8]">Sentinel AI</p>
                   <Sparkles className="h-3.5 w-3.5 text-[#0052ff]" />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse-dot" />
-                  <span className="text-[10px] text-[#0ecb81]">Online</span>
-                  <span className="text-[10px] text-[#8a8f98]">•</span>
-                  <span className="text-[10px] text-[#8a8f98]">{modelName}</span>
-                </div>
+                <p className="text-[11px] text-[#8a8f98] truncate">{contextLabel}</p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              {/* Usage badge */}
-              {usage.remainingChats < Infinity && (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-[9px] h-5 px-1.5 border-0",
-                    usage.remainingChats < 10 ? "bg-[#f6465d]/10 text-[#f6465d]" : "bg-[#0052ff]/10 text-[#0052ff]"
-                  )}
-                >
-                  {usage.remainingChats} messages
-                </Badge>
-              )}
-              {/* Clear chat */}
+            <div className="flex items-center gap-1 shrink-0">
               {messages.length > 0 && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 text-[#8a8f98] hover:text-[#f6465d] hover:bg-[#f6465d]/10"
-                  onClick={clearChat}
-                  title="Clear chat"
+                  onClick={clearThread}
+                  title="Clear conversation"
+                  aria-label="Clear conversation"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -191,78 +272,51 @@ export function AIChat() {
                 size="icon"
                 className="h-7 w-7 text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-[#191a1b]"
                 onClick={() => setIsOpen(false)}
+                title="Close chat"
+                aria-label="Close chat"
               >
                 <X className="h-4 w-4" />
               </Button>
             </div>
           </div>
 
-          {/* Plan & usage info bar */}
-          <div className="px-4 py-2 bg-[#0f1011]/50 border-b border-white/5 flex items-center justify-between">
-            <span className="text-[10px] text-[#8a8f98]">
-              Plan {planLabels[currentPlan] || 'Starter'}
-            </span>
-            <div className="flex items-center gap-2">
-              {usage.estimatedCostUsd > 0 && (
-                <span className="text-[10px] text-[#8a8f98]">
-                  Cost ≈ ${usage.estimatedCostUsd < 0.01 ? '<0.01' : usage.estimatedCostUsd.toFixed(3)}
-                </span>
-              )}
-              <span className="text-[10px] text-[#8a8f98]">
-                {usage.chatCount > 0 && `${usage.chatCount} messages this month`}
-              </span>
-            </div>
-          </div>
-
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
-            {/* Welcome message if no messages */}
-            {messages.length === 0 && (
-              <div className="text-center py-8">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scroll-smooth">
+            {messages.length === 0 && !isThinking && (
+              <div className="py-6">
                 <div className="w-12 h-12 rounded-xl bg-[#0052ff]/10 flex items-center justify-center mx-auto mb-3">
                   <Bot className="h-6 w-6 text-[#0052ff]" />
                 </div>
-                <p className="text-sm font-medium text-[#f7f8f8] mb-2">Hello! I'm your smart accountant</p>
-                <p className="text-xs text-[#8a8f98] mb-1">
-                  I can analyze your transactions, calculate taxes, and give you financial advice
+                <p className="text-sm font-medium text-[#f7f8f8] text-center">
+                  Ask about your wallet
                 </p>
-                <p className="text-[10px] text-[#8a8f98]/60 mb-4">
-                  Powered by {modelName}
+                <p className="mt-1 text-xs text-[#8a8f98] text-center leading-relaxed">
+                  Every answer is built from your synced transactions, holdings and flows — with the
+                  evidence behind it.
                 </p>
-                <div className="space-y-2">
-                  {[
-                    'What are my capital gains this year?',
-                    'Analyze my expenses and give tips to reduce them',
-                    'How much gas fees did I pay this month?',
-                    'What are the risks in my current wallet?',
-                  ].map((suggestion) => (
+                <div className="mt-4 space-y-2">
+                  {STARTER_PROMPTS.map(prompt => (
                     <button
-                      key={suggestion}
-                      onClick={() => {
-                        setInputValue(suggestion);
-                        inputRef.current?.focus();
-                      }}
-                      className="block w-full text-right text-xs px-3 py-2 rounded-lg bg-[#191a1b] border border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:border-[#0052ff]/30 transition-colors"
+                      key={prompt}
+                      type="button"
+                      onClick={() => void send(prompt)}
+                      className="block w-full text-left text-xs px-3 py-2 rounded-lg bg-[#191a1b] border border-white/5 text-[#d0d6e0] hover:bg-[#28282c] hover:border-[#0052ff]/30 transition-colors"
                     >
-                      {suggestion}
+                      {prompt}
                     </button>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Message list */}
-            {messages.map((message) => (
+            {messages.map(message => (
               <div
                 key={message.id}
-                className={cn(
-                  'flex gap-2',
-                  message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-                )}
+                className={cn('flex gap-2', message.role === 'user' ? 'flex-row-reverse' : 'flex-row')}
               >
                 <div
                   className={cn(
-                    'w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5',
+                    'w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5',
                     message.role === 'user'
                       ? 'bg-[#28282c] text-[#d0d6e0]'
                       : 'bg-[#0052ff]/10 text-[#0052ff]'
@@ -274,143 +328,198 @@ export function AIChat() {
                     <Bot className="h-3.5 w-3.5" />
                   )}
                 </div>
-                <div
-                  className={cn(
-                    'max-w-[80%] group relative',
-                    message.role === 'user' ? '' : ''
-                  )}
-                >
+
+                <div className="max-w-[82%] min-w-0 group">
                   <div
                     className={cn(
-                      'rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+                      'rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed',
                       message.role === 'user'
                         ? 'bg-[#0052ff] text-white rounded-br-sm'
                         : 'bg-[#191a1b] text-[#d0d6e0] border border-white/5 rounded-bl-sm'
                     )}
                   >
                     {message.role === 'assistant' ? (
-                      <div className="prose prose-invert prose-sm max-w-none [&>p]:mb-2 [&>ul]:mb-2 [&>ol]:mb-2 [&>li]:mb-0.5 [&_strong]:text-[#f7f8f8] [&_code]:text-[#0052ff] [&_code]:bg-[#0052ff]/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[11px]">
-                        <ReactMarkdown>{message.content || ''}</ReactMarkdown>
-                        {/* Show typing cursor for streaming messages */}
-                        {isStreaming && message.id === streamingMessageId && (
-                          <span className="inline-block w-1.5 h-4 bg-[#0052ff] animate-pulse ml-0.5 align-middle" />
-                        )}
+                      <div className="prose prose-invert prose-sm max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-[#f7f8f8] [&_code]:text-[#5b8cff] [&_code]:bg-[#0052ff]/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[11px]">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
                       </div>
                     ) : (
-                      message.content
+                      <span className="whitespace-pre-wrap">{message.content}</span>
                     )}
                   </div>
-                  {/* Copy button for AI messages */}
-                  {message.role === 'assistant' && !message.isSummary && (
-                    <button
-                      onClick={() => handleCopy(message.id, message.content)}
-                      className="absolute -bottom-1 left-2 opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 rounded bg-[#28282c] border border-white/5 text-[#8a8f98] hover:text-[#f7f8f8] flex items-center gap-1"
-                      title="Copy response"
-                    >
-                      {copiedMessageId === message.id ? (
-                        <>
-                          <Check className="h-3 w-3 text-[#0ecb81]" />
-                          <span className="text-[9px] text-[#0ecb81]">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3 w-3" />
-                          <span className="text-[9px]">Copy</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {/* Summary badge */}
-                  {message.isSummary && (
-                    <div className="mt-1 flex items-center gap-1">
-                      <Badge className="text-[8px] h-4 px-1 bg-[#8a8f98]/10 text-[#8a8f98] border-0">
-                        Previous summary
-                      </Badge>
+
+                  {message.role === 'assistant' && message.meta && (
+                    <div className="mt-1 flex items-center gap-2 px-1">
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px]"
+                        style={{ color: CONFIDENCE_COLORS[message.meta.confidence] }}
+                        title={`${message.meta.toolCount} engine${message.meta.toolCount === 1 ? '' : 's'} · ${message.meta.periodLabel}`}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: CONFIDENCE_COLORS[message.meta.confidence] }}
+                        />
+                        {CONFIDENCE_LABELS[message.meta.confidence]}
+                      </span>
+                      <span className="text-[10px] text-[#8a8f98]">
+                        {formatGeneratedAt(message.meta.generatedAt)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopy(message.id, message.content)}
+                        className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-[#8a8f98] hover:text-[#f7f8f8] inline-flex items-center gap-1"
+                        title="Copy response"
+                      >
+                        {copiedId === message.id ? (
+                          <>
+                            <Check className="h-3 w-3 text-[#0ecb81]" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3" />
+                            Copy
+                          </>
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>
               </div>
             ))}
 
-            {/* Typing indicator — only show if NOT streaming (streaming shows cursor in message) */}
-            {isTyping && !isStreaming && (
-              <div className="flex gap-2">
-                <div className="w-7 h-7 rounded-full bg-[#0052ff]/10 flex items-center justify-center flex-shrink-0">
-                  <Bot className="h-3.5 w-3.5 text-[#0052ff]" />
-                </div>
-                <div className="bg-[#191a1b] border border-white/5 rounded-2xl rounded-bl-sm px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 rounded-full bg-[#8a8f98] animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 rounded-full bg-[#8a8f98] animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 rounded-full bg-[#8a8f98] animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                    <span className="text-[10px] text-[#8a8f98]">{getLoadingMessage()}</span>
-                  </div>
-                </div>
-              </div>
-            )}
+            {isThinking && <ThinkingBubble />}
 
-            {/* Error message */}
-            {chatError && (
-              <div className="flex gap-2 items-start bg-[#f6465d]/5 rounded-lg p-3 border border-[#f6465d]/10">
-                <AlertCircle className="h-4 w-4 text-[#f6465d] flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-[#f6465d]">{chatError}</p>
-              </div>
+            {error && (
+              <ChatError
+                error={error}
+                onRetry={
+                  error.retryable && lastPrompt
+                    ? () => void send(lastPrompt, { replayLast: true })
+                    : undefined
+                }
+              />
             )}
           </div>
 
-          {/* Input */}
+          {/* Composer */}
           <div className="p-3 border-t border-white/5 bg-[#0f1011]">
-            {/* Quick analysis button */}
-            <div className="mb-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "w-full h-8 text-[11px] gap-1.5 rounded-lg border border-white/5",
-                  "text-[#0052ff] hover:text-[#0052ff] hover:bg-[#0052ff]/5",
-                  isTyping && "opacity-50 pointer-events-none"
-                )}
-                onClick={handleQuickAnalysis}
-                disabled={isTyping}
-              >
-                <Zap className="h-3.5 w-3.5" />
-                Quick analysis of current page data
-              </Button>
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSend();
-              }}
-              className="flex items-center gap-2"
-            >
-              <Input
+            <div className="flex items-end gap-2">
+              <textarea
                 ref={inputRef}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                value={input}
+                onChange={event => {
+                  setInput(event.target.value);
+                  autoGrow(event.target);
+                }}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask your smart accountant..."
-                className="flex-1 bg-[#191a1b] border-white/5 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 rounded-xl focus:border-[#0052ff]/30"
-                disabled={isTyping}
-                maxLength={500}
+                rows={1}
+                maxLength={2000}
+                placeholder="Ask about your wallet…"
+                disabled={isThinking}
+                className="flex-1 resize-none bg-[#191a1b] border border-white/5 rounded-xl px-3 py-2.5 text-sm text-[#d0d6e0] placeholder:text-[#8a8f98] outline-none focus:border-[#0052ff]/40 disabled:opacity-60 max-h-[120px] leading-relaxed"
               />
               <Button
-                type="submit"
+                type="button"
                 size="icon"
-                className="h-10 w-10 rounded-xl bg-[#0052ff] hover:bg-[#0045dd] text-white flex-shrink-0 disabled:opacity-50"
-                disabled={!inputValue.trim() || isTyping}
+                className="h-10 w-10 rounded-xl bg-[#0052ff] hover:bg-[#0045dd] text-white shrink-0 disabled:opacity-50"
+                onClick={() => void send(input)}
+                disabled={input.trim().length === 0 || isThinking}
+                aria-label="Send message"
               >
                 <Send className="h-4 w-4" />
               </Button>
-            </form>
+            </div>
+            <p className="mt-1.5 px-1 text-[10px] text-[#8a8f98]/70">
+              Enter to send · Shift + Enter for a new line
+            </p>
           </div>
         </div>
       )}
     </>
   );
 
-  if (!mounted) return null;
-  return createPortal(chatUi, document.body);
+  return createPortal(panel, document.body);
+}
+
+function ThinkingBubble() {
+  return (
+    <div className="flex gap-2">
+      <div className="w-7 h-7 rounded-full bg-[#0052ff]/10 flex items-center justify-center shrink-0">
+        <Bot className="h-3.5 w-3.5 text-[#0052ff]" />
+      </div>
+      <div className="bg-[#191a1b] border border-white/5 rounded-2xl rounded-bl-sm px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#8a8f98] animate-bounce [animation-delay:0ms]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#8a8f98] animate-bounce [animation-delay:150ms]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#8a8f98] animate-bounce [animation-delay:300ms]" />
+          </div>
+          <span className="text-[11px] text-[#8a8f98]">Reading your wallet data…</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatError({ error, onRetry }: { error: AiErrorPresentation; onRetry?: () => void }) {
+  const Icon = ERROR_ICONS[error.kind];
+
+  return (
+    <div className="flex gap-2 items-start rounded-lg border border-[#f6465d]/15 bg-[#f6465d]/[0.05] p-3">
+      <Icon className="h-4 w-4 text-[#f6465d] shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-[#f7f8f8]">{error.title}</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-[#8a8f98] break-words">{error.message}</p>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#d0d6e0] hover:text-[#f7f8f8]"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Try again
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+let idCounter = 0;
+
+function createId(prefix: string): string {
+  idCounter += 1;
+  return `${prefix}-${Date.now()}-${idCounter}`;
+}
+
+function autoGrow(element: HTMLTextAreaElement): void {
+  element.style.height = 'auto';
+  element.style.height = `${Math.min(element.scrollHeight, 120)}px`;
+}
+
+function resetTextareaHeight(element: HTMLTextAreaElement | null): void {
+  if (element) element.style.height = 'auto';
+}
+
+function describeContext(context: AiPageContext | undefined): string {
+  if (!context) return 'Grounded in your wallet data';
+
+  const focus =
+    context.asset ??
+    context.network ??
+    context.counterparty ??
+    context.sectionTitle ??
+    context.page ??
+    context.sectionType;
+
+  return focus ? `Context: ${humanize(focus)}` : 'Grounded in your wallet data';
+}
+
+function humanize(value: string): string {
+  const spaced = value.replace(/[_-]+/g, ' ').trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }

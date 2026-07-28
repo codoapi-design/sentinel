@@ -8,7 +8,6 @@ import {
   Check,
   Wallet,
   Network,
-  MessageSquare,
   Clock,
   FileText,
   Zap,
@@ -187,7 +186,6 @@ export function PricingPage() {
                 <LimitRow icon={Wallet} label="Wallets" value={tier.limits.wallets} />
                 <LimitRow icon={Network} label="Networks" value={tier.limits.networks} />
                 <LimitRow icon={FileText} label="Transactions" value={tier.limits.transactions === Infinity ? '∞' : tier.limits.transactions.toLocaleString()} />
-                <LimitRow icon={MessageSquare} label="AI Messages" value={tier.limits.aiChats === Infinity ? '∞' : tier.limits.aiChats} />
                 <LimitRow icon={Clock} label="Sync" value={tier.limits.syncInterval} />
               </div>
 

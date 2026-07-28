@@ -54,13 +54,6 @@ export async function GET(
       transactions = txData || [];
     }
 
-    // Fetch AI usage
-    const { data: aiUsage } = await supabase
-      .from('ai_usage')
-      .select('*')
-      .eq('user_id', id)
-      .single();
-
     // Fetch email settings
     const { data: emailSettings } = await supabase
       .from('email_settings')
@@ -72,7 +65,6 @@ export async function GET(
       profile,
       wallets: wallets || [],
       transactions,
-      aiUsage: aiUsage || null,
       emailSettings: emailSettings || null,
     });
   } catch (error) {

@@ -30,8 +30,8 @@ interface SubscriptionState {
     wallets: number;
     networks: number;
     transactions: number;
-    aiChats: number;
     syncInterval: string;
+    reports: string;
   } | null;
 }
 

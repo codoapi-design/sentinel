@@ -53,10 +53,15 @@ const ALERT_KEYS = [
   'gasExceeds',
 ] as const;
 
+type TelegramAlertKey = (typeof ALERT_KEYS)[number];
+
 function disableAllAlerts(prev: TelegramSettingsState): TelegramSettingsState {
   const next = { ...prev, enabled: false };
+  // Alert entries carry different payloads per key, so the indexed write is
+  // narrowed to the shared `enabled` flag they all have.
+  const toggles = next as Record<TelegramAlertKey, { enabled: boolean }>;
   for (const key of ALERT_KEYS) {
-    next[key] = { ...prev[key], enabled: false };
+    toggles[key] = { ...prev[key], enabled: false };
   }
   return next;
 }

@@ -9,7 +9,6 @@ import { TransactionsTable, TransactionsTab } from './transactions-table';
 import { TelegramSettings } from './telegram-settings';
 import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
-import { AIChat } from './ai-chat';
 import { SectionPage } from './section-page';
 import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
@@ -23,12 +22,14 @@ import { NetworkDetailPage } from './network-detail-page';
 import { TypesSection, TypesTab } from './types-section';
 import { TypeDetailPage } from './type-detail-page';
 import { WalletBar } from './wallet-bar';
+import { AIAnalysisSection } from './ai-analysis-section';
+import { AIChat } from './ai-chat';
+import { resolveDashboardChatContext, type AiPageContext } from '@/lib/ai-client';
 import { Button } from '@/components/ui/button';
 import { LogOut, Loader2, RefreshCw, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { networks, type Client } from '@/lib/mock-data';
 import { useWalletStore } from '@/stores/wallet-store';
-import { useAIStore } from '@/stores/ai-store';
 import { useWalletAutoSync } from '@/hooks/use-wallet-auto-sync';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
 import { filterVisibleTransactions } from '@/lib/finance/visibility';
@@ -61,23 +62,10 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     getActiveWallet,
     getActiveTransactions,
     getActiveClients,
-    currentPlan,
   } = useWalletStore();
 
   // Auto-sync hook (checks every 60 seconds on Pro)
   const { triggerSync } = useWalletAutoSync();
-
-  // AI store
-  const { setCurrentPage, setCurrentPlan: setAIPlan } = useAIStore();
-
-  // Sync AI store
-  useEffect(() => {
-    setCurrentPage(activeTab);
-  }, [activeTab, setCurrentPage]);
-
-  useEffect(() => {
-    setAIPlan(currentPlan);
-  }, [currentPlan, setAIPlan]);
 
   // Get active wallet data
   const activeWallet = getActiveWallet();
@@ -115,6 +103,21 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
       cancelled = true;
     };
   }, [isDemo, activeWalletId, isLoadingWallets]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** What the user is looking at right now, so chat answers stay on the same subject. */
+  const chatContext = useMemo<AiPageContext>(
+    () =>
+      resolveDashboardChatContext({
+        activeTab,
+        activeSection,
+        activeAsset,
+        activeClient,
+        activeNetwork,
+        activeType,
+        investmentReturnAsset,
+      }),
+    [activeTab, activeSection, activeAsset, activeClient, activeNetwork, activeType, investmentReturnAsset]
+  );
 
   const handleLogout = () => {
     toast.success('Logged out successfully');
@@ -377,42 +380,81 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
         );
       case 'transactions':
         return (
-          <TransactionsTab
-            clients={displayClients}
-            transactions={displayTransactions}
-          />
+          <div className="space-y-6">
+            <TransactionsTab
+              clients={displayClients}
+              transactions={displayTransactions}
+            />
+            <AIAnalysisSection
+              transactions={displayTransactions}
+              clients={displayClients}
+              sectionTitle="Transactions"
+              sectionType="transactions"
+              page="transactions"
+            />
+          </div>
         );
       case 'assets':
-        return <AssetsTab onAssetClick={handleAssetClick} />;
+        return (
+          <div className="space-y-6">
+            <AssetsTab onAssetClick={handleAssetClick} />
+            <AIAnalysisSection sectionTitle="Assets" sectionType="assets" page="assets" />
+          </div>
+        );
       case 'clients':
         return (
-          <ClientsTab
-            clients={displayClients}
-            transactions={displayTransactions}
-            onClientClick={handleClientClick}
-            onDefineClient={handleDefineClient}
-            onClientsChange={(newClients) => {
-              if (activeWalletId) {
-                useWalletStore.getState().setClients(activeWalletId, newClients);
-              }
-            }}
-            defineAddress={defineAddressTrigger}
-            onDefineConsumed={handleDefineConsumed}
-          />
+          <div className="space-y-6">
+            <ClientsTab
+              clients={displayClients}
+              transactions={displayTransactions}
+              onClientClick={handleClientClick}
+              onDefineClient={handleDefineClient}
+              onClientsChange={(newClients) => {
+                if (activeWalletId) {
+                  useWalletStore.getState().setClients(activeWalletId, newClients);
+                }
+              }}
+              defineAddress={defineAddressTrigger}
+              onDefineConsumed={handleDefineConsumed}
+            />
+            <AIAnalysisSection
+              transactions={displayTransactions}
+              clients={displayClients}
+              sectionTitle="Clients"
+              sectionType="clients"
+              page="clients"
+            />
+          </div>
         );
       case 'networks':
         return (
-          <NetworksTab
-            transactions={displayTransactions}
-            onNetworkClick={handleNetworkClick}
-          />
+          <div className="space-y-6">
+            <NetworksTab
+              transactions={displayTransactions}
+              onNetworkClick={handleNetworkClick}
+            />
+            <AIAnalysisSection
+              transactions={displayTransactions}
+              sectionTitle="Networks"
+              sectionType="networks"
+              page="networks"
+            />
+          </div>
         );
       case 'types':
         return (
-          <TypesTab
-            transactions={displayTransactions}
-            onTypeClick={handleTypeClick}
-          />
+          <div className="space-y-6">
+            <TypesTab
+              transactions={displayTransactions}
+              onTypeClick={handleTypeClick}
+            />
+            <AIAnalysisSection
+              transactions={displayTransactions}
+              sectionTitle="Transaction Types"
+              sectionType="transactions"
+              page="types"
+            />
+          </div>
         );
       case 'settings':
         return (
@@ -442,7 +484,8 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
 
   return (
     <>
-    <div className="flex min-h-screen bg-[#08090a] text-[#f7f8f8]" dir="ltr">
+      {/* Flex shell only — AIChat must NOT be a flex child (stretches the fixed FAB off-screen) */}
+      <div className="flex min-h-screen bg-[#08090a] text-[#f7f8f8]" dir="ltr">
       {/* Demo Banner */}
       {isDemo && (
         <div className="fixed top-0 left-0 right-0 z-[60] bg-[#f7931a]/10 border-b border-[#f7931a]/20 px-4 py-1.5 text-center">
@@ -548,10 +591,10 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
           {renderContent()}
         </div>
       </main>
-    </div>
+      </div>
 
-    {/* AI Chat — outside flex shell; portals to body */}
-    <AIChat />
+      {/* AI Chat — outside the flex shell; portals to body; always mounted */}
+      <AIChat pageContext={chatContext} />
     </>
   );
 }

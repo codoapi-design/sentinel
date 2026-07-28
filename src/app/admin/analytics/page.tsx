@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import {
-  TrendingUp, Users, Wallet, Activity, Bot, CreditCard,
-  ArrowUpRight, ArrowDownRight, Calendar, RefreshCw,
+  TrendingUp, Users, Wallet, Activity, CreditCard,
+  ArrowUpRight, Calendar, RefreshCw,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -36,14 +36,6 @@ interface AnalyticsData {
     total: number;
     growth: Array<{ date: string; count: number; sent: number; received: number }>;
   };
-  ai: {
-    totalChats: number;
-    totalAnalyses: number;
-    totalInputTokens: number;
-    totalOutputTokens: number;
-    estimatedCost: string;
-    growth: Array<{ date: string; chats: number; analyses: number }>;
-  };
 }
 
 const COLORS = ['#0052ff', '#0ecb81', '#f7931a', '#627eea', '#f6465d', '#8b5cf6'];
@@ -52,7 +44,7 @@ export default function AdminAnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
-  const [activeTab, setActiveTab] = useState<'users' | 'revenue' | 'wallets' | 'transactions' | 'ai'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'revenue' | 'wallets' | 'transactions'>('users');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -84,7 +76,6 @@ export default function AdminAnalyticsPage() {
     { id: 'revenue' as const, label: 'Revenue', icon: CreditCard },
     { id: 'wallets' as const, label: 'Wallets', icon: Wallet },
     { id: 'transactions' as const, label: 'Transactions', icon: Activity },
-    { id: 'ai' as const, label: 'AI', icon: Bot },
   ];
 
   if (loading && !data) {
@@ -128,7 +119,7 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-3">
           <p className="text-[10px] text-[#8a8f98] mb-1">Total Users</p>
           <p className="text-lg font-bold text-[#f7f8f8]">{formatNumber(data?.users.total || 0)}</p>
@@ -152,16 +143,6 @@ export default function AdminAnalyticsPage() {
           <p className="text-[10px] text-[#8a8f98] mb-1">Transactions</p>
           <p className="text-lg font-bold text-[#f7f8f8]">{formatNumber(data?.transactions.total || 0)}</p>
           <span className="text-[9px] text-[#8a8f98]">All time total</span>
-        </div>
-        <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#627eea] mb-1">AI Chats</p>
-          <p className="text-lg font-bold text-[#f7f8f8]">{formatNumber(data?.ai.totalChats || 0)}</p>
-          <span className="text-[9px] text-[#8a8f98]">{formatNumber(data?.ai.totalAnalyses || 0)} analyses</span>
-        </div>
-        <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#f7931a] mb-1">AI Cost</p>
-          <p className="text-lg font-bold text-[#f7f8f8]">${data?.ai.estimatedCost || '0.00'}</p>
-          <span className="text-[9px] text-[#8a8f98]">Estimated</span>
         </div>
       </div>
 
@@ -384,74 +365,6 @@ export default function AdminAnalyticsPage() {
               <div className="bg-white/[0.02] rounded-lg p-3">
                 <p className="text-xs text-[#8a8f98] mb-1">Active Days</p>
                 <p className="text-xl font-bold text-[#f7f8f8]">{data?.transactions.growth.length || 0}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'ai' && (
-        <div className="space-y-4">
-          {/* AI Usage Chart */}
-          <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">AI Usage</h3>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data?.ai.growth || []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0a" />
-                  <XAxis dataKey="date" stroke="#8a8f98" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#8a8f98" fontSize={10} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#191a1b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
-                    labelStyle={{ color: '#8a8f98' }}
-                  />
-                  <Legend />
-                  <Area type="monotone" dataKey="chats" stroke="#627eea" fill="#627eea20" strokeWidth={2} name="Chats" />
-                  <Area type="monotone" dataKey="analyses" stroke="#0ecb81" fill="#0ecb8120" strokeWidth={2} name="Analyses" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* AI Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-[#8a8f98] mb-1">Chats</p>
-              <p className="text-xl font-bold text-[#627eea]">{formatNumber(data?.ai.totalChats || 0)}</p>
-            </div>
-            <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-[#8a8f98] mb-1">Analyses</p>
-              <p className="text-xl font-bold text-[#0ecb81]">{formatNumber(data?.ai.totalAnalyses || 0)}</p>
-            </div>
-            <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-[#8a8f98] mb-1">Input Tokens</p>
-              <p className="text-xl font-bold text-[#f7f8f8]">{formatNumber(data?.ai.totalInputTokens || 0)}</p>
-            </div>
-            <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-[#8a8f98] mb-1">Output Tokens</p>
-              <p className="text-xl font-bold text-[#f7f8f8]">{formatNumber(data?.ai.totalOutputTokens || 0)}</p>
-            </div>
-            <div className="bg-[#0c0d0e] border border-[#f7931a]/10 rounded-xl p-4">
-              <p className="text-[10px] text-[#f7931a] mb-1">Estimated Cost</p>
-              <p className="text-xl font-bold text-[#f7931a]">${data?.ai.estimatedCost || '0.00'}</p>
-            </div>
-          </div>
-
-          {/* Model Info */}
-          <div className="bg-[#0c0d0e] border border-white/5 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-[#f7f8f8] mb-4">Model & Cost Information</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white/[0.02] rounded-lg p-4">
-                <p className="text-xs text-[#8a8f98] mb-1">Model</p>
-                <p className="text-sm text-[#627eea] font-mono">openai/o4-mini</p>
-              </div>
-              <div className="bg-white/[0.02] rounded-lg p-4">
-                <p className="text-xs text-[#8a8f98] mb-1">Input Price</p>
-                <p className="text-sm text-[#f7f8f8]">$3.00 / 1M tokens</p>
-              </div>
-              <div className="bg-white/[0.02] rounded-lg p-4">
-                <p className="text-xs text-[#8a8f98] mb-1">Output Price</p>
-                <p className="text-sm text-[#f7f8f8]">$15.00 / 1M tokens</p>
               </div>
             </div>
           </div>

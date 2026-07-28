@@ -131,6 +131,13 @@ export function TypeDetailPage({ typeId, onBack, clients = [] }: TypeDetailPageP
         filenameBase: `sentinel-type-${typeId}`,
         transactions: statsTransactions,
         clients,
+        aiScope: {
+          page: 'type-detail',
+          sectionType: isNetPositive ? 'revenue' : 'expenses',
+          sectionTitle: `${typeLabel} transactions`,
+          typeId,
+          period: 'all',
+        },
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -143,16 +150,20 @@ export function TypeDetailPage({ typeId, onBack, clients = [] }: TypeDetailPageP
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportExcel(payload);
+      const aiIncluded = await downloadReportExcel(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'Excel report downloaded (with charts)'
+        extras.length > 0
+          ? `Excel report downloaded (with ${extras.join(' + ')})`
           : 'Excel report downloaded',
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export Excel');
     }
-  }, [typeLabel, typeDescription, typeId, statsTransactions, clients]);
+  }, [typeLabel, typeDescription, typeId, statsTransactions, clients, isNetPositive]);
 
   const handleDownloadPdf = useCallback(async () => {
     try {
@@ -162,6 +173,13 @@ export function TypeDetailPage({ typeId, onBack, clients = [] }: TypeDetailPageP
         filenameBase: `sentinel-type-${typeId}`,
         transactions: statsTransactions,
         clients,
+        aiScope: {
+          page: 'type-detail',
+          sectionType: isNetPositive ? 'revenue' : 'expenses',
+          sectionTitle: `${typeLabel} transactions`,
+          typeId,
+          period: 'all',
+        },
       });
       if (!payload) {
         toast.info('No transactions to export');
@@ -174,16 +192,20 @@ export function TypeDetailPage({ typeId, onBack, clients = [] }: TypeDetailPageP
       if (charts.length > 0) {
         payload.charts = charts;
       }
-      downloadReportPdf(payload);
+      const aiIncluded = await downloadReportPdf(payload);
+      const extras = [
+        charts.length > 0 ? 'charts' : null,
+        aiIncluded ? 'AI analysis' : null,
+      ].filter(Boolean);
       toast.success(
-        charts.length > 0
-          ? 'PDF report downloaded (with charts)'
+        extras.length > 0
+          ? `PDF report downloaded (with ${extras.join(' + ')})`
           : 'PDF report downloaded',
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export PDF');
     }
-  }, [typeLabel, typeDescription, typeId, statsTransactions, clients]);
+  }, [typeLabel, typeDescription, typeId, statsTransactions, clients, isNetPositive]);
 
   return (
     <div className="space-y-6" ref={pageRef}>
@@ -277,9 +299,12 @@ export function TypeDetailPage({ typeId, onBack, clients = [] }: TypeDetailPageP
       <AIAnalysisSection
         transactions={statsTransactions}
         clients={clients}
-        sectionTitle={`Transactions of ${typeLabel}`}
+        sectionTitle={`${typeLabel} transactions`}
         sectionColor={typeColor}
         sectionType={isNetPositive ? 'revenue' : 'expenses'}
+        page="type-detail"
+        typeId={typeId}
+        period="all"
       />
     </div>
   );

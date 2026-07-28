@@ -130,32 +130,6 @@ export async function GET(request: Request) {
       ...data,
     }));
 
-    // ===== AI Analytics =====
-    const { data: aiUsageData } = await supabase
-      .from('ai_usage')
-      .select('chat_count, analysis_count, total_input_tokens, total_output_tokens, created_at')
-      .gte('created_at', startDate.toISOString());
-
-    const totalChats = (aiUsageData || []).reduce((sum, u) => sum + (u.chat_count || 0), 0);
-    const totalAnalyses = (aiUsageData || []).reduce((sum, u) => sum + (u.analysis_count || 0), 0);
-    const totalInputTokens = (aiUsageData || []).reduce((sum, u) => sum + (u.total_input_tokens || 0), 0);
-    const totalOutputTokens = (aiUsageData || []).reduce((sum, u) => sum + (u.total_output_tokens || 0), 0);
-    const estimatedCost = ((totalInputTokens * 0.000003) + (totalOutputTokens * 0.000015)).toFixed(2);
-
-    // AI usage by day
-    const aiGrowthMap: Record<string, { chats: number; analyses: number }> = {};
-    (aiUsageData || []).forEach((u) => {
-      const date = new Date(u.created_at).toISOString().split('T')[0];
-      if (!aiGrowthMap[date]) aiGrowthMap[date] = { chats: 0, analyses: 0 };
-      aiGrowthMap[date].chats += u.chat_count || 0;
-      aiGrowthMap[date].analyses += u.analysis_count || 0;
-    });
-
-    const aiGrowth = Object.entries(aiGrowthMap).map(([date, data]) => ({
-      date: date.slice(5),
-      ...data,
-    }));
-
     // ===== Engagement Metrics =====
     const avgWalletsPerUser = totalUsers ? ((totalWallets || 0) / totalUsers).toFixed(1) : '0';
     const avgTxPerUser = totalUsers ? ((totalTransactions || 0) / totalUsers).toFixed(1) : '0';
@@ -187,14 +161,6 @@ export async function GET(request: Request) {
       transactions: {
         total: totalTransactions || 0,
         growth: transactionGrowth,
-      },
-      ai: {
-        totalChats,
-        totalAnalyses,
-        totalInputTokens,
-        totalOutputTokens,
-        estimatedCost,
-        growth: aiGrowth,
       },
     });
   } catch (error) {

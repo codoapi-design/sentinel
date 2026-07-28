@@ -136,20 +136,6 @@ export async function GET() {
       };
     });
 
-    // Check OpenRouter AI
-    const openRouterCheck = await checkService('OpenRouter AI', async () => {
-      const start = Date.now();
-      const apiKey = process.env.OPENROUTER_API_KEY;
-      if (!apiKey) {
-        return { ok: false, latency: 0, details: 'API key not configured' };
-      }
-      return {
-        ok: true,
-        latency: Date.now() - start,
-        details: 'AI provider configured correctly - openai/o4-mini',
-      };
-    });
-
     // Vercel check
     const vercelCheck = await checkService('Vercel', async () => {
       const start = Date.now();
@@ -191,7 +177,7 @@ export async function GET() {
       }
     });
 
-    const services = [supabaseCheck, covalentCheck, zerionCheck, alchemyCheck, debankCheck, openRouterCheck, vercelCheck, sesCheck, telegramCheck];
+    const services = [supabaseCheck, covalentCheck, zerionCheck, alchemyCheck, debankCheck, vercelCheck, sesCheck, telegramCheck];
 
     // Get recent alerts count
     const { count: activeAlerts } = await supabase

@@ -1,69 +1,195 @@
 /**
  * POST /api/ai/chat
  *
- * Chat with the CryptoBooks AI agent.
- * Accepts message history and user context, returns AI response.
+ * Conversational endpoint. Same pipeline as `/api/ai/analyze` — verified
+ * wallet data, planned tools, unified envelopes — rendered in the shorter chat
+ * voice (Part 7 §7.8).
+ *
+ * Follow-ups work by replaying the prior turns: the runtime is stateless, so
+ * the client owns the thread and sends it back on each request.
+ *
+ * Body:
+ *   {
+ *     walletId: string,                                  // required
+ *     message: string,                                   // required
+ *     history?: Array<{ role: 'user' | 'assistant', content: string }>,
+ *     pageContext?: {
+ *       sectionType?, sectionTitle?, page?, asset?, network?,
+ *       counterparty?, typeId?, period?, filters?
+ *     },
+ *     mode?: 'chat' | 'telegram' | 'dashboard',          // defaults to "chat"
+ *     includeHidden?: boolean
+ *   }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { chatWithAgent, type AgentContext } from '@/lib/ai/agent';
+
+import type { AgentMode, ChatMessage } from '@/lib/ai/llm';
+import { isWalletContextError, recordAiUsage, runAnalysis, summarizeIntelligence } from '@/lib/ai/tools';
+import { createCookieServerClient } from '@/lib/supabase/server';
+
+/** Enough context for a follow-up without paying for the whole thread. */
+const MAX_HISTORY_MESSAGES = 10;
+const MAX_HISTORY_CHARS = 4000;
+const MAX_MESSAGE_CHARS = 2000;
+
+const AGENT_MODES: readonly AgentMode[] = ['chat', 'dashboard', 'telegram'];
+
+interface ChatRequestBody {
+  walletId?: unknown;
+  message?: unknown;
+  history?: unknown;
+  pageContext?: unknown;
+  mode?: unknown;
+  includeHidden?: unknown;
+}
+
+interface PageContextBody {
+  sectionType?: unknown;
+  sectionTitle?: unknown;
+  page?: unknown;
+  asset?: unknown;
+  network?: unknown;
+  counterparty?: unknown;
+  typeId?: unknown;
+  period?: unknown;
+  filters?: unknown;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-
+    const cookieClient = await createCookieServerClient();
     const {
-      messages,
-      context,
-      userData,
-    }: {
-      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-      context: AgentContext;
-      userData?: Record<string, unknown>;
-    } = body;
+      data: { user },
+      error: authError,
+    } = await cookieClient.auth.getUser();
 
-    // Validate required fields
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json(
-        { error: 'messages array is required' },
-        { status: 400 }
-      );
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    if (!context?.userId) {
-      return NextResponse.json(
-        { error: 'context.userId is required' },
-        { status: 400 }
-      );
+    let body: ChatRequestBody;
+    try {
+      body = (await request.json()) as ChatRequestBody;
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    // Validate message roles
-    for (const msg of messages) {
-      if (msg.role !== 'user' && msg.role !== 'assistant') {
-        return NextResponse.json(
-          { error: 'Invalid message role. Must be "user" or "assistant"' },
-          { status: 400 }
-        );
-      }
+    const walletId = asString(body.walletId);
+    if (!walletId) {
+      return NextResponse.json({ error: 'walletId is required' }, { status: 400 });
     }
 
-    // Set default plan if not provided
-    if (!context.plan) {
-      context.plan = 'starter';
+    const message = asString(body.message);
+    if (!message) {
+      return NextResponse.json({ error: 'message is required' }, { status: 400 });
     }
 
-    // Call the AI agent
-    const result = await chatWithAgent(messages, context, userData);
+    const pageContext = (body.pageContext ?? {}) as PageContextBody;
+
+    const result = await runAnalysis({
+      walletId,
+      userId: user.id,
+      mode: asMode(body.mode),
+      question: message.slice(0, MAX_MESSAGE_CHARS),
+      history: asHistory(body.history),
+      includeHidden: body.includeHidden === true,
+      sectionContext: {
+        sectionType: asString(pageContext.sectionType),
+        sectionTitle: asString(pageContext.sectionTitle),
+        page: asString(pageContext.page),
+        asset: asString(pageContext.asset),
+        network: asString(pageContext.network),
+        counterparty: asString(pageContext.counterparty),
+        typeId: asString(pageContext.typeId),
+        period: asPeriod(pageContext.period),
+        filters: asFilters(pageContext.filters),
+      },
+    });
+
+    await recordAiUsage({ userId: user.id, kind: 'chat', usage: result.llm.usage });
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: {
+        message: result.narrative,
+        narrative: result.narrative,
+        source: result.source,
+        intelligence: summarizeIntelligence(result.intelligence),
+        insights: result.insights,
+        metrics: result.metrics,
+        confidence: result.confidence,
+        dataQuality: result.dataQuality,
+        toolsUsed: result.toolsUsed,
+        analysisMode: result.analysisMode,
+        intents: result.plan.intents,
+        periodDays: result.periodDays,
+        periodLabel: result.periodLabel,
+        generatedAt: result.generatedAt,
+      },
     });
   } catch (error) {
-    console.error('AI Chat API error:', error);
+    if (isWalletContextError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    console.error('[AI Chat] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to process chat request' },
+      {
+        error: 'Chat request failed',
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
+}
+
+function asMode(value: unknown): AgentMode {
+  return typeof value === 'string' && (AGENT_MODES as readonly string[]).includes(value)
+    ? (value as AgentMode)
+    : 'chat';
+}
+
+/** Keeps the most recent turns, user and assistant only. */
+function asHistory(value: unknown): ChatMessage[] {
+  if (!Array.isArray(value)) return [];
+
+  const messages: ChatMessage[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { role, content } = entry as { role?: unknown; content?: unknown };
+    if (role !== 'user' && role !== 'assistant') continue;
+    if (typeof content !== 'string') continue;
+
+    const trimmed = content.trim();
+    if (trimmed.length === 0) continue;
+
+    messages.push({ role, content: trimmed.slice(0, MAX_HISTORY_CHARS) });
+  }
+
+  return messages.slice(-MAX_HISTORY_MESSAGES);
+}
+
+function asString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function asPeriod(value: unknown): string | number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return asString(value);
+}
+
+function asFilters(value: unknown): Record<string, string | number | boolean | null> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+
+  const filters: Record<string, string | number | boolean | null> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry === null || typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean') {
+      filters[key] = entry;
+    }
+  }
+
+  return Object.keys(filters).length > 0 ? filters : null;
 }

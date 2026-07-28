@@ -24,6 +24,38 @@ export type ReportChartImage = {
   caption?: string;
 };
 
+/** Structured AI Data Analysis block embedded in PDF/Excel exports. */
+export type ReportAiAnalysis = {
+  periodLabel: string;
+  confidenceLabel: string;
+  sourceLabel: string;
+  generatedAtLabel: string;
+  summaryRows: ReportKV[];
+  narrativeSections: Array<{
+    title: string;
+    paragraphs: string[];
+    bullets: string[];
+  }>;
+  confidenceNote: string | null;
+  findingsTable: ReportTable;
+  metricsTable: ReportTable;
+};
+
+/** Page context used to resolve / fetch AI analysis during export. */
+export type ReportAiScope = {
+  walletId?: string | null;
+  page?: string;
+  sectionType?: string;
+  sectionTitle?: string;
+  asset?: string;
+  network?: string;
+  counterparty?: string;
+  typeId?: string;
+  period?: string | number;
+  filters?: Record<string, string | number | boolean | null>;
+  includeHidden?: boolean;
+};
+
 export type ReportPayload = {
   title: string;
   subtitle?: string;
@@ -32,6 +64,10 @@ export type ReportPayload = {
   tables: ReportTable[];
   /** Optional chart screenshots (PNG data URLs) rendered below summary. */
   charts?: ReportChartImage[];
+  /** Pre-built AI analysis section (set by enrichReportPayloadWithAi). */
+  aiAnalysis?: ReportAiAnalysis | null;
+  /** When set, download helpers fetch/cache AI analysis for this page scope. */
+  aiScope?: ReportAiScope | null;
 };
 
 export type TransactionReportOpts = {
@@ -44,6 +80,7 @@ export type TransactionReportOpts = {
   /** Extra summary rows prepended before auto totals. */
   extraSummary?: ReportKV[];
   charts?: ReportChartImage[];
+  aiScope?: ReportAiScope | null;
 };
 
 export type PdfReportOpts = {
@@ -53,6 +90,7 @@ export type PdfReportOpts = {
   tables: ReportTable[];
   filename: string;
   charts?: ReportChartImage[];
+  aiAnalysis?: ReportAiAnalysis | null;
 };
 
 export type ExcelSheet = {
@@ -73,6 +111,7 @@ export type ExcelReportOpts = {
   filename: string;
   /** Optional chart screenshots (PNG data URLs) embedded on a Charts sheet. */
   charts?: ReportChartImage[];
+  aiAnalysis?: ReportAiAnalysis | null;
 };
 
 /** Print-friendly light palette (not a dark UI clone). */
@@ -479,6 +518,105 @@ function drawDataTable(
   return lastTableY(doc, y) + 10;
 }
 
+function drawNarrativeBlock(
+  doc: jsPDF,
+  startY: number,
+  title: string,
+  paragraphs: string[],
+  bullets: string[],
+  headerOpts: DrawReportHeaderOpts,
+): number {
+  const pageW = doc.internal.pageSize.getWidth();
+  const contentW = pageW - MARGIN * 2;
+  let y = ensureSpace(doc, startY, 16, headerOpts);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...PDF.text);
+  doc.text(title, MARGIN, y);
+  y += 5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...PDF.text);
+
+  for (const paragraph of paragraphs) {
+    const lines = doc.splitTextToSize(paragraph, contentW);
+    y = ensureSpace(doc, y, lines.length * 4 + 3, headerOpts);
+    doc.text(lines, MARGIN, y);
+    y += lines.length * 4 + 2.5;
+  }
+
+  for (const bullet of bullets) {
+    const lines = doc.splitTextToSize(`• ${bullet}`, contentW - 3);
+    y = ensureSpace(doc, y, lines.length * 4 + 2, headerOpts);
+    doc.text(lines, MARGIN + 1, y);
+    y += lines.length * 4 + 1.5;
+  }
+
+  return y + 2;
+}
+
+function drawAiAnalysisSection(
+  doc: jsPDF,
+  startY: number,
+  analysis: ReportAiAnalysis,
+  headerOpts: DrawReportHeaderOpts,
+): number {
+  let y = ensureSpace(doc, startY, 24, headerOpts);
+  const pageW = doc.internal.pageSize.getWidth();
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(...PDF.text);
+  doc.text('AI Data Analysis', MARGIN, y);
+  y += 5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...PDF.muted);
+  const meta = [
+    analysis.periodLabel ? `Period: ${analysis.periodLabel}` : null,
+    analysis.confidenceLabel || null,
+    analysis.sourceLabel || null,
+    analysis.generatedAtLabel ? `Analyzed ${analysis.generatedAtLabel}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  if (meta) {
+    const metaLines = doc.splitTextToSize(meta, pageW - MARGIN * 2);
+    doc.text(metaLines, MARGIN, y);
+    y += metaLines.length * 3.8 + 3;
+  }
+
+  y = drawSummarySection(doc, y, analysis.summaryRows, headerOpts);
+
+  for (const section of analysis.narrativeSections) {
+    y = drawNarrativeBlock(
+      doc,
+      y,
+      section.title,
+      section.paragraphs,
+      section.bullets,
+      headerOpts,
+    );
+  }
+
+  if (analysis.confidenceNote) {
+    y = drawNarrativeBlock(doc, y, 'Confidence', [analysis.confidenceNote], [], headerOpts);
+  }
+
+  if (analysis.findingsTable.rows.length > 0) {
+    y = drawDataTable(doc, y, analysis.findingsTable, headerOpts);
+  }
+
+  if (analysis.metricsTable.rows.length > 0) {
+    y = drawDataTable(doc, y, analysis.metricsTable, headerOpts);
+  }
+
+  return y;
+}
+
 /** Generate a real PDF blob and trigger a direct .pdf download. */
 export function downloadPdfReport(opts: PdfReportOpts): void {
   const filename = ensureExt(opts.filename, '.pdf');
@@ -497,6 +635,10 @@ export function downloadPdfReport(opts: PdfReportOpts): void {
 
   if (opts.charts?.length) {
     y = drawChartsSection(doc, y, opts.charts, headerOpts);
+  }
+
+  if (opts.aiAnalysis) {
+    y = drawAiAnalysisSection(doc, y, opts.aiAnalysis, headerOpts);
   }
 
   const tables =
@@ -1030,10 +1172,65 @@ function writeDataTableSheet(
   autosizeColumns(sheet, colCount, samples);
 }
 
+function writeAiAnalysisSheets(
+  wb: ExcelJS.Workbook,
+  analysis: ReportAiAnalysis,
+  usedNames: Set<string>,
+): void {
+  writeSummarySheet(wb, {
+    title: 'AI Data Analysis',
+    subtitle: [analysis.periodLabel, analysis.confidenceLabel, analysis.sourceLabel]
+      .filter(Boolean)
+      .join(' · '),
+    generatedAt: analysis.generatedAtLabel || formatGeneratedAt(),
+    summaryRows: analysis.summaryRows,
+    name: sheetNameSafe('AI Analysis', usedNames),
+  });
+
+  const narrativeRows: (string | number | null | undefined)[][] = [];
+  for (const section of analysis.narrativeSections) {
+    narrativeRows.push([section.title, '']);
+    for (const paragraph of section.paragraphs) {
+      narrativeRows.push(['', paragraph]);
+    }
+    for (const bullet of section.bullets) {
+      narrativeRows.push(['', `• ${bullet}`]);
+    }
+    narrativeRows.push(['', '']);
+  }
+  if (analysis.confidenceNote) {
+    narrativeRows.push(['Confidence', analysis.confidenceNote]);
+  }
+
+  if (narrativeRows.length > 0) {
+    writeDataTableSheet(wb, sheetNameSafe('AI Narrative', usedNames), {
+      title: 'AI Narrative',
+      headers: ['Section', 'Content'],
+      rows: narrativeRows,
+    });
+  }
+
+  if (analysis.findingsTable.rows.length > 0) {
+    writeDataTableSheet(
+      wb,
+      sheetNameSafe('AI Findings', usedNames),
+      analysis.findingsTable,
+    );
+  }
+
+  if (analysis.metricsTable.rows.length > 0) {
+    writeDataTableSheet(
+      wb,
+      sheetNameSafe('AI Metrics', usedNames),
+      analysis.metricsTable,
+    );
+  }
+}
+
 async function buildExcelWorkbook(opts: ExcelReportOpts): Promise<ArrayBuffer> {
   const mod = await import('exceljs');
   // CJS/ESM interop: Node exposes Workbook on the module; some bundlers put it on default.
-  const ExcelJSLib = (mod as { default?: typeof mod }).default ?? mod;
+  const ExcelJSLib = (mod as unknown as { default?: typeof mod }).default ?? mod;
   const wb = new ExcelJSLib.Workbook();
   wb.creator = 'Sentinel';
   wb.created = new Date();
@@ -1125,6 +1322,10 @@ async function buildExcelWorkbook(opts: ExcelReportOpts): Promise<ArrayBuffer> {
     });
   }
 
+  if (opts.aiAnalysis) {
+    writeAiAnalysisSheets(wb, opts.aiAnalysis, usedNames);
+  }
+
   const buffer = await wb.xlsx.writeBuffer();
   return buffer as ArrayBuffer;
 }
@@ -1145,27 +1346,35 @@ export function downloadExcelReport(opts: ExcelReportOpts): void {
 }
 
 /** Download PDF from the shared ReportPayload shape used across pages. */
-export function downloadReportPdf(payload: ReportPayload): void {
+export async function downloadReportPdf(payload: ReportPayload): Promise<boolean> {
+  const { enrichReportPayloadWithAi } = await import('@/lib/export/ai-analysis-report');
+  const { payload: enriched, aiIncluded } = await enrichReportPayloadWithAi(payload);
   downloadPdfReport({
-    title: payload.title,
-    subtitle: payload.subtitle,
-    summaryRows: payload.summary,
-    tables: payload.tables,
-    charts: payload.charts,
-    filename: `${payload.filenameBase}-${stamp()}.pdf`,
+    title: enriched.title,
+    subtitle: enriched.subtitle,
+    summaryRows: enriched.summary,
+    tables: enriched.tables,
+    charts: enriched.charts,
+    aiAnalysis: enriched.aiAnalysis,
+    filename: `${enriched.filenameBase}-${stamp()}.pdf`,
   });
+  return aiIncluded;
 }
 
 /** Download Excel (.xlsx) from the shared ReportPayload shape used across pages. */
-export function downloadReportExcel(payload: ReportPayload): void {
+export async function downloadReportExcel(payload: ReportPayload): Promise<boolean> {
+  const { enrichReportPayloadWithAi } = await import('@/lib/export/ai-analysis-report');
+  const { payload: enriched, aiIncluded } = await enrichReportPayloadWithAi(payload);
   downloadExcelReport({
-    title: payload.title,
-    subtitle: payload.subtitle,
-    summaryRows: payload.summary,
-    tables: payload.tables,
-    charts: payload.charts,
-    filename: `${payload.filenameBase}-${stamp()}.xlsx`,
+    title: enriched.title,
+    subtitle: enriched.subtitle,
+    summaryRows: enriched.summary,
+    tables: enriched.tables,
+    charts: enriched.charts,
+    aiAnalysis: enriched.aiAnalysis,
+    filename: `${enriched.filenameBase}-${stamp()}.xlsx`,
   });
+  return aiIncluded;
 }
 
 /** Build a report from the currently visible/filtered transactions. */
@@ -1188,6 +1397,7 @@ export function buildTransactionsReportPayload(
     title: opts.title,
     subtitle: opts.subtitle,
     filenameBase: opts.filenameBase,
+    aiScope: opts.aiScope ?? null,
     summary: [
       ...(opts.extraSummary ?? []),
       { label: 'Transactions', value: String(txs.length) },
