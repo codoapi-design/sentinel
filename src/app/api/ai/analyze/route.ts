@@ -25,8 +25,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { isWalletContextError, recordAiUsage, runAnalysis } from '@/lib/ai/tools';
+import { isWalletContextError, recordAiUsage, runAnalysis, AiQuotaError, assertAiQuota } from '@/lib/ai/tools';
 import { createCookieServerClient } from '@/lib/supabase/server';
+import { normalizePlanId } from '@/lib/plans/address-families';
 
 interface AnalyzeRequestBody {
   walletId?: unknown;
@@ -52,6 +53,17 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    let quotaPlanId: string | null = null;
+    try {
+      const quota = await assertAiQuota(user.id);
+      quotaPlanId = quota.planId;
+    } catch (error) {
+      if (error instanceof AiQuotaError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
     }
 
     let body: AnalyzeRequestBody;
@@ -85,7 +97,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Tracking is observability only — a failed counter never fails a request.
-    await recordAiUsage({ userId: user.id, kind: 'analysis', usage: result.llm.usage });
+    await recordAiUsage({
+      userId: user.id,
+      kind: 'analysis',
+      usage: result.llm.usage,
+      accumulateLifetime: normalizePlanId(quotaPlanId) === 'free',
+    });
 
     return NextResponse.json({
       success: true,
@@ -104,6 +121,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof AiQuotaError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (isWalletContextError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

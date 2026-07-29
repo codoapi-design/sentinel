@@ -133,6 +133,8 @@ export interface PricingTier {
     transactions: number;
     syncInterval: string;
     reports: string;
+    /** Shared AI request cap (Analyze + chat + Telegram). `null` = no cap. */
+    aiRequests?: number | null;
   };
   costBreakdown: {
     alchemy: number;
@@ -141,6 +143,10 @@ export interface PricingTier {
   };
   highlighted: boolean;
   badge?: string;
+  /** True for the zero-cost trial tier. */
+  isFree?: boolean;
+  /** Trial length in days when `isFree` is set. */
+  trialDays?: number;
 }
 
 // Days of the week (English)
@@ -150,6 +156,43 @@ export const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday
 export const daysOfWeekAr = daysOfWeek;
 
 export const pricingTiers: PricingTier[] = [
+  {
+    id: 'free',
+    name: 'Free Plan',
+    nameEn: 'Free Plan',
+    price: 0,
+    yearlyMonthly: 0,
+    description: 'Try Sentinel for 3 days with limited usage across every feature',
+    features: [
+      '1 Wallet',
+      'EVM address only (Ethereum, Base, Arbitrum, OP, Polygon, BSC…)',
+      'Up to 100 recorded transactions',
+      'Auto sync every 10 minutes',
+      'Daily reports via Telegram only',
+      'Basic alerts (Telegram)',
+      '50 AI requests (Analyze, chat, or Telegram)',
+      'Auto-classification (Trade, DeFi, Staking, Gas)',
+      'CSV & PDF export',
+      'Name your clients',
+    ],
+    limits: {
+      wallets: 1,
+      networks: 1,
+      transactions: 100,
+      syncInterval: '10 min',
+      reports: 'Daily (Telegram)',
+      aiRequests: 50,
+    },
+    costBreakdown: {
+      alchemy: 0,
+      infra: 0,
+      total: 0,
+    },
+    highlighted: false,
+    badge: '3-day trial',
+    isFree: true,
+    trialDays: 3,
+  },
   {
     id: 'starter',
     name: 'Starter',

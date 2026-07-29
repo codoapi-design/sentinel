@@ -1,6 +1,7 @@
 /**
  * Plan → address-family entitlements.
  *
+ * Free:      EVM only (3-day trial)
  * Starter:   EVM only
  * Pro:       EVM + Solana + Tron
  * Business:  EVM + Solana + Tron + Bitcoin
@@ -9,12 +10,13 @@
 
 export type AddressFamily = 'evm' | 'solana' | 'tron' | 'bitcoin';
 
-export type PlanId = 'starter' | 'pro' | 'business' | 'enterprise';
+export type PlanId = 'free' | 'starter' | 'pro' | 'business' | 'enterprise';
 
 const ALL_FAMILIES: AddressFamily[] = ['evm', 'solana', 'tron', 'bitcoin'];
 
 /** Canonical entitlements by product tier */
-export const PLAN_ADDRESS_FAMILIES: Record<'starter' | 'pro' | 'business', AddressFamily[]> = {
+export const PLAN_ADDRESS_FAMILIES: Record<'free' | 'starter' | 'pro' | 'business', AddressFamily[]> = {
+  free: ['evm'],
   starter: ['evm'],
   pro: ['evm', 'solana', 'tron'],
   business: ['evm', 'solana', 'tron', 'bitcoin'],
@@ -39,9 +41,13 @@ export const ADDRESS_FAMILY_NETWORK_CHIPS: Record<AddressFamily, string[]> = {
 /**
  * Normalize plan strings from DB / store.
  * `enterprise` is treated as Business (full address families).
+ * `free` keeps its own id (same address families as Starter).
  */
-export function normalizePlanId(plan: string | null | undefined): 'starter' | 'pro' | 'business' {
+export function normalizePlanId(
+  plan: string | null | undefined,
+): 'free' | 'starter' | 'pro' | 'business' {
   const p = (plan || 'starter').toLowerCase().trim();
+  if (p === 'free' || p === 'trial') return 'free';
   if (p === 'pro') return 'pro';
   if (p === 'business' || p === 'enterprise') return 'business';
   if (p === 'basic') return 'starter';
@@ -123,6 +129,7 @@ export function assertAddressesAllowedForPlan(
 
 export function tierLabel(plan: string | null | undefined): string {
   const t = normalizePlanId(plan);
+  if (t === 'free') return 'Free Plan';
   if (t === 'pro') return 'Pro';
   if (t === 'business') return 'Business';
   return 'Starter';
@@ -145,9 +152,12 @@ export function assertPlanAddressRequirements(
   const tier = normalizePlanId(plan);
   const filtered = filterAddressesByPlan(plan, addresses);
 
-  if (tier === 'starter') {
+  if (tier === 'starter' || tier === 'free') {
     if (!filtered.evmAddress) {
-      return { ok: false, error: 'Starter plan requires an EVM wallet address' };
+      return {
+        ok: false,
+        error: `${tierLabel(tier)} requires an EVM wallet address`,
+      };
     }
     return { ok: true };
   }

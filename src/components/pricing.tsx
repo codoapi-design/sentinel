@@ -1,21 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  Bot,
+  Building2,
   Check,
-  Wallet,
-  Network,
   Clock,
   FileText,
-  Zap,
+  Gift,
+  Network,
   Sparkles,
-  Building2,
+  Wallet,
+  Zap,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { pricingTiers, type PricingTier } from '@/lib/mock-data';
 import { PaymentModal } from '@/components/payment-modal';
+import {
+  FREE_TRIAL_TX,
+  useSubscriptionStore,
+  type Subscription,
+} from '@/stores/subscription-store';
+import { useWalletStore } from '@/stores/wallet-store';
 
 // ============================================================
 // Plan Icon
@@ -23,6 +32,8 @@ import { PaymentModal } from '@/components/payment-modal';
 
 function PlanIcon({ planId }: { planId: string }) {
   switch (planId) {
+    case 'free':
+      return <Gift className="h-5 w-5 text-[#8a8f98]" />;
     case 'starter':
       return <Zap className="h-5 w-5 text-[#0ecb81]" />;
     case 'pro':
@@ -39,7 +50,15 @@ function PlanIcon({ planId }: { planId: string }) {
 // Limit Row
 // ============================================================
 
-function LimitRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | number }) {
+function LimitRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string | number;
+}) {
   return (
     <div className="flex items-center justify-between py-2 px-3 bg-[#191a1b] rounded-lg">
       <div className="flex items-center gap-2">
@@ -53,6 +72,14 @@ function LimitRow({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
+function syncSubscription(subscription: Subscription) {
+  fetch('/api/subscription', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(subscription),
+  }).catch(err => console.error('Failed to sync subscription:', err));
+}
+
 // ============================================================
 // Pricing Page
 // ============================================================
@@ -60,44 +87,111 @@ function LimitRow({ icon: Icon, label, value }: { icon: React.ElementType; label
 export function PricingPage() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [paymentTier, setPaymentTier] = useState<PricingTier | null>(null);
+  const [startingTrial, setStartingTrial] = useState(false);
+
+  const setSubscription = useSubscriptionStore(s => s.setSubscription);
+  const isActive = useSubscriptionStore(s => s.isActive);
+  const hasUsedFreeTrial = useSubscriptionStore(s => s.hasUsedFreeTrial);
+  const subscription = useSubscriptionStore(s => s.subscription);
+  const setCurrentPlan = useWalletStore(s => s.setCurrentPlan);
+
+  const freeTrialState = useMemo(() => {
+    const used = hasUsedFreeTrial();
+    const activeFree =
+      isActive() && subscription?.planId === 'free' && new Date(subscription.endDate) > new Date();
+    if (activeFree) return 'active' as const;
+    if (used) return 'used' as const;
+    return 'available' as const;
+  }, [hasUsedFreeTrial, isActive, subscription]);
 
   const getPrice = (tier: PricingTier) => {
-    if (billingPeriod === 'yearly') {
-      return tier.yearlyMonthly;
-    }
+    if (tier.isFree) return 0;
+    if (billingPeriod === 'yearly') return tier.yearlyMonthly;
     return tier.price;
   };
 
   const handleSubscribe = (tier: PricingTier) => {
+    if (tier.isFree) {
+      void handleStartFreeTrial(tier);
+      return;
+    }
     setPaymentTier(tier);
+  };
+
+  const handleStartFreeTrial = async (tier: PricingTier) => {
+    if (freeTrialState === 'active') {
+      toast.info('Your Free Plan trial is already active');
+      return;
+    }
+    if (freeTrialState === 'used') {
+      toast.info('Free Plan trial already used on this account');
+      return;
+    }
+
+    setStartingTrial(true);
+    try {
+      const trialDays = tier.trialDays ?? 3;
+      const startDate = new Date();
+      const endDate = new Date(startDate.getTime() + trialDays * 24 * 60 * 60 * 1000);
+
+      const subscriptionPayload: Subscription = {
+        planId: 'free',
+        planName: tier.nameEn,
+        billingPeriod: 'monthly',
+        price: 0,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        txHash: FREE_TRIAL_TX,
+        paymentToken: 'FREE',
+        paymentChain: 0,
+        status: 'active',
+        aiRequestsUsed: 0,
+      };
+
+      setSubscription(subscriptionPayload);
+      setCurrentPlan('free');
+      syncSubscription(subscriptionPayload);
+      toast.success(`Free Plan activated — ${trialDays} days to explore Sentinel`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not start Free Plan');
+    } finally {
+      setStartingTrial(false);
+    }
   };
 
   const handlePaymentSuccess = (txHash: string, tierId: string, period: 'monthly' | 'yearly') => {
     const tier = pricingTiers.find(t => t.id === tierId);
-    const price = period === 'yearly' ? (tier?.yearlyMonthly || 0) : (tier?.price || 0);
+    const price = period === 'yearly' ? tier?.yearlyMonthly || 0 : tier?.price || 0;
 
-    const subscription = {
+    const subscriptionPayload: Subscription = {
       planId: tierId,
       planName: tier?.nameEn || '',
       billingPeriod: period,
       price,
       startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + (period === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString(),
+      endDate: new Date(
+        Date.now() + (period === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000
+      ).toISOString(),
       txHash,
-      paymentToken: 'USDC' as const,
+      paymentToken: 'USDC',
       paymentChain: 8453,
-      status: 'active' as const,
+      status: 'active',
     };
 
-    localStorage.setItem('cryptobooks_subscription', JSON.stringify(subscription));
+    setSubscription(subscriptionPayload);
+    setCurrentPlan(tierId === 'enterprise' ? 'business' : tierId);
     setPaymentTier(null);
-
-    fetch('/api/subscription', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(subscription),
-    }).catch(err => console.error('Failed to sync subscription:', err));
+    syncSubscription(subscriptionPayload);
   };
+
+  const freeCtaLabel =
+    freeTrialState === 'active'
+      ? 'Trial active'
+      : freeTrialState === 'used'
+        ? 'Trial used'
+        : startingTrial
+          ? 'Starting…'
+          : 'Start Free Trial';
 
   return (
     <div className="space-y-8">
@@ -105,7 +199,7 @@ export function PricingPage() {
       <div className="text-center">
         <h2 className="text-2xl font-bold text-[#f7f8f8] mb-2">Choose the right plan</h2>
         <p className="text-sm text-[#8a8f98] mb-4">
-          Pay with crypto and activate instantly — USDC or USDT on any EVM network
+          Start free for 3 days, or pay with crypto — USDC or USDT on any EVM network
         </p>
 
         {/* Billing toggle */}
@@ -129,95 +223,118 @@ export function PricingPage() {
             }`}
           >
             Yearly
-            <span className="mr-1 text-[10px] text-[#0ecb81]">Save 17%</span>
+            <span className="ml-1 text-[10px] text-[#0ecb81]">Save 17%</span>
           </button>
         </div>
       </div>
 
       {/* Plans grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {pricingTiers.map((tier) => (
-          <Card
-            key={tier.id}
-            className={`relative overflow-hidden bg-[#0f1011] transition-all duration-300 hover:border-white/10 ${
-              tier.highlighted
-                ? 'border-[#0052ff]/50 shadow-lg shadow-[#0052ff]/5'
-                : 'border-white/5'
-            }`}
-          >
-            {/* Top accent line */}
-            {tier.highlighted && (
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-l from-[#0052ff] via-[#0052ff] to-[#0052ff]/50" />
-            )}
-
-            <CardContent className="p-6">
-              {/* Badge */}
-              <div className="flex items-center gap-2 mb-3">
-                <PlanIcon planId={tier.id} />
-                {tier.badge && (
-                  <Badge className="bg-[#0052ff] text-white rounded-full text-[10px] h-5">
-                    {tier.badge}
-                  </Badge>
-                )}
-              </div>
-
-              {/* Plan name & price */}
-              <h3 className="text-lg font-bold text-[#f7f8f8] mb-0.5">{tier.nameEn}</h3>
-              <p className="text-[11px] text-[#8a8f98] mb-4">{tier.description}</p>
-
-              <div className="flex items-baseline gap-1 mb-1">
-                <span className="text-3xl font-bold text-[#f7f8f8] font-mono-num">
-                  ${getPrice(tier)}
-                </span>
-                <span className="text-[#8a8f98] text-sm">
-                  /month
-                </span>
-              </div>
-
-              {billingPeriod === 'yearly' && (
-                <p className="text-[10px] text-[#0ecb81] mb-4">
-                  Yearly bill: ${(getPrice(tier) * 12).toFixed(2)} (Save ${((tier.price * 12) - (getPrice(tier) * 12)).toFixed(2)})
-                </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {pricingTiers.map(tier => {
+          const isFree = tier.isFree === true;
+          return (
+            <Card
+              key={tier.id}
+              className={`relative overflow-hidden bg-[#0f1011] transition-all duration-300 hover:border-white/10 ${
+                tier.highlighted
+                  ? 'border-[#0052ff]/50 shadow-lg shadow-[#0052ff]/5'
+                  : isFree
+                    ? 'border-white/10'
+                    : 'border-white/5'
+              }`}
+            >
+              {tier.highlighted && (
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-l from-[#0052ff] via-[#0052ff] to-[#0052ff]/50" />
               )}
-              {billingPeriod === 'monthly' && <div className="mb-4" />}
 
-              {/* Limits grid */}
-              <div className="space-y-1.5 mb-5">
-                <LimitRow icon={Wallet} label="Wallets" value={tier.limits.wallets} />
-                <LimitRow icon={Network} label="Networks" value={tier.limits.networks} />
-                <LimitRow icon={FileText} label="Transactions" value={tier.limits.transactions === Infinity ? '∞' : tier.limits.transactions.toLocaleString()} />
-                <LimitRow icon={Clock} label="Sync" value={tier.limits.syncInterval} />
-              </div>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <PlanIcon planId={tier.id} />
+                  {tier.badge && (
+                    <Badge
+                      className={`rounded-full text-[10px] h-5 ${
+                        isFree
+                          ? 'bg-white/10 text-[#d0d6e0] border-white/10'
+                          : 'bg-[#0052ff] text-white'
+                      }`}
+                    >
+                      {tier.badge}
+                    </Badge>
+                  )}
+                </div>
 
-              {/* Features list */}
-              <ul className="space-y-2.5 mb-5">
-                {tier.features.map((feature, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#d0d6e0]">
-                    <div className="w-4 h-4 rounded-full bg-[#0ecb81]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Check className="h-2.5 w-2.5 text-[#0ecb81]" />
-                    </div>
-                    {feature}
-                  </li>
-                ))}
-              </ul>
+                <h3 className="text-lg font-bold text-[#f7f8f8] mb-0.5">{tier.nameEn}</h3>
+                <p className="text-[11px] text-[#8a8f98] mb-4">{tier.description}</p>
 
-              {/* Subscribe button */}
-              <Button
-                onClick={() => handleSubscribe(tier)}
-                className={`w-full rounded-full font-medium text-sm h-10 ${
-                  tier.highlighted
-                    ? 'bg-[#0052ff] hover:bg-[#0045dd] text-white'
-                    : 'bg-[#191a1b] hover:bg-[#28282c] text-[#d0d6e0] border border-white/10'
-                }`}
-              >
-                Subscribe Now
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+                <div className="flex items-baseline gap-1 mb-1">
+                  <span className="text-3xl font-bold text-[#f7f8f8] font-mono-num">
+                    ${getPrice(tier)}
+                  </span>
+                  <span className="text-[#8a8f98] text-sm">
+                    {isFree ? `/${tier.trialDays ?? 3} days` : '/month'}
+                  </span>
+                </div>
+
+                {!isFree && billingPeriod === 'yearly' && (
+                  <p className="text-[10px] text-[#0ecb81] mb-4">
+                    Yearly bill: ${(getPrice(tier) * 12).toFixed(2)} (Save $
+                    {(tier.price * 12 - getPrice(tier) * 12).toFixed(2)})
+                  </p>
+                )}
+                {(isFree || billingPeriod === 'monthly') && <div className="mb-4" />}
+
+                <div className="space-y-1.5 mb-5">
+                  <LimitRow icon={Wallet} label="Wallets" value={tier.limits.wallets} />
+                  <LimitRow icon={Network} label="Networks" value={tier.limits.networks} />
+                  <LimitRow
+                    icon={FileText}
+                    label="Transactions"
+                    value={
+                      tier.limits.transactions === Infinity
+                        ? '∞'
+                        : tier.limits.transactions.toLocaleString()
+                    }
+                  />
+                  <LimitRow icon={Clock} label="Sync" value={tier.limits.syncInterval} />
+                  {tier.limits.aiRequests != null && (
+                    <LimitRow icon={Bot} label="AI requests" value={tier.limits.aiRequests} />
+                  )}
+                </div>
+
+                <ul className="space-y-2.5 mb-5">
+                  {tier.features.map((feature, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-[#d0d6e0]">
+                      <div className="w-4 h-4 rounded-full bg-[#0ecb81]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Check className="h-2.5 w-2.5 text-[#0ecb81]" />
+                      </div>
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+
+                <Button
+                  onClick={() => handleSubscribe(tier)}
+                  disabled={
+                    isFree
+                      ? startingTrial || freeTrialState !== 'available'
+                      : false
+                  }
+                  className={`w-full rounded-full font-medium text-sm h-10 ${
+                    tier.highlighted
+                      ? 'bg-[#0052ff] hover:bg-[#0045dd] text-white'
+                      : isFree
+                        ? 'bg-[#191a1b] hover:bg-[#28282c] text-[#f7f8f8] border border-[#0ecb81]/30'
+                        : 'bg-[#191a1b] hover:bg-[#28282c] text-[#d0d6e0] border border-white/10'
+                  }`}
+                >
+                  {isFree ? freeCtaLabel : 'Subscribe Now'}
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      {/* Payment Modal */}
       {paymentTier && (
         <PaymentModal
           tier={paymentTier}

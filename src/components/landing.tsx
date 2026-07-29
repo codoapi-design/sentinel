@@ -300,16 +300,16 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
 
       {/* Pricing Section */}
       <section id="pricing" className="py-24 px-4 bg-[#0f1011]/50">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <Badge className="mb-4 bg-[#0052ff]/10 text-[#0052ff] border-[#0052ff]/20 rounded-full">
               Pricing
             </Badge>
             <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-[#f7f8f8]">Choose your plan</h2>
-            <p className="text-[#8a8f98] text-lg">Transparent pricing based on actual costs — Crypto only USDC/USDT</p>
+            <p className="text-[#8a8f98] text-lg">Start free for 3 days, or pay with crypto — USDC/USDT</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
             {pricingTiers.map((tier) => (
               <Card
                 key={tier.id}
@@ -325,7 +325,13 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-2 mb-2">
                     {tier.badge && (
-                      <Badge className="bg-[#0052ff] text-white rounded-full text-xs">
+                      <Badge
+                        className={`rounded-full text-xs ${
+                          tier.isFree
+                            ? 'bg-white/10 text-[#d0d6e0] border-white/10'
+                            : 'bg-[#0052ff] text-white'
+                        }`}
+                      >
                         {tier.badge}
                       </Badge>
                     )}
@@ -333,8 +339,12 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
                   <h3 className="text-xl font-bold mb-1 text-[#f7f8f8]">{tier.nameEn}</h3>
                   <p className="text-sm text-[#8a8f98] mb-4">{tier.description}</p>
                   <div className="flex items-baseline gap-1 mb-6">
-                    <span className="text-4xl font-bold font-mono-num text-[#f7f8f8]">${tier.price}</span>
-                    <span className="text-[#8a8f98] text-sm">/month</span>
+                    <span className="text-4xl font-bold font-mono-num text-[#f7f8f8]">
+                      ${tier.price}
+                    </span>
+                    <span className="text-[#8a8f98] text-sm">
+                      {tier.isFree ? `/${tier.trialDays ?? 3} days` : '/month'}
+                    </span>
                   </div>
                   <ul className="space-y-3 mb-8">
                     {tier.features.map((feature, i) => (
@@ -354,7 +364,7 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
                           : 'bg-[#191a1b] hover:bg-[#28282c] text-[#f7f8f8]'
                       }`}
                     >
-                      Get Started
+                      {tier.isFree ? 'Start Free Trial' : 'Get Started'}
                     </Button>
                   </Link>
                 </CardContent>

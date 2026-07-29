@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { createCookieServerClient } from '@/lib/supabase/server';
+
+const FREE_TRIAL_DAYS = 3;
+
 // ============================================================
 // Subscription API
 // ============================================================
@@ -10,43 +14,82 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { planId, billingPeriod, price, txHash, paymentToken, paymentChain, userAddress } = body;
+    const {
+      planId,
+      billingPeriod,
+      price,
+      txHash,
+      paymentToken,
+      paymentChain,
+      userAddress,
+      startDate: bodyStart,
+      endDate: bodyEnd,
+    } = body;
 
-    if (!planId || !billingPeriod || !price || !txHash) {
+    if (!planId || !billingPeriod || txHash == null || txHash === '') {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    const startDate = new Date();
-    const endDate = new Date(
-      startDate.getTime() + (billingPeriod === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000
-    );
+    const isFree = planId === 'free' || price === 0;
+    if (!isFree && (price == null || Number(price) <= 0)) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    const startDate = bodyStart ? new Date(bodyStart) : new Date();
+    const endDate = bodyEnd
+      ? new Date(bodyEnd)
+      : new Date(
+          startDate.getTime() +
+            (isFree
+              ? FREE_TRIAL_DAYS
+              : billingPeriod === 'yearly'
+                ? 365
+                : 30) *
+              24 *
+              60 *
+              60 *
+              1000
+        );
 
     const subscription = {
       planId,
       billingPeriod,
-      price,
+      price: isFree ? 0 : Number(price),
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
-      txHash,
-      paymentToken,
-      paymentChain,
+      txHash: isFree ? 'free-trial' : txHash,
+      paymentToken: isFree ? 'FREE' : paymentToken,
+      paymentChain: isFree ? 0 : paymentChain,
       status: 'active' as const,
       userAddress,
     };
 
-    // TODO: When Supabase is connected:
-    // 1. Verify the transaction on-chain (check txHash, amount, recipient)
-    // 2. Store subscription in Supabase
-    // 3. Link to user account
+    // Best-effort: stamp plan on the authenticated profile so AI quota can resolve it.
+    try {
+      const cookieClient = await createCookieServerClient();
+      const {
+        data: { user },
+      } = await cookieClient.auth.getUser();
+      if (user) {
+        await cookieClient
+          .from('user_profiles')
+          .update({ plan: planId, updated_at: new Date().toISOString() })
+          .eq('user_id', user.id);
+      }
+    } catch (err) {
+      console.warn('[Subscription] Profile plan update skipped:', err);
+    }
 
     return NextResponse.json({
       success: true,
       subscription,
     });
-
   } catch (error) {
     console.error('Subscription creation error:', error);
     return NextResponse.json(
@@ -66,9 +109,6 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
-
-  // TODO: When Supabase is connected:
-  // Query subscription from database
 
   return NextResponse.json({
     subscription: null,

@@ -8,6 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { AiQuotaError, assertAiQuota } from '@/lib/ai/tools';
+
 // In-memory store for telegram-to-user mapping (should be DB in production)
 const telegramUserMap = new Map<string, { userId: string; plan: string; walletAddress?: string; connectedAt: number }>();
 
@@ -201,7 +203,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // AI-dependent commands and free-form chat are stubbed
+    // AI-dependent commands and free-form chat — enforce Free Plan quota first.
+    try {
+      await assertAiQuota(userMapping.userId, userMapping.plan);
+    } catch (error) {
+      if (error instanceof AiQuotaError) {
+        await sendTelegramMessage(chatId, `⚠️ ${error.message}`);
+        return NextResponse.json({ ok: true });
+      }
+    }
+
     await sendTelegramMessage(chatId, AI_COMING_SOON);
     return NextResponse.json({ ok: true });
   } catch (error) {

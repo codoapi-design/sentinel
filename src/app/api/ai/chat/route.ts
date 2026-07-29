@@ -25,7 +25,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import type { AgentMode, ChatMessage } from '@/lib/ai/llm';
-import { isWalletContextError, recordAiUsage, runAnalysis, summarizeIntelligence } from '@/lib/ai/tools';
+import {
+  AiQuotaError,
+  assertAiQuota,
+  isWalletContextError,
+  recordAiUsage,
+  runAnalysis,
+  summarizeIntelligence,
+} from '@/lib/ai/tools';
+import { normalizePlanId } from '@/lib/plans/address-families';
 import { createCookieServerClient } from '@/lib/supabase/server';
 
 /** Enough context for a follow-up without paying for the whole thread. */
@@ -68,6 +76,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
+    let quotaPlanId: string | null = null;
+    try {
+      const quota = await assertAiQuota(user.id);
+      quotaPlanId = quota.planId;
+    } catch (error) {
+      if (error instanceof AiQuotaError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+
     let body: ChatRequestBody;
     try {
       body = (await request.json()) as ChatRequestBody;
@@ -107,7 +126,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await recordAiUsage({ userId: user.id, kind: 'chat', usage: result.llm.usage });
+    await recordAiUsage({
+      userId: user.id,
+      kind: 'chat',
+      usage: result.llm.usage,
+      accumulateLifetime: normalizePlanId(quotaPlanId) === 'free',
+    });
 
     return NextResponse.json({
       success: true,
@@ -129,6 +153,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof AiQuotaError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (isWalletContextError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

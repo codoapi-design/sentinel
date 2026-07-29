@@ -50,24 +50,36 @@ export const PLAN_LIMITS: Record<string, {
   networks: number;
   transactions: number;
   syncIntervalMs: number;
+  /** Shared AI request cap; `null` means unlimited. */
+  aiRequests: number | null;
 }> = {
+  free: {
+    wallets: 1,
+    networks: 1, // EVM address family only
+    transactions: 100,
+    syncIntervalMs: 600_000, // 10 minutes
+    aiRequests: 50,
+  },
   starter: {
     wallets: 1,
     networks: 1, // EVM address family only
     transactions: 500,
     syncIntervalMs: 600_000, // 10 minutes
+    aiRequests: null,
   },
   pro: {
     wallets: 5,
     networks: 5,
     transactions: 5000,
     syncIntervalMs: 60_000, // 1 minute
+    aiRequests: null,
   },
   business: {
     wallets: 25,
     networks: 10,
     transactions: Infinity,
     syncIntervalMs: 30_000, // 30 seconds
+    aiRequests: null,
   },
   // DB / legacy alias for Business
   enterprise: {
@@ -75,11 +87,13 @@ export const PLAN_LIMITS: Record<string, {
     networks: 10,
     transactions: Infinity,
     syncIntervalMs: 30_000,
+    aiRequests: null,
   },
 };
 
 // Backward-compatible alias
 export const PLAN_WALLET_LIMITS: Record<string, number> = {
+  free: PLAN_LIMITS.free.wallets,
   starter: PLAN_LIMITS.starter.wallets,
   pro: PLAN_LIMITS.pro.wallets,
   business: PLAN_LIMITS.business.wallets,
