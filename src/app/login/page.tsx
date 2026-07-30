@@ -73,7 +73,7 @@ export default function LoginPage() {
           <div className="w-8 h-8 bg-[#0052ff] rounded-lg flex items-center justify-center">
             <Shield className="h-4 w-4 text-white" />
           </div>
-          <span className="text-xl font-bold text-[#f7f8f8]">Sentinel</span>
+          <span className="text-xl font-bold text-[#f7f8f8]">Radareum</span>
         </Link>
         <div className="flex items-center gap-3">
           <Link href="/demo">
@@ -98,7 +98,7 @@ export default function LoginPage() {
               <Shield className="h-7 w-7 text-[#0052ff]" />
             </div>
             <h1 className="text-2xl font-bold text-[#f7f8f8] mb-2">Welcome back</h1>
-            <p className="text-[#8a8f98] text-sm">Sign in to your Sentinel account</p>
+            <p className="text-[#8a8f98] text-sm">Sign in to your Radareum account</p>
           </div>
 
           {/* OAuth Buttons */}

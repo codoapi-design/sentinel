@@ -1,5 +1,5 @@
 /**
- * Security Radar for Sentinel
+ * Security Radar for Radareum
  * Analyzes wallet security: token approvals, risky contracts, permission exposure
  */
 

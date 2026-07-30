@@ -126,7 +126,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Shield className="h-4 w-4 text-white" />
               </div>
               <div>
-                <span className="text-sm font-bold text-[#f7f8f8]">Sentinel</span>
+                <span className="text-sm font-bold text-[#f7f8f8]">Radareum</span>
                 <span className="text-[10px] text-[#8a8f98] block -mt-0.5">Admin Panel</span>
               </div>
             </div>
@@ -189,7 +189,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div className="w-8 h-8 bg-[#0052ff] rounded-lg flex items-center justify-center">
                   <Shield className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-sm font-bold text-[#f7f8f8]">Sentinel Admin</span>
+                <span className="text-sm font-bold text-[#f7f8f8]">Radareum Admin</span>
               </div>
               <button onClick={() => setMobileMenuOpen(false)} className="text-[#8a8f98]">
                 <X className="h-5 w-5" />

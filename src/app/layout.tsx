@@ -10,7 +10,7 @@ const geistSans = GeistSans;
 const geistMono = GeistMono;
 
 export const metadata: Metadata = {
-  title: "Sentinel — Crypto Wallet Intelligence",
+  title: "Radareum — Crypto Wallet Intelligence",
   description: "Automated crypto accounting with intelligent tracking, AI-powered insights, and real-time wallet monitoring",
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>",

@@ -1,5 +1,5 @@
 /**
- * Supabase Cache Layer for Sentinel Hybrid Blockchain Architecture
+ * Supabase Cache Layer for Radareum Hybrid Blockchain Architecture
  *
  * Caches fetched data in Supabase to:
  *   1. Reduce external API calls (cost savings)

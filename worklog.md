@@ -1,7 +1,7 @@
 ---
 Task ID: 1
 Agent: Main Agent
-Task: Build Hybrid Blockchain Data Provider Architecture for Sentinel
+Task: Build Hybrid Blockchain Data Provider Architecture for Radareum
 
 Work Log:
 - Analyzed current 4-layer fallback architecture (DeBank → Zerion → Alchemy → Covalent)
@@ -120,11 +120,38 @@ Admin Panel: 15 pages, fully English, RBAC (super_admin/admin/moderator)
 RLS: Row-level security on all tables
 
 PENDING TASKS (for next session):
+  - End-to-end paid subscription smoke test (approve + paySubscription + plan activation)
+  - Add PAYMENT_* env vars on Vercel (including PAYMENT_SIGNER_PRIVATE_KEY)
+  - Deploy payment contract on Base (and other chains) when ready; set PAYMENT_CONTRACT_<chainId>
+  - Optional Alchemy webhook / indexer for PaymentReceived (backup to client confirm)
+  - Polish product UX for global launch (pricing, onboarding, error states)
   - Build Admin Dashboard Phase 3+4 (advanced analytics)
-  - Remove ignoreBuildErrors: true from next.config.ts
-  - Implement PDF/Excel report generation
-  - Crypto payment verification
-  - Subscription sync with payment provider
-  - Add environment variables: COVALENT_API_KEY, ZERION_API_KEY, ALCHEMY_API_KEY, ALCHEMY_WEBHOOK_SIGNING_KEY, DEBANK_API_KEY
-  - Frontend dashboard update to show provider info
-  - Provider health UI in admin panel
+  - Remove ignoreBuildErrors: true from next.config.ts if still enabled
+
+---
+Checkpoint: 2026-07-30 — Radareum on-chain payments + brand/product wiring
+Agent: Main Agent
+Status: Saved locally (git commit); continue tomorrow for polish + E2E verification
+
+Done today:
+- Deployed RadareumSubscriptionPayments on Ethereum:
+  0x391b88351974592A8f5e1cc1B87e7D6B2EAeEA6c
+- Verified on Etherscan; allowlisted USDC + USDT via setTokenAllowed
+- Wired app to contract:
+  - src/lib/payments/* (config, ABI, EIP-712 sign, referrer, activate, RPC)
+  - POST /api/payments/intent
+  - POST /api/payments/confirm (reads PaymentReceived, activates subscription)
+  - PaymentModal: approve + paySubscription (Ethereum live chain)
+- Env placeholders: PAYMENT_SIGNER_PRIVATE_KEY, PAYMENT_CONTRACT_1, NEXT_PUBLIC_PAYMENT_CONTRACT_1
+- Contracts docs: contracts/REMIX_DEPLOY.md, contracts/BACKEND_INTEGRATION.md
+- Remix source: contracts/remix/RadareumSubscriptionPayments.Remix.sol (OZ v5.2.0)
+- Earlier session work also included in working tree: Sentinel→Radareum rename, profile popover,
+  referral program, Free Plan, auth/register fixes, etc.
+
+Ops notes (user machine / Vercel — secrets not in git):
+- .env.local must contain real PAYMENT_SIGNER_PRIVATE_KEY for the on-chain paymentSigner
+- Mirror same payment env vars on Vercel before production traffic
+- Contract owner already called setTokenAllowed for mainnet USDC/USDT
+
+Next session focus:
+- Make the product feel professional, global, and complete (UX polish + E2E payment test)

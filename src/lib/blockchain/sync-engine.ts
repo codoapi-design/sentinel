@@ -1,5 +1,5 @@
 /**
- * Sync Engine for Sentinel Hybrid Blockchain Architecture
+ * Sync Engine for Radareum Hybrid Blockchain Architecture
  *
  * Manages the full data ingestion lifecycle:
  *

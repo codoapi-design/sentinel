@@ -1,7 +1,7 @@
 /**
- * Sentinel Intelligence Engines — public surface.
+ * Radareum Intelligence Engines — public surface.
  *
- * Spec: `docs/sentinel-ai/05-00-intelligence-framework.md`.
+ * Spec: `docs/radareum-ai/05-00-intelligence-framework.md`.
  * The analytics layer computes; the LLM only explains. Every engine here is a
  * pure function: no network, no storage, no model calls, deterministic for a
  * given input (pass `now` to pin the evaluation instant).

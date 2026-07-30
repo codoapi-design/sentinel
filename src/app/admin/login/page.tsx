@@ -142,7 +142,7 @@ export default function AdminLoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@sentinel.app"
+                    placeholder="admin@radareum.app"
                     className="w-full bg-[#191a1b] border border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] h-11 pl-10 pr-4 rounded-xl text-sm focus:outline-none focus:border-[#f7931a]/50"
                     required
                     autoFocus

@@ -1,5 +1,5 @@
 /**
- * Unified Blockchain Service for Sentinel
+ * Unified Blockchain Service for Radareum
  *
  * This is the BACKWARD-COMPATIBLE entry point that now delegates
  * to the Hybrid Provider Manager instead of the old 4-layer fallback.

@@ -1,5 +1,5 @@
 /**
- * Zerion API Service for Sentinel
+ * Zerion API Service for Radareum
  * Provides wallet portfolio, DeFi positions, and transaction data
  */
 

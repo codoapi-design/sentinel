@@ -1,5 +1,5 @@
 /**
- * Supabase Server Client for Sentinel
+ * Supabase Server Client for Radareum
  * Used in API routes with service role key for admin access
  * Also supports cookie-based session reading for middleware
  */

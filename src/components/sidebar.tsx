@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { UserProfilePopover } from '@/components/user-profile-popover';
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -13,6 +13,7 @@ import {
   Tags,
   Settings,
   CreditCard,
+  Gift,
   Menu,
   X,
   ChevronRight,
@@ -37,6 +38,7 @@ const navItems = [
   { id: 'types', label: 'Types', icon: Tags },
   { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
+  { id: 'referral', label: 'Referral Program', icon: Gift },
 ];
 
 export function Sidebar({ activeTab, onTabChange, isDemo, userName, userInitial }: SidebarProps) {
@@ -52,7 +54,7 @@ export function Sidebar({ activeTab, onTabChange, isDemo, userName, userInitial 
             <Shield className="h-4 w-4 text-white" />
           </div>
           {!collapsed && (
-            <span className="text-lg font-bold text-[#f7f8f8]">Sentinel</span>
+            <span className="text-lg font-bold text-[#f7f8f8]">Radareum</span>
           )}
           {isDemo && !collapsed && (
             <span className="text-[10px] bg-[#f7931a]/10 text-[#f7931a] border border-[#f7931a]/20 px-1.5 py-0.5 rounded font-medium">
@@ -103,28 +105,18 @@ export function Sidebar({ activeTab, onTabChange, isDemo, userName, userInitial 
 
       <Separator className="bg-white/5" />
 
-      {/* User section */}
+      {/* User section — opens profile popover */}
       <div className="p-3">
-        <div className={cn(
-          'flex items-center gap-3 p-2 rounded-lg hover:bg-[#191a1b] transition-colors cursor-pointer',
-          collapsed && 'justify-center'
-        )}>
-          <Avatar className="h-8 w-8 bg-[#28282c] border border-white/10">
-            <AvatarFallback className="bg-[#0052ff]/20 text-[#0052ff] text-xs font-bold">
-              {isDemo ? 'DM' : (userInitial || 'U')}
-            </AvatarFallback>
-          </Avatar>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#f7f8f8] truncate">
-                {isDemo ? 'Demo User' : (userName || 'User')}
-              </p>
-              <p className="text-xs text-[#8a8f98] truncate">
-                {isDemo ? 'Demo Mode' : 'Pro Plan'}
-              </p>
-            </div>
-          )}
-        </div>
+        <UserProfilePopover
+          isDemo={isDemo}
+          collapsed={collapsed}
+          fallbackName={userName}
+          fallbackInitial={userInitial}
+          onUpgrade={() => {
+            onTabChange('subscription');
+            setMobileOpen(false);
+          }}
+        />
       </div>
     </div>
   );

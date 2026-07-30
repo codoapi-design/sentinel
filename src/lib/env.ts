@@ -1,5 +1,5 @@
 /**
- * Environment Variable Resolver for Sentinel
+ * Environment Variable Resolver for Radareum
  *
  * Resolves API keys from multiple possible env variable naming conventions.
  * Supports both PROVIDER_API_KEY and PROVIDER formats.

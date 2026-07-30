@@ -1,5 +1,5 @@
 /**
- * Supabase Database Types for Sentinel
+ * Supabase Database Types for Radareum
  * Comprehensive type definitions for all database tables
  */
 
@@ -26,6 +26,7 @@ export interface Database {
           status: string;
           two_factor_enabled: boolean;
           telegram_chat_id: string | null;
+          referred_by: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -39,6 +40,7 @@ export interface Database {
           status?: string;
           two_factor_enabled?: boolean;
           telegram_chat_id?: string | null;
+          referred_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -52,6 +54,7 @@ export interface Database {
           status?: string;
           two_factor_enabled?: boolean;
           telegram_chat_id?: string | null;
+          referred_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1104,6 +1107,149 @@ export interface Database {
           cancel_at_period_end?: boolean;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ─── Referral Program ───
+      referral_profiles: {
+        Row: {
+          user_id: string;
+          referral_code: string;
+          payout_wallet: string;
+          total_referrals: number;
+          paid_conversions: number;
+          total_commission_usd: number;
+          activation_rewards_granted: number;
+          reward_plan_id: string | null;
+          reward_plan_active_until: string | null;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          referral_code: string;
+          payout_wallet: string;
+          total_referrals?: number;
+          paid_conversions?: number;
+          total_commission_usd?: number;
+          activation_rewards_granted?: number;
+          reward_plan_id?: string | null;
+          reward_plan_active_until?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          referral_code?: string;
+          payout_wallet?: string;
+          total_referrals?: number;
+          paid_conversions?: number;
+          total_commission_usd?: number;
+          activation_rewards_granted?: number;
+          reward_plan_id?: string | null;
+          reward_plan_active_until?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      referral_attributions: {
+        Row: {
+          id: string;
+          referrer_user_id: string;
+          referred_user_id: string | null;
+          referral_code: string;
+          status: string;
+          signed_up_at: string | null;
+          commission_period_end: string | null;
+          first_paid_at: string | null;
+          total_commission_usd: number;
+          activation_reward_granted: boolean;
+          ip_hash: string | null;
+          fingerprint_hash: string | null;
+          reject_reason: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          referrer_user_id: string;
+          referred_user_id?: string | null;
+          referral_code: string;
+          status?: string;
+          signed_up_at?: string | null;
+          commission_period_end?: string | null;
+          first_paid_at?: string | null;
+          total_commission_usd?: number;
+          activation_reward_granted?: boolean;
+          ip_hash?: string | null;
+          fingerprint_hash?: string | null;
+          reject_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          referrer_user_id?: string;
+          referred_user_id?: string | null;
+          referral_code?: string;
+          status?: string;
+          signed_up_at?: string | null;
+          commission_period_end?: string | null;
+          first_paid_at?: string | null;
+          total_commission_usd?: number;
+          activation_reward_granted?: boolean;
+          ip_hash?: string | null;
+          fingerprint_hash?: string | null;
+          reject_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      referral_events: {
+        Row: {
+          id: string;
+          referrer_user_id: string;
+          referred_user_id: string | null;
+          attribution_id: string | null;
+          event_type: string;
+          plan_id: string | null;
+          amount_usd: number;
+          commission_pct: number | null;
+          note: string | null;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          referrer_user_id: string;
+          referred_user_id?: string | null;
+          attribution_id?: string | null;
+          event_type: string;
+          plan_id?: string | null;
+          amount_usd?: number;
+          commission_pct?: number | null;
+          note?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          referrer_user_id?: string;
+          referred_user_id?: string | null;
+          attribution_id?: string | null;
+          event_type?: string;
+          plan_id?: string | null;
+          amount_usd?: number;
+          commission_pct?: number | null;
+          note?: string | null;
+          metadata?: Json;
+          created_at?: string;
         };
         Relationships: [];
       };

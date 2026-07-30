@@ -10,6 +10,7 @@ import { TransactionsTable, TransactionsTab } from './transactions-table';
 import { TelegramSettings } from './telegram-settings';
 import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
+import { ReferralProgram } from './referral-program';
 import { SectionPage } from './section-page';
 import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
@@ -30,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { LogOut, Loader2, RefreshCw, BarChart3, Shield, Plus, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWalletStore } from '@/stores/wallet-store';
+import { useProfileStore } from '@/stores/profile-store';
 import { useWalletAutoSync } from '@/hooks/use-wallet-auto-sync';
 import { useAuth } from '@/lib/auth-context';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
@@ -57,6 +59,21 @@ export function RealDashboard() {
 
   const router = useRouter();
   const { user, signOut } = useAuth();
+
+  // Seed profile display from auth until /api/profile hydrates
+  useEffect(() => {
+    if (!user) return;
+    const current = useProfileStore.getState();
+    if (current.hydrated) return;
+    useProfileStore.getState().setProfile({
+      fullName:
+        (user.user_metadata?.full_name as string | undefined) ||
+        user.email?.split('@')[0] ||
+        '',
+      email: user.email || '',
+      avatarUrl: (user.user_metadata?.avatar_url as string | undefined) || null,
+    });
+  }, [user]);
 
   // Wallet store
   const {
@@ -270,6 +287,7 @@ export function RealDashboard() {
       case 'types': return 'Types';
       case 'settings': return 'Settings';
       case 'subscription': return 'Subscription';
+      case 'referral': return 'Referral Program';
       default: return '';
     }
   };
@@ -524,10 +542,12 @@ export function RealDashboard() {
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Settings</h2>
-              <p className="text-sm text-[#8a8f98]">Alert and notification settings</p>
+              <p className="text-sm text-[#8a8f98]">
+                Telegram &amp; email alerts by plan — Basic, Advanced, and Instant
+              </p>
             </div>
-            <TelegramSettings />
-            <EmailSettings />
+            <TelegramSettings onUpgrade={() => setActiveTab('subscription')} />
+            <EmailSettings onUpgrade={() => setActiveTab('subscription')} />
           </div>
         );
       case 'subscription':
@@ -538,6 +558,18 @@ export function RealDashboard() {
               <p className="text-sm text-[#8a8f98]">Manage your plan and payment methods</p>
             </div>
             <PricingPage />
+          </div>
+        );
+      case 'referral':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Referral Program</h2>
+              <p className="text-sm text-[#8a8f98]">
+                Share your link, earn 10% for 6 months, and unlock activation rewards
+              </p>
+            </div>
+            <ReferralProgram />
           </div>
         );
       default:

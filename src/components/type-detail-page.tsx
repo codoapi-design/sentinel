@@ -128,7 +128,7 @@ export function TypeDetailPage({ typeId, onBack, clients = [] }: TypeDetailPageP
       const payload = buildTransactionsReportPayload({
         title: `Type · ${typeLabel}`,
         subtitle: typeDescription,
-        filenameBase: `sentinel-type-${typeId}`,
+        filenameBase: `radareum-type-${typeId}`,
         transactions: statsTransactions,
         clients,
         aiScope: {
@@ -170,7 +170,7 @@ export function TypeDetailPage({ typeId, onBack, clients = [] }: TypeDetailPageP
       const payload = buildTransactionsReportPayload({
         title: `Type · ${typeLabel}`,
         subtitle: typeDescription,
-        filenameBase: `sentinel-type-${typeId}`,
+        filenameBase: `radareum-type-${typeId}`,
         transactions: statsTransactions,
         clients,
         aiScope: {

@@ -153,7 +153,7 @@ export function NetworkDetailPage({
       const payload = buildTransactionsReportPayload({
         title: `Network · ${networkLabel}`,
         subtitle: `Transactions on ${networkLabel}`,
-        filenameBase: `sentinel-network-${networkId}`,
+        filenameBase: `radareum-network-${networkId}`,
         transactions: statsTransactions,
         clients,
         aiScope: {
@@ -196,7 +196,7 @@ export function NetworkDetailPage({
       const payload = buildTransactionsReportPayload({
         title: `Network · ${networkLabel}`,
         subtitle: `Transactions on ${networkLabel}`,
-        filenameBase: `sentinel-network-${networkId}`,
+        filenameBase: `radareum-network-${networkId}`,
         transactions: statsTransactions,
         clients,
         aiScope: {

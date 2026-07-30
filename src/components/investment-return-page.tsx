@@ -174,7 +174,7 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
         : sinceLabel
           ? `Since connected · ${sinceLabel}`
           : 'Mark-to-market return since wallet connect',
-      filenameBase: 'sentinel-investment-return',
+      filenameBase: 'radareum-investment-return',
       aiScope: {
         page: 'investment-return',
         sectionType: 'investment-return',

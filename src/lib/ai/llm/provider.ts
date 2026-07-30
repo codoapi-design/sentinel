@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — LLM Provider Layer
+ * Radareum AI — LLM Provider Layer
  *
  * Provider-agnostic chat-completion contract plus an OpenAI-compatible
  * implementation built on plain `fetch` (no SDK, no extra dependencies).

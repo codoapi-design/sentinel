@@ -1,4 +1,4 @@
--- Migration: Create missing tables for Sentinel
+-- Migration: Create missing tables for Radareum
 -- Tables: api_keys, asset_positions, defi_positions
 
 -- ─── API Keys Table ───

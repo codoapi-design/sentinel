@@ -30,10 +30,11 @@ import {
   assertAiQuota,
   isWalletContextError,
   recordAiUsage,
+  resolveAiQuotaWindow,
   runAnalysis,
+  SubscriptionEntitlementError,
   summarizeIntelligence,
 } from '@/lib/ai/tools';
-import { normalizePlanId } from '@/lib/plans/address-families';
 import { createCookieServerClient } from '@/lib/supabase/server';
 
 /** Enough context for a follow-up without paying for the whole thread. */
@@ -81,6 +82,9 @@ export async function POST(request: NextRequest) {
       const quota = await assertAiQuota(user.id);
       quotaPlanId = quota.planId;
     } catch (error) {
+      if (error instanceof SubscriptionEntitlementError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
       if (error instanceof AiQuotaError) {
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
@@ -130,7 +134,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       kind: 'chat',
       usage: result.llm.usage,
-      accumulateLifetime: normalizePlanId(quotaPlanId) === 'free',
+      window: resolveAiQuotaWindow(quotaPlanId),
     });
 
     return NextResponse.json({
@@ -153,6 +157,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof SubscriptionEntitlementError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof AiQuotaError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

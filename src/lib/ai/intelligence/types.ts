@@ -1,7 +1,7 @@
 /**
- * Sentinel Intelligence Framework — shared contracts.
+ * Radareum Intelligence Framework — shared contracts.
  *
- * Spec: `docs/sentinel-ai/05-00-intelligence-framework.md` (unified module template:
+ * Spec: `docs/radareum-ai/05-00-intelligence-framework.md` (unified module template:
  * Goal / Questions / Metrics / Patterns / Insights / Evidence / Confidence / Output).
  *
  * Governing principle: the analytics layer computes; the LLM only explains.

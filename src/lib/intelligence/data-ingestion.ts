@@ -1,5 +1,5 @@
 /**
- * Data Ingestion Service for Sentinel
+ * Data Ingestion Service for Radareum
  *
  * Updated to use the Hybrid Blockchain Architecture:
  *   - Uses Provider Manager for smart routing

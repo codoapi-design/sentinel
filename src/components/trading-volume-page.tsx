@@ -177,7 +177,7 @@ export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePagePro
         : earliestTradeLabel
           ? `All synced history · earliest trade ${earliestTradeLabel}`
           : 'All synced trade history',
-      filenameBase: 'sentinel-trading-volume',
+      filenameBase: 'radareum-trading-volume',
       aiScope: {
         page: 'trading-volume',
         sectionType: 'trading-volume',

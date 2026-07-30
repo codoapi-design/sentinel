@@ -1,5 +1,5 @@
 /**
- * Hybrid Blockchain Data Architecture for Sentinel
+ * Hybrid Blockchain Data Architecture for Radareum
  *
  * Main entry point that exports all public APIs.
  *

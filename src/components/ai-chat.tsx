@@ -237,7 +237,7 @@ export function AIChat({ pageContext }: AIChatProps) {
         <div
           className="fixed bottom-6 left-6 z-[100] w-[420px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-6rem)] bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up"
           role="dialog"
-          aria-label="Sentinel AI chat"
+          aria-label="Radareum AI chat"
           data-testid="ai-chat-panel"
         >
           {/* Header */}
@@ -248,7 +248,7 @@ export function AIChat({ pageContext }: AIChatProps) {
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold text-[#f7f8f8]">Sentinel AI</p>
+                  <p className="text-sm font-semibold text-[#f7f8f8]">Radareum AI</p>
                   <Sparkles className="h-3.5 w-3.5 text-[#0052ff]" />
                 </div>
                 <p className="text-[11px] text-[#8a8f98] truncate">{contextLabel}</p>

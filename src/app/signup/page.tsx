@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Shield, Eye, EyeOff, Mail, Lock, User, ArrowRight, Check } from 'lucide-react';
 import Link from 'next/link';
+import { captureReferralCodeFromUrl } from '@/lib/referrals/client';
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState('');
@@ -19,6 +20,10 @@ export default function SignupPage() {
   const [success, setSuccess] = useState(false);
   const { signUp, signInWithGoogle, signInWithApple } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    captureReferralCodeFromUrl();
+  }, []);
 
   // Password strength indicators
   const hasMinLength = password.length >= 8;
@@ -53,7 +58,9 @@ export default function SignupPage() {
       return;
     }
 
-    setSuccess(true);
+    // Register API auto-confirms and signs in
+    router.push('/dashboard');
+    router.refresh();
   };
 
   const handleGoogleSignIn = async () => {
@@ -74,7 +81,7 @@ export default function SignupPage() {
             <div className="w-8 h-8 bg-[#0052ff] rounded-lg flex items-center justify-center">
               <Shield className="h-4 w-4 text-white" />
             </div>
-            <span className="text-xl font-bold text-[#f7f8f8]">Sentinel</span>
+            <span className="text-xl font-bold text-[#f7f8f8]">Radareum</span>
           </Link>
         </nav>
         <div className="flex-1 flex items-center justify-center px-4">
@@ -107,7 +114,7 @@ export default function SignupPage() {
           <div className="w-8 h-8 bg-[#0052ff] rounded-lg flex items-center justify-center">
             <Shield className="h-4 w-4 text-white" />
           </div>
-          <span className="text-xl font-bold text-[#f7f8f8]">Sentinel</span>
+          <span className="text-xl font-bold text-[#f7f8f8]">Radareum</span>
         </Link>
         <div className="flex items-center gap-3">
           <Link href="/demo">

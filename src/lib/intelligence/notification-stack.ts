@@ -1,5 +1,5 @@
 /**
- * Notification Stack for Sentinel
+ * Notification Stack for Radareum
  * Manages alerts via Telegram, email, and webhook channels
  */
 

@@ -1,5 +1,5 @@
 /**
- * DeBank API Service for Sentinel
+ * DeBank API Service for Radareum
  * Provides portfolio, DeFi positions, and token balance data
  *
  * NOTE: DeBank has migrated their free API to a paid model (DeBank Cloud).

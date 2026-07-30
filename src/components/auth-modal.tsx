@@ -38,7 +38,7 @@ export function AuthModal({ open, onOpenChange, onLogin }: AuthModalProps) {
         <DialogHeader>
           <DialogTitle className="text-center text-xl font-bold flex items-center justify-center gap-2">
             <Shield className="h-5 w-5 text-[#0052ff]" />
-            Welcome to Sentinel
+            Welcome to Radareum
           </DialogTitle>
         </DialogHeader>
 

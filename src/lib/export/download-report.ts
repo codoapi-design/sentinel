@@ -198,7 +198,7 @@ function paintPageBackground(doc: jsPDF): void {
   doc.rect(0, 0, w, h, 'F');
 }
 
-/** Draw brand mark: blue rounded square + SENTINEL wordmark. */
+/** Draw brand mark: blue rounded square + RADAREUM wordmark. */
 function drawBrandMark(doc: jsPDF, x: number, y: number): number {
   const size = 7;
   doc.setFillColor(...PDF.accent);
@@ -218,9 +218,9 @@ function drawBrandMark(doc: jsPDF, x: number, y: number): number {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(...PDF.accent);
-  doc.text('SENTINEL', x + size + 2.5, y);
+  doc.text('RADAREUM', x + size + 2.5, y);
 
-  return size + 2.5 + doc.getTextWidth('SENTINEL');
+  return size + 2.5 + doc.getTextWidth('RADAREUM');
 }
 
 export type DrawReportHeaderOpts = {
@@ -306,7 +306,7 @@ function drawPageFooter(doc: jsPDF, pageNumber: number, pageCount: number): void
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...PDF.muted);
-  doc.text('Sentinel', MARGIN, y);
+  doc.text('Radareum', MARGIN, y);
   doc.text(`Page ${pageNumber} of ${pageCount}`, pageW - MARGIN, y, { align: 'right' });
 }
 
@@ -834,7 +834,7 @@ function writeSummarySheet(
   // Brand header row
   sheet.mergeCells(1, 1, 1, 2);
   const brand = sheet.getCell(1, 1);
-  brand.value = 'Sentinel';
+  brand.value = 'Radareum';
   brand.font = { bold: true, color: { argb: argb(EXCEL.white) }, name: 'Calibri', size: 16 };
   brand.fill = {
     type: 'pattern',
@@ -1007,7 +1007,7 @@ function writeChartsSheet(
 
   sheet.mergeCells(1, 1, 1, 2);
   const brand = sheet.getCell(1, 1);
-  brand.value = 'Sentinel';
+  brand.value = 'Radareum';
   brand.font = { bold: true, color: { argb: argb(EXCEL.white) }, name: 'Calibri', size: 16 };
   brand.fill = {
     type: 'pattern',
@@ -1232,7 +1232,7 @@ async function buildExcelWorkbook(opts: ExcelReportOpts): Promise<ArrayBuffer> {
   // CJS/ESM interop: Node exposes Workbook on the module; some bundlers put it on default.
   const ExcelJSLib = (mod as unknown as { default?: typeof mod }).default ?? mod;
   const wb = new ExcelJSLib.Workbook();
-  wb.creator = 'Sentinel';
+  wb.creator = 'Radareum';
   wb.created = new Date();
   wb.modified = new Date();
 
@@ -1341,7 +1341,7 @@ export function downloadExcelReport(opts: ExcelReportOpts): void {
       downloadBlob(filename, blob);
     })
     .catch(err => {
-      console.error('[Sentinel] Excel export failed', err);
+      console.error('[Radareum] Excel export failed', err);
     });
 }
 
@@ -1363,6 +1363,13 @@ export async function downloadReportPdf(payload: ReportPayload): Promise<boolean
 
 /** Download Excel (.xlsx) from the shared ReportPayload shape used across pages. */
 export async function downloadReportExcel(payload: ReportPayload): Promise<boolean> {
+  const { useWalletStore } = await import('@/stores/wallet-store');
+  const { planAllowsExcelExport } = await import('@/lib/plans/features');
+  const plan = useWalletStore.getState().currentPlan;
+  if (!planAllowsExcelExport(plan)) {
+    throw new Error('Excel export is available on the Business plan. Upgrade to unlock .xlsx reports.');
+  }
+
   const { enrichReportPayloadWithAi } = await import('@/lib/export/ai-analysis-report');
   const { payload: enriched, aiIncluded } = await enrichReportPayloadWithAi(payload);
   downloadExcelReport({

@@ -20,13 +20,11 @@ import {
   filterAddressesByPlan,
   normalizePlanId,
 } from '@/lib/plans/address-families';
-
-const PLAN_WALLET_COUNT: Record<string, number> = {
-  starter: 1,
-  pro: 5,
-  business: 25,
-  enterprise: 25,
-};
+import {
+  assertServerEntitlement,
+  SubscriptionEntitlementError,
+} from '@/lib/plans/entitlements-server';
+import { getWalletLimit } from '@/lib/plans/limits';
 
 async function resolveUserPlan(
   supabase: ReturnType<typeof createServerClient>,
@@ -125,7 +123,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validated.error }, { status: 400 });
     }
 
-    const userPlan = await resolveUserPlan(supabase, userId);
+    let userPlan = await resolveUserPlan(supabase, userId);
+    try {
+      const entitlement = await assertServerEntitlement(userId, supabase);
+      userPlan = normalizePlanId(entitlement.planId);
+    } catch (error) {
+      if (error instanceof SubscriptionEntitlementError) {
+        return NextResponse.json(
+          { error: error.message, code: 'subscription_required' },
+          { status: error.status },
+        );
+      }
+      throw error;
+    }
 
     const planGate = assertAddressesAllowedForPlan(userPlan, validated.data);
     if (!planGate.ok) {
@@ -195,9 +205,9 @@ export async function POST(request: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
 
-    const limit = PLAN_WALLET_COUNT[userPlan] ?? PLAN_WALLET_COUNT.starter;
+    const limit = getWalletLimit(userPlan);
 
-    if ((count || 0) >= limit) {
+    if (Number.isFinite(limit) && (count || 0) >= limit) {
       return NextResponse.json(
         { error: `Wallet limit reached (${limit} wallets for your plan)` },
         { status: 403 },

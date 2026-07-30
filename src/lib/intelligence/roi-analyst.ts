@@ -1,5 +1,5 @@
 /**
- * True ROI Analyst for Sentinel
+ * True ROI Analyst for Radareum
  * Calculates true returns including cost basis, fees, and opportunity cost
  */
 

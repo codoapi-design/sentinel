@@ -1,5 +1,5 @@
 /**
- * Browser-side contract for the Sentinel AI endpoints.
+ * Browser-side contract for the Radareum AI endpoints.
  *
  * Mirrors the response shapes of `POST /api/ai/analyze` and `POST /api/ai/chat`
  * without importing from `src/lib/ai/**`, which is server-only. Also holds the

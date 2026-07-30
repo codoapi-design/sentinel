@@ -21,10 +21,12 @@ import { pricingTiers, type PricingTier } from '@/lib/mock-data';
 import { PaymentModal } from '@/components/payment-modal';
 import {
   FREE_TRIAL_TX,
+  createSubscriptionPayload,
   useSubscriptionStore,
   type Subscription,
 } from '@/stores/subscription-store';
 import { useWalletStore } from '@/stores/wallet-store';
+import { toWalletPlanId } from '@/lib/plans/entitlements';
 
 // ============================================================
 // Plan Icon
@@ -73,11 +75,55 @@ function LimitRow({
 }
 
 function syncSubscription(subscription: Subscription) {
-  fetch('/api/subscription', {
+  return fetch('/api/subscription', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(subscription),
-  }).catch(err => console.error('Failed to sync subscription:', err));
+  }).catch(err => {
+    console.error('Failed to sync subscription:', err);
+    return null;
+  });
+}
+
+/** After activate/renew: resume incremental sync so missing history is backfilled. */
+async function resumeWalletSyncs() {
+  const { wallets, syncWallet } = useWalletStore.getState();
+  for (const wallet of wallets) {
+    try {
+      await syncWallet(wallet.id, 'auto');
+    } catch (err) {
+      console.warn('[Subscription] Resume sync failed for', wallet.id, err);
+    }
+  }
+}
+
+async function activatePlan(args: {
+  planId: string;
+  billingPeriod: 'monthly' | 'yearly';
+  txHash: string;
+  paymentToken: Subscription['paymentToken'];
+  paymentChain: number;
+  price?: number;
+  successMessage: string;
+  /** When true, skip POST /api/subscription (already activated via payments/confirm). */
+  skipServerSync?: boolean;
+}) {
+  const payload = createSubscriptionPayload({
+    planId: args.planId,
+    billingPeriod: args.billingPeriod,
+    txHash: args.txHash,
+    paymentToken: args.paymentToken,
+    paymentChain: args.paymentChain,
+    price: args.price,
+  });
+
+  useSubscriptionStore.getState().setSubscription(payload);
+  useWalletStore.getState().setCurrentPlan(toWalletPlanId(args.planId));
+  if (!args.skipServerSync) {
+    await syncSubscription(payload);
+  }
+  toast.success(args.successMessage);
+  void resumeWalletSyncs();
 }
 
 // ============================================================
@@ -89,11 +135,9 @@ export function PricingPage() {
   const [paymentTier, setPaymentTier] = useState<PricingTier | null>(null);
   const [startingTrial, setStartingTrial] = useState(false);
 
-  const setSubscription = useSubscriptionStore(s => s.setSubscription);
   const isActive = useSubscriptionStore(s => s.isActive);
   const hasUsedFreeTrial = useSubscriptionStore(s => s.hasUsedFreeTrial);
   const subscription = useSubscriptionStore(s => s.subscription);
-  const setCurrentPlan = useWalletStore(s => s.setCurrentPlan);
 
   const freeTrialState = useMemo(() => {
     const used = hasUsedFreeTrial();
@@ -131,27 +175,15 @@ export function PricingPage() {
     setStartingTrial(true);
     try {
       const trialDays = tier.trialDays ?? 3;
-      const startDate = new Date();
-      const endDate = new Date(startDate.getTime() + trialDays * 24 * 60 * 60 * 1000);
-
-      const subscriptionPayload: Subscription = {
+      await activatePlan({
         planId: 'free',
-        planName: tier.nameEn,
         billingPeriod: 'monthly',
-        price: 0,
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
         txHash: FREE_TRIAL_TX,
         paymentToken: 'FREE',
         paymentChain: 0,
-        status: 'active',
-        aiRequestsUsed: 0,
-      };
-
-      setSubscription(subscriptionPayload);
-      setCurrentPlan('free');
-      syncSubscription(subscriptionPayload);
-      toast.success(`Free Plan activated — ${trialDays} days to explore Sentinel`);
+        price: 0,
+        successMessage: `Free Plan activated — ${trialDays} days to explore Radareum`,
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not start Free Plan');
     } finally {
@@ -159,29 +191,27 @@ export function PricingPage() {
     }
   };
 
-  const handlePaymentSuccess = (txHash: string, tierId: string, period: 'monthly' | 'yearly') => {
-    const tier = pricingTiers.find(t => t.id === tierId);
-    const price = period === 'yearly' ? tier?.yearlyMonthly || 0 : tier?.price || 0;
-
-    const subscriptionPayload: Subscription = {
-      planId: tierId,
-      planName: tier?.nameEn || '',
-      billingPeriod: period,
-      price,
-      startDate: new Date().toISOString(),
-      endDate: new Date(
-        Date.now() + (period === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000
-      ).toISOString(),
-      txHash,
-      paymentToken: 'USDC',
-      paymentChain: 8453,
-      status: 'active',
-    };
-
-    setSubscription(subscriptionPayload);
-    setCurrentPlan(tierId === 'enterprise' ? 'business' : tierId);
+  const handlePaymentSuccess = (args: {
+    txHash: string;
+    tierId: string;
+    period: 'monthly' | 'yearly';
+    paymentToken: 'USDC' | 'USDT';
+    paymentChain: number;
+    priceUsd: number;
+  }) => {
+    const tier = pricingTiers.find(t => t.id === args.tierId);
     setPaymentTier(null);
-    syncSubscription(subscriptionPayload);
+    // Server already activated via /api/payments/confirm — sync local store only.
+    void activatePlan({
+      planId: args.tierId,
+      billingPeriod: args.period,
+      txHash: args.txHash,
+      paymentToken: args.paymentToken,
+      paymentChain: args.paymentChain,
+      price: args.priceUsd,
+      successMessage: `${tier?.nameEn || 'Plan'} activated — wallet sync resumed`,
+      skipServerSync: true,
+    });
   };
 
   const freeCtaLabel =

@@ -31,7 +31,7 @@ export interface OnChainActivityInput {
   direction?: string | null;
   methodId?: string | null;
   methodName?: string | null;
-  /** Accounting / Sentinel classification */
+  /** Accounting / Radareum classification */
   type?: string | null;
   statusFailed?: boolean;
 }

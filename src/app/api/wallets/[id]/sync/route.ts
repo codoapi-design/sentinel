@@ -12,6 +12,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { getSyncEngine, releaseStaleSyncLock } from '@/lib/blockchain/sync-engine';
+import { enforceWalletTransactionCap } from '@/lib/plans/enforce-tx-cap';
+import {
+  assertServerEntitlement,
+  SubscriptionEntitlementError,
+} from '@/lib/plans/entitlements-server';
 
 export const maxDuration = 300; // Full history pagination can exceed 60s on active wallets
 
@@ -50,11 +55,7 @@ async function resolveWallet(
     if (walletByAddr) return walletByAddr;
   }
 
-  // Third try: it might be a stale client-generated ID (wallet-XXXXX)
-  // In this case, we can't find it directly - but we can check if any wallet
-  // belongs to this user (they may have created one but the ID wasn't synced)
-  console.warn(`[WalletSync] Wallet not found with ID: ${walletIdOrAddress}`);
-
+  console.warn(`[WalletSync] Wallet not found with ID: ${walletIdOrAddress}`, err1);
   return null;
 }
 
@@ -71,7 +72,6 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const mode = body.mode || 'incremental';
 
-    // ── Authenticate user via cookie session ──
     const cookieClient = await createCookieServerClient();
     const { data: { user }, error: authError } = await cookieClient.auth.getUser();
 
@@ -83,10 +83,22 @@ export async function POST(
       );
     }
 
-    // Use service role client for data operations (bypasses RLS)
     const supabase = createServerClient();
 
-    // Get wallet info - with address-based fallback resolution
+    let entitledPlanId = 'starter';
+    try {
+      const entitlement = await assertServerEntitlement(user.id, supabase);
+      entitledPlanId = entitlement.planId;
+    } catch (error) {
+      if (error instanceof SubscriptionEntitlementError) {
+        return NextResponse.json(
+          { error: error.message, code: 'subscription_required' },
+          { status: error.status },
+        );
+      }
+      throw error;
+    }
+
     const wallet = await resolveWallet(walletId, user.id, supabase);
 
     if (!wallet) {
@@ -97,7 +109,6 @@ export async function POST(
       );
     }
 
-    // Use the resolved wallet's actual DB ID (in case it was looked up by address)
     const resolvedWalletId = wallet.id;
 
     if (wallet.is_syncing) {
@@ -114,10 +125,16 @@ export async function POST(
 
     const syncEngine = getSyncEngine();
 
-    // Choose sync mode
     const result = mode === 'full'
       ? await syncEngine.fullSync(resolvedWalletId)
       : await syncEngine.incrementalSync(resolvedWalletId);
+
+    // Cap retained history for Free / Starter (newest non-spam only).
+    try {
+      await enforceWalletTransactionCap(supabase, resolvedWalletId, entitledPlanId);
+    } catch (capErr) {
+      console.warn('[WalletSync] Transaction cap enforcement skipped:', capErr);
+    }
 
     console.log(`[WalletSync] ${mode} sync completed for ${wallet.address || wallet.id}:`, {
       success: result.overallSuccess,

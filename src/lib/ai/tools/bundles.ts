@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — Tool Bundles
+ * Radareum AI — Tool Bundles
  *
  * Spec §3.9–§3.10: a broad question must not fan out into a dozen tool calls.
  * A bundle maps a page or section context to the **minimal** tool set that can

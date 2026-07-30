@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — Business Tool Registry
+ * Radareum AI — Business Tool Registry
  *
  * The single authoritative catalog of everything the agent can call
  * (Part 3 §3.5–§3.7). One rule governs this file:
@@ -972,7 +972,7 @@ export function runTool(name: string, args: ToolArgs, ctx: ToolContext): EngineO
   const definition = getTool(name);
 
   if (!definition) {
-    return errorEnvelope('unknown', name, ctx, `No tool named "${name}" exists in the Sentinel catalog.`);
+    return errorEnvelope('unknown', name, ctx, `No tool named "${name}" exists in the Radareum catalog.`);
   }
 
   try {

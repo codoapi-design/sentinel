@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — Wallet Context Loader
+ * Radareum AI — Wallet Context Loader
  *
  * The only place in the agent runtime that touches the database. Part 3 §3.2
  * layering is enforced here:

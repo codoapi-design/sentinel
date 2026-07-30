@@ -496,7 +496,7 @@ function AnalysisResult({
           <span>·</span>
           <span>{formatGeneratedAt(analysis.generatedAt)}</span>
           <span>·</span>
-          <span>{analysis.source === 'llm' ? 'Sentinel AI' : 'Sentinel engine'}</span>
+          <span>{analysis.source === 'llm' ? 'Radareum AI' : 'Radareum engine'}</span>
         </div>
         {qualityNote && <p className="text-[11px] text-[#8a8f98]/80 leading-relaxed">{qualityNote}</p>}
       </div>

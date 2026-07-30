@@ -1,5 +1,5 @@
 /**
- * Hybrid Blockchain Data Provider Types for Sentinel
+ * Hybrid Blockchain Data Provider Types for Radareum
  *
  * Defines the shared types for the hybrid architecture:
  *   Covalent → Historical data (full transactions from first block)

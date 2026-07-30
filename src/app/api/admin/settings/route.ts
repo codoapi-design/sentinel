@@ -4,9 +4,9 @@ import { isAdmin, getAdminRole } from '@/lib/admin/auth';
 
 // Default settings values
 const DEFAULT_SETTINGS: Record<string, string> = {
-  site_name: 'Sentinel',
+  site_name: 'Radareum',
   site_description: 'Digital Wallet Monitoring Platform',
-  support_email: 'support@sentinel.app',
+  support_email: 'support@radareum.app',
   maintenance_mode: 'false',
   registration_enabled: 'true',
   email_verification_required: 'true',

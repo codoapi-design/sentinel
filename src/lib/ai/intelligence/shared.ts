@@ -1,5 +1,5 @@
 /**
- * Shared primitives for the Sentinel Intelligence engines.
+ * Shared primitives for the Radareum Intelligence engines.
  *
  * Period splitting, safe arithmetic, evidence formatting, confidence derivation,
  * deterministic insight ids, ranking helpers, concentration measures, and the

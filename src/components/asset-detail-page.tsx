@@ -152,7 +152,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
       const payload = buildTransactionsReportPayload({
         title: `${asset.name} (${asset.symbol})`,
         subtitle: `Asset transactions · ${asset.symbol}`,
-        filenameBase: `sentinel-asset-${asset.symbol.toLowerCase()}`,
+        filenameBase: `radareum-asset-${asset.symbol.toLowerCase()}`,
         transactions: statsTransactions,
         clients,
         aiScope: {
@@ -199,7 +199,7 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
       const payload = buildTransactionsReportPayload({
         title: `${asset.name} (${asset.symbol})`,
         subtitle: `Asset transactions · ${asset.symbol}`,
-        filenameBase: `sentinel-asset-${asset.symbol.toLowerCase()}`,
+        filenameBase: `radareum-asset-${asset.symbol.toLowerCase()}`,
         transactions: statsTransactions,
         clients,
         aiScope: {

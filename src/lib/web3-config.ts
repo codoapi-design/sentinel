@@ -12,8 +12,19 @@ import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors';
 // WalletConnect Project ID (free from https://cloud.walletconnect.com)
 const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '';
 
-// Platform wallet address (where payments are sent)
+// Legacy direct-transfer wallet (superseded by RadareumSubscriptionPayments on Ethereum)
 export const PLATFORM_WALLET = '0xb3Ae51931CC644E64C3c43d59d0CfBB2Ee6D760F' as const;
+
+/** Public payment contract addresses (must match server `PAYMENT_CONTRACT_<chainId>`). */
+export const PAYMENT_CONTRACTS: Partial<Record<number, `0x${string}`>> = {
+  [mainnet.id]:
+    (process.env.NEXT_PUBLIC_PAYMENT_CONTRACT_1 as `0x${string}` | undefined) ||
+    '0x391b88351974592A8f5e1cc1B87e7D6B2EAeEA6c',
+};
+
+export const PAYMENT_TREASURY =
+  (process.env.NEXT_PUBLIC_PAYMENT_TREASURY as `0x${string}` | undefined) ||
+  '0x056105E17F747d6006191bc401968a95D19e7F62';
 
 // USDC contract addresses on supported chains
 export const USDC_ADDRESSES: Record<number, `0x${string}`> = {
@@ -61,10 +72,33 @@ export const ERC20_ABI = [
     outputs: [{ name: '', type: 'bool' }],
     type: 'function',
   },
+  {
+    constant: false,
+    inputs: [
+      { name: '_spender', type: 'address' },
+      { name: '_value', type: 'uint256' },
+    ],
+    name: 'approve',
+    outputs: [{ name: '', type: 'bool' }],
+    type: 'function',
+  },
+  {
+    constant: true,
+    inputs: [
+      { name: '_owner', type: 'address' },
+      { name: '_spender', type: 'address' },
+    ],
+    name: 'allowance',
+    outputs: [{ name: '', type: 'uint256' }],
+    type: 'function',
+  },
 ] as const;
 
 // Supported chains for payment
 export const paymentChains = [mainnet, base, arbitrum, optimism, polygon, bsc];
+
+/** Chains that currently have a deployed payment contract. */
+export const livePaymentChains = paymentChains.filter(c => !!PAYMENT_CONTRACTS[c.id]);
 
 // Build connectors - only include WalletConnect if a valid project ID is configured
 const connectors = [

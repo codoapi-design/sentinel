@@ -97,7 +97,7 @@ export function ClientDetailPage({
       const payload = buildTransactionsReportPayload({
         title: `Client · ${client.name}`,
         subtitle: client.address,
-        filenameBase: 'sentinel-client',
+        filenameBase: 'radareum-client',
         transactions: statsTransactions,
         clients,
         aiScope: {
@@ -140,7 +140,7 @@ export function ClientDetailPage({
       const payload = buildTransactionsReportPayload({
         title: `Client · ${client.name}`,
         subtitle: client.address,
-        filenameBase: 'sentinel-client',
+        filenameBase: 'radareum-client',
         transactions: statsTransactions,
         clients,
         aiScope: {

@@ -1,5 +1,5 @@
 /**
- * Alchemy Webhook Handler for Sentinel
+ * Alchemy Webhook Handler for Radareum
  *
  * Handles real-time address activity notifications from Alchemy Notify.
  * When a tracked wallet has new activity:
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   return NextResponse.json({
     status: 'ok',
-    service: 'sentinel-alchemy-webhook',
+    service: 'radareum-alchemy-webhook',
     architecture: 'hybrid',
     version: '2.0',
   });

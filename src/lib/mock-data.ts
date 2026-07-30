@@ -1,4 +1,4 @@
-// Mock data for Sentinel platform
+// Mock data for Radareum platform
 
 export interface Client {
   id: string;
@@ -91,31 +91,45 @@ export { getClientNameByAddress } from '@/lib/clients/display';
 // Telegram notification settings defaults
 export const defaultTelegramSettings = {
   enabled: false,
-  inboundAbove: { enabled: false, amount: 1000 },
-  outboundAbove: { enabled: false, amount: 500 },
-  portfolioReaches: { enabled: false, amount: 80000 },
-  assetRises: { enabled: false, percentage: 5, asset: 'ETH' },
-  assetDrops: { enabled: false, percentage: 5, asset: 'ETH' },
-  dailySummary: { enabled: false, time: '09:00' },
-  weeklyReport: { enabled: false, day: 'Monday' },
-  gasExceeds: { enabled: false, amount: 50 },
+  ...createTelegramAlertDefaults(),
 };
+
+function createTelegramAlertDefaults() {
+  // Lazy inline to avoid circular imports with plans/alerts in mock-data consumers
+  return {
+    inboundAbove: { enabled: false, amount: 1000 },
+    outboundAbove: { enabled: false, amount: 500 },
+    portfolioReaches: { enabled: false, amount: 80000 },
+    assetRises: { enabled: false, percentage: 5, asset: 'ETH' },
+    assetDrops: { enabled: false, percentage: 5, asset: 'ETH' },
+    dailySummary: { enabled: false, time: '09:00' },
+    weeklyReport: { enabled: false, day: 'Monday' },
+    monthlyReport: { enabled: false, day: 1 },
+    gasExceeds: { enabled: false, amount: 50 },
+    multiAssetMoves: { enabled: false, percentage: 5 },
+    namedClientTransfer: { enabled: false },
+    unknownAddress: { enabled: false },
+    tradingVolumeSpike: { enabled: false, amount: 10000 },
+    netFlowDaily: { enabled: false, amount: -1000 },
+    pnlThreshold: { enabled: false, amount: -5000 },
+    portfolioConcentration: { enabled: false, percentage: 40 },
+    dormancyBreak: { enabled: false, days: 7 },
+    gasWeekly: { enabled: false, amount: 200 },
+    stakingRewards: { enabled: false },
+    instantLargeTransfer: { enabled: false, amount: 5000 },
+    tokenApprovalRisk: { enabled: false },
+    defiHealthFactor: { enabled: false, threshold: 1.25 },
+    spamTokenDetected: { enabled: false },
+    syncFailure: { enabled: false },
+  };
+}
 
 // Email notification settings defaults
 export const defaultEmailSettings = {
   enabled: false,
   email: '',
   verified: false,
-  inboundAbove: { enabled: false, amount: 1000 },
-  outboundAbove: { enabled: false, amount: 500 },
-  portfolioReaches: { enabled: false, amount: 80000 },
-  assetRises: { enabled: false, percentage: 5, asset: 'ETH' },
-  assetDrops: { enabled: false, percentage: 5, asset: 'ETH' },
-  dailySummary: { enabled: false, time: '09:00' },
-  weeklyReport: { enabled: false, day: 'Monday' },
-  gasExceeds: { enabled: false, amount: 50 },
-  monthlyReport: { enabled: false, day: 1 },
-  largeTransaction: { enabled: false, amount: 5000 },
+  ...createTelegramAlertDefaults(),
 };
 
 // Pricing tiers
@@ -162,7 +176,7 @@ export const pricingTiers: PricingTier[] = [
     nameEn: 'Free Plan',
     price: 0,
     yearlyMonthly: 0,
-    description: 'Try Sentinel for 3 days with limited usage across every feature',
+    description: 'Try Radareum for 3 days with limited usage across every feature',
     features: [
       '1 Wallet',
       'EVM address only (Ethereum, Base, Arbitrum, OP, Polygon, BSC…)',
@@ -201,22 +215,24 @@ export const pricingTiers: PricingTier[] = [
     yearlyMonthly: 8.29,
     description: 'Perfect for getting started with crypto tracking',
     features: [
-      '1 Wallet',
+      '2 Wallets',
       'EVM address only (Ethereum, Base, Arbitrum, OP, Polygon, BSC…)',
-      'Up to 500 recorded transactions',
-      'Sync every 10 minutes',
-      'Weekly & monthly reports via Telegram & Email',
+      'Up to last 1,500 recorded transactions per wallet (no spam)',
+      'Auto sync every 15 minutes (manual sync anytime)',
+      'Weekly & monthly auto reports via Telegram & Email',
       'Basic alerts (Telegram + Email)',
+      '150 AI requests (Analyze, chat, or Telegram)',
       'Auto-classification (Trade, DeFi, Staking, Gas)',
       'CSV & PDF export',
       'Name your clients',
     ],
     limits: {
-      wallets: 1,
+      wallets: 2,
       networks: 1,
-      transactions: 500,
-      syncInterval: '10 min',
+      transactions: 1500,
+      syncInterval: '15 min',
       reports: 'Weekly & Monthly',
+      aiRequests: 150,
     },
     costBreakdown: {
       alchemy: 1.85,
@@ -229,26 +245,27 @@ export const pricingTiers: PricingTier[] = [
     id: 'pro',
     name: 'Pro',
     nameEn: 'Pro',
-    price: 28,
-    yearlyMonthly: 23.3,
+    price: 39,
+    yearlyMonthly: 32.37,
     description: 'For active traders and investors',
     features: [
-      'Up to 5 Wallets',
+      '5 Wallets',
       'EVM + Solana + Tron addresses',
-      'Up to 5,000 recorded transactions',
-      'Sync every minute',
-      'Daily, weekly & monthly reports',
+      'Unlimited history transactions',
+      'Auto sync every 5 minutes (manual sync anytime)',
+      'Daily, weekly & monthly auto reports via Telegram & Email',
       'Advanced custom alerts',
-      'Auto-classification (Trade, DeFi, Staking, Gas)',
+      '1,000 AI requests (Analyze, chat, or Telegram)',
       'PDF & CSV export',
       'Name your clients',
     ],
     limits: {
       wallets: 5,
       networks: 3,
-      transactions: 5000,
-      syncInterval: '1 min',
-      reports: 'Daily',
+      transactions: Infinity,
+      syncInterval: '5 min',
+      reports: 'Daily, Weekly & Monthly',
+      aiRequests: 1000,
     },
     costBreakdown: {
       alchemy: 13.21,
@@ -266,7 +283,7 @@ export const pricingTiers: PricingTier[] = [
     yearlyMonthly: 82.17,
     description: 'For companies and professional accountants',
     features: [
-      'Up to 25 Wallets',
+      'Unlimited wallets',
       'EVM + Solana + Tron + Bitcoin addresses',
       'Unlimited transactions',
       'Real-time sync (every 30 seconds)',
@@ -277,11 +294,12 @@ export const pricingTiers: PricingTier[] = [
       'Priority support',
     ],
     limits: {
-      wallets: 25,
+      wallets: Infinity,
       networks: 4,
       transactions: Infinity,
       syncInterval: '30 sec',
       reports: 'Custom',
+      aiRequests: null,
     },
     costBreakdown: {
       alchemy: 32.51,

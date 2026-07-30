@@ -1,5 +1,5 @@
 /**
- * Covalent (GoldRush) API Service for Sentinel
+ * Covalent (GoldRush) API Service for Radareum
  * Provides transaction history, token balances, and portfolio data
  */
 

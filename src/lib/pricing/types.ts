@@ -215,7 +215,7 @@ export function chainKeyFromId(chainId: number): string | null {
 // ────────────────────────────────────────────────────────────
 
 /** Placeholder addresses used across providers to mean "the gas token". */
-export const NATIVE_ADDRESS_SENTINELS = new Set([
+export const NATIVE_ADDRESS_PLACEHOLDERS = new Set([
   '0x0000000000000000000000000000000000000000',
   '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
   'native',
@@ -281,7 +281,7 @@ export const SYMBOL_COINGECKO_IDS: Record<string, string> = {
 
 export function isNativeAddress(address: string | null | undefined): boolean {
   if (!address) return false;
-  return NATIVE_ADDRESS_SENTINELS.has(address.trim().toLowerCase());
+  return NATIVE_ADDRESS_PLACEHOLDERS.has(address.trim().toLowerCase());
 }
 
 /** EVM addresses are case-insensitive; Solana/Tron addresses are not. */

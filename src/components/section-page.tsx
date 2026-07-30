@@ -139,7 +139,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
     return buildTransactionsReportPayload({
       title: config.title,
       subtitle: config.description,
-      filenameBase: `sentinel-${sectionType}`,
+      filenameBase: `radareum-${sectionType}`,
       transactions: filteredData,
       clients,
       aiScope: {

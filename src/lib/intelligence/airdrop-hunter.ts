@@ -1,5 +1,5 @@
 /**
- * Airdrop Hunter for Sentinel
+ * Airdrop Hunter for Radareum
  * Discovers and tracks airdrop opportunities for connected wallets
  */
 

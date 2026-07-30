@@ -1,5 +1,5 @@
 /**
- * Hybrid Provider Manager for Sentinel
+ * Hybrid Provider Manager for Radareum
  *
  * Routes data requests to the optimal provider based on data category:
  *

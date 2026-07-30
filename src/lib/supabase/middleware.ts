@@ -1,5 +1,5 @@
 /**
- * Supabase Middleware Client for Sentinel
+ * Supabase Middleware Client for Radareum
  * Creates a Supabase client that reads/writes cookies in middleware
  */
 

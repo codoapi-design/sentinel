@@ -78,7 +78,7 @@ export default function AdminSubscriptionsPage() {
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `sentinel-subscriptions-${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `radareum-subscriptions-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
   };
 

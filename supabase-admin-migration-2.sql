@@ -35,7 +35,7 @@ CREATE POLICY "Super admins can update settings" ON system_settings
 
 -- إدراج إعدادات افتراضية
 INSERT INTO system_settings (key, value) VALUES
-  ('general', '{"siteName": "Sentinel", "siteDescription": "منصة مراقبة المحافظ الرقمية", "supportEmail": "support@sentinel.app", "maintenanceMode": false, "registrationEnabled": true}'),
+  ('general', '{"siteName": "Radareum", "siteDescription": "منصة مراقبة المحافظ الرقمية", "supportEmail": "support@radareum.app", "maintenanceMode": false, "registrationEnabled": true}'),
   ('security', '{"emailVerificationRequired": true, "rateLimitWindow": 15, "rateLimitMaxRequests": 100}'),
   ('ai', '{"model": "openai/o4-mini", "dailyLimit": 50, "maxTokens": 4096}'),
   ('limits', '{"maxWalletsPerUser": 10, "maxApiKeysPerUser": 5}'),

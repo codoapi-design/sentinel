@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — Deterministic Narrative Renderer
+ * Radareum AI — Deterministic Narrative Renderer
  *
  * The no-LLM path. Turns a structured intelligence result into professional
  * English prose following the Spec response structure (Part 4 §4.15,
@@ -812,7 +812,7 @@ function renderInsufficientData(args: RenderNarrativeArgs, now: Date): string {
   }
 
   if (args.mode === 'telegram') {
-    const lines = ['Sentinel · Update', '', `Not enough data to report on ${section}${periodPhrase(period)}.`];
+    const lines = ['Radareum · Update', '', `Not enough data to report on ${section}${periodPhrase(period)}.`];
     if (staleNote) lines.push('', 'The wallet synchronization is outdated.');
     return lines.join('\n');
   }
@@ -887,7 +887,7 @@ function renderChat(model: RenderModel): string {
 }
 
 function renderTelegram(model: RenderModel): string {
-  const lines: string[] = ['Sentinel · Daily Brief', ''];
+  const lines: string[] = ['Radareum · Daily Brief', ''];
 
   const headline = model.metrics.find((metric) => metric.unit === 'usd') ?? model.metrics[0];
   if (headline) {

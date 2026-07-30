@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — Output Guardrails
+ * Radareum AI — Output Guardrails
  *
  * Post-processing safety net applied to every generated answer, whichever
  * path produced it. Implements Part 7 §7.7: financial advice, prediction,
@@ -38,10 +38,10 @@ const MAX_EXCERPT_CHARS = 160;
 const MAX_VIOLATIONS = 25;
 
 const WITHHELD_NOTICE =
-  'The generated response did not meet Sentinel response policy and was withheld. No analysis is available for this request.';
+  'The generated response did not meet Radareum response policy and was withheld. No analysis is available for this request.';
 
-const READ_ONLY_NOTICE = 'Sentinel is read-only. It never asks for keys and cannot move funds.';
-const IDENTITY_NOTICE = "I'm Sentinel — I analyze your wallet data.";
+const READ_ONLY_NOTICE = 'Radareum is read-only. It never asks for keys and cannot move funds.';
+const IDENTITY_NOTICE = "I'm Radareum — I analyze your wallet data.";
 const UNCLASSIFIED_NOTICE = 'This address is not classified in the available data.';
 const UNCLASSIFIED_ACTIVITY_NOTICE = 'This activity has not been classified in the available data.';
 
@@ -90,7 +90,7 @@ const SENTENCE_RULES: readonly SentenceRule[] = [
   { rule: 'security.request_key', category: 'security', pattern: /\b(?:share|send|provide|enter|paste|give me|reveal|type|upload) (?:your |the |me your )?(?:seed phrase|private key|mnemonic|recovery phrase|password)\b/i, replacement: READ_ONLY_NOTICE },
   { rule: 'security.key_mention', category: 'security', pattern: /\byour (?:seed phrase|private key|mnemonic|recovery phrase)\b/i, replacement: READ_ONLY_NOTICE },
   { rule: 'security.compromise_claim', category: 'security', pattern: /\byour (?:wallet|account|funds|portfolio) (?:is|are|was|were|has been|have been) (?:hacked|compromised|drained|stolen|exploited|attacked)\b/i, replacement: UNCLASSIFIED_ACTIVITY_NOTICE },
-  { rule: 'security.transaction_creation', category: 'security', pattern: /\bi (?:can|will|could) (?:sign|send|execute|submit|broadcast|create) (?:a |this |the )?transaction\b/i, replacement: 'Sentinel is read-only. It can explain a transaction but cannot create one.' },
+  { rule: 'security.transaction_creation', category: 'security', pattern: /\bi (?:can|will|could) (?:sign|send|execute|submit|broadcast|create) (?:a |this |the )?transaction\b/i, replacement: 'Radareum is read-only. It can explain a transaction but cannot create one.' },
 
   // Tone (Part 4 §4.19, Part 7 §7.3 risk phrasing)
   { rule: 'tone.judgement', category: 'tone', pattern: /\b(?:this|that|it) is (?:dangerous|alarming|terrible|awful|very risky|really bad)\b/i },

@@ -25,9 +25,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { isWalletContextError, recordAiUsage, runAnalysis, AiQuotaError, assertAiQuota } from '@/lib/ai/tools';
+import { isWalletContextError, recordAiUsage, runAnalysis, AiQuotaError, assertAiQuota, SubscriptionEntitlementError, resolveAiQuotaWindow } from '@/lib/ai/tools';
 import { createCookieServerClient } from '@/lib/supabase/server';
-import { normalizePlanId } from '@/lib/plans/address-families';
 
 interface AnalyzeRequestBody {
   walletId?: unknown;
@@ -60,6 +59,9 @@ export async function POST(request: NextRequest) {
       const quota = await assertAiQuota(user.id);
       quotaPlanId = quota.planId;
     } catch (error) {
+      if (error instanceof SubscriptionEntitlementError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
       if (error instanceof AiQuotaError) {
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
@@ -101,7 +103,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       kind: 'analysis',
       usage: result.llm.usage,
-      accumulateLifetime: normalizePlanId(quotaPlanId) === 'free',
+      window: resolveAiQuotaWindow(quotaPlanId),
     });
 
     return NextResponse.json({
@@ -121,6 +123,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof SubscriptionEntitlementError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof AiQuotaError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

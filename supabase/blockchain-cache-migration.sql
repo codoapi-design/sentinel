@@ -1,5 +1,5 @@
 -- ============================================================
--- Sentinel Hybrid Blockchain Architecture - Database Migration
+-- Radareum Hybrid Blockchain Architecture - Database Migration
 -- ============================================================
 --
 -- Creates cache tables and indexes for the hybrid data provider system:

@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { pricingTiers, type PricingTier } from '@/lib/mock-data';
+import {
+  buildPeriodEnd,
+  evaluateClientSubscription,
+  type EntitlementSnapshot,
+} from '@/lib/plans/entitlements';
 
 // ============================================================
 // Types
@@ -19,6 +24,8 @@ export interface Subscription {
   status: 'active' | 'expired' | 'cancelled';
   /** Shared AI requests consumed during a Free Plan trial. */
   aiRequestsUsed?: number;
+  /** ISO timestamp when sync was paused due to expiry (resume uses lastSyncedAt). */
+  syncPausedAt?: string | null;
 }
 
 interface SubscriptionState {
@@ -28,7 +35,10 @@ interface SubscriptionState {
   setSubscription: (sub: Subscription) => void;
   clearSubscription: () => void;
   markFreeTrialClaimed: () => void;
+  /** Marks active→expired when endDate passed; records syncPausedAt once. */
+  refreshExpiry: () => EntitlementSnapshot;
   isActive: () => boolean;
+  getEntitlement: () => EntitlementSnapshot;
   getPlan: () => PricingTier | null;
   getDaysRemaining: () => number;
   hasUsedFreeTrial: () => boolean;
@@ -42,7 +52,42 @@ interface SubscriptionState {
   } | null;
 }
 
-const FREE_TRIAL_TX = 'free-trial';
+export const FREE_TRIAL_TX = 'free-trial';
+
+export function createSubscriptionPayload(args: {
+  planId: string;
+  billingPeriod: 'monthly' | 'yearly';
+  txHash: string;
+  paymentToken: Subscription['paymentToken'];
+  paymentChain: number;
+  price?: number;
+}): Subscription {
+  const tier = pricingTiers.find(t => t.id === args.planId);
+  const start = new Date();
+  const end = buildPeriodEnd(start, args.planId, args.billingPeriod);
+  const price =
+    args.price ??
+    (tier?.isFree
+      ? 0
+      : args.billingPeriod === 'yearly'
+        ? tier?.yearlyMonthly ?? 0
+        : tier?.price ?? 0);
+
+  return {
+    planId: args.planId,
+    planName: tier?.nameEn || args.planId,
+    billingPeriod: args.billingPeriod,
+    price,
+    startDate: start.toISOString(),
+    endDate: end.toISOString(),
+    txHash: args.txHash,
+    paymentToken: args.paymentToken,
+    paymentChain: args.paymentChain,
+    status: 'active',
+    aiRequestsUsed: 0,
+    syncPausedAt: null,
+  };
+}
 
 // ============================================================
 // Store
@@ -66,18 +111,37 @@ export const useSubscriptionStore = create<SubscriptionState>()(
 
       clearSubscription: () => {
         set({ subscription: null });
-        localStorage.removeItem('cryptobooks_subscription');
+        try {
+          localStorage.removeItem('cryptobooks_subscription');
+        } catch {
+          /* ignore */
+        }
       },
 
       markFreeTrialClaimed: () => {
         set({ freeTrialClaimed: true });
       },
 
-      isActive: () => {
+      refreshExpiry: () => {
         const sub = get().subscription;
-        if (!sub) return false;
-        if (sub.status !== 'active') return false;
-        return new Date(sub.endDate) > new Date();
+        const snap = evaluateClientSubscription(sub);
+        if (sub && snap.status === 'expired' && sub.status === 'active') {
+          set({
+            subscription: {
+              ...sub,
+              status: 'expired',
+              syncPausedAt: sub.syncPausedAt ?? new Date().toISOString(),
+            },
+          });
+        }
+        return evaluateClientSubscription(get().subscription);
+      },
+
+      isActive: () => evaluateClientSubscription(get().subscription).entitled,
+
+      getEntitlement: () => {
+        get().refreshExpiry();
+        return evaluateClientSubscription(get().subscription);
       },
 
       getPlan: () => {
@@ -86,14 +150,7 @@ export const useSubscriptionStore = create<SubscriptionState>()(
         return pricingTiers.find(t => t.id === sub.planId) || null;
       },
 
-      getDaysRemaining: () => {
-        const sub = get().subscription;
-        if (!sub) return 0;
-        const end = new Date(sub.endDate);
-        const now = new Date();
-        const diff = end.getTime() - now.getTime();
-        return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-      },
+      getDaysRemaining: () => evaluateClientSubscription(get().subscription).daysRemaining,
 
       hasUsedFreeTrial: () => {
         const state = get();
@@ -114,5 +171,3 @@ export const useSubscriptionStore = create<SubscriptionState>()(
     }
   )
 );
-
-export { FREE_TRIAL_TX };

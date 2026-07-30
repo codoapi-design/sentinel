@@ -138,7 +138,7 @@ function toPriceable(row: TransactionRow): PriceableTx | null {
     ref = { chain, address, symbol: symbol || undefined };
     amount = tokenValue;
   } else if ((row.value_eth ?? 0) > 0) {
-    // Native leg — normalization maps the sentinel address to the chain's coin.
+    // Native leg — normalization maps the placeholder/native address to the chain's coin.
     ref = { chain, address: '0x0000000000000000000000000000000000000000', symbol: symbol || undefined };
     amount = row.value_eth ?? 0;
   } else if (symbol && tokenValue > 0) {

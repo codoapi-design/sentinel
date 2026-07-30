@@ -806,7 +806,7 @@ export function TransactionsTable({
       const payload = buildTransactionsReportPayload({
         title: 'Transactions',
         subtitle: 'Filtered wallet transactions',
-        filenameBase: 'sentinel-transactions',
+        filenameBase: 'radareum-transactions',
         transactions: filteredTransactions,
         clients,
         aiScope: {
@@ -841,7 +841,7 @@ export function TransactionsTable({
       const payload = buildTransactionsReportPayload({
         title: 'Transactions',
         subtitle: 'Filtered wallet transactions',
-        filenameBase: 'sentinel-transactions',
+        filenameBase: 'radareum-transactions',
         transactions: filteredTransactions,
         clients,
         aiScope: {

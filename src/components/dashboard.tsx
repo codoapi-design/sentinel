@@ -9,6 +9,7 @@ import { TransactionsTable, TransactionsTab } from './transactions-table';
 import { TelegramSettings } from './telegram-settings';
 import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
+import { ReferralProgram } from './referral-program';
 import { SectionPage } from './section-page';
 import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
@@ -274,6 +275,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
       case 'types': return 'Types';
       case 'settings': return 'Settings';
       case 'subscription': return 'Subscription';
+      case 'referral': return 'Referral Program';
       default: return '';
     }
   };
@@ -461,10 +463,12 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Settings</h2>
-              <p className="text-sm text-[#8a8f98]">Alert and notification settings</p>
+              <p className="text-sm text-[#8a8f98]">
+                Telegram &amp; email alerts by plan — Basic, Advanced, and Instant
+              </p>
             </div>
-            <TelegramSettings />
-            <EmailSettings />
+            <TelegramSettings onUpgrade={() => setActiveTab('subscription')} />
+            <EmailSettings onUpgrade={() => setActiveTab('subscription')} />
           </div>
         );
       case 'subscription':
@@ -475,6 +479,18 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
               <p className="text-sm text-[#8a8f98]">Manage your plan and payment methods</p>
             </div>
             <PricingPage />
+          </div>
+        );
+      case 'referral':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-[#f7f8f8] mb-1">Referral Program</h2>
+              <p className="text-sm text-[#8a8f98]">
+                Share your link, earn 10% for 6 months, and unlock activation rewards
+              </p>
+            </div>
+            <ReferralProgram />
           </div>
         );
       default:
@@ -548,7 +564,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
                 <div className="w-12 h-12 rounded-full bg-[#0052ff]/10 flex items-center justify-center">
                   <Shield className="w-6 h-6 text-[#0052ff]" />
                 </div>
-                <h3 className="text-base font-medium text-[#f7f8f8]">Welcome to the Sentinel preview</h3>
+                <h3 className="text-base font-medium text-[#f7f8f8]">Welcome to the Radareum preview</h3>
                 <p className="text-sm text-[#8a8f98]">
                   This is a live preview with no sample data. Sign in and add a wallet
                   address to automatically fetch and classify your real on-chain transactions.

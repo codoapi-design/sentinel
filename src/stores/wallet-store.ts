@@ -16,6 +16,22 @@ import {
   filterAddressesByPlan,
   planAllowsAddressFamily,
 } from '@/lib/plans/address-families';
+import { PLAN_LIMITS as SHARED_PLAN_LIMITS } from '@/lib/plans/limits';
+
+/** Migrate persisted wallet cache from previous brand key (once). */
+if (typeof window !== 'undefined') {
+  try {
+    if (!localStorage.getItem('radareum-wallets')) {
+      const legacy = localStorage.getItem('sentinel-wallets');
+      if (legacy) {
+        localStorage.setItem('radareum-wallets', legacy);
+        localStorage.removeItem('sentinel-wallets');
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
 
 // ============================================================
 // Types
@@ -44,51 +60,14 @@ export interface AddWalletInput {
   bitcoinAddress?: string;
 }
 
-// Plan limits — aligned with pricing tiers
-export const PLAN_LIMITS: Record<string, {
-  wallets: number;
-  networks: number;
-  transactions: number;
-  syncIntervalMs: number;
-  /** Shared AI request cap; `null` means unlimited. */
-  aiRequests: number | null;
-}> = {
-  free: {
-    wallets: 1,
-    networks: 1, // EVM address family only
-    transactions: 100,
-    syncIntervalMs: 600_000, // 10 minutes
-    aiRequests: 50,
-  },
-  starter: {
-    wallets: 1,
-    networks: 1, // EVM address family only
-    transactions: 500,
-    syncIntervalMs: 600_000, // 10 minutes
-    aiRequests: null,
-  },
-  pro: {
-    wallets: 5,
-    networks: 5,
-    transactions: 5000,
-    syncIntervalMs: 60_000, // 1 minute
-    aiRequests: null,
-  },
-  business: {
-    wallets: 25,
-    networks: 10,
-    transactions: Infinity,
-    syncIntervalMs: 30_000, // 30 seconds
-    aiRequests: null,
-  },
+// Plan limits — aligned with pricing tiers (shared canonical source)
+export const PLAN_LIMITS = {
+  free: SHARED_PLAN_LIMITS.free,
+  starter: SHARED_PLAN_LIMITS.starter,
+  pro: SHARED_PLAN_LIMITS.pro,
+  business: SHARED_PLAN_LIMITS.business,
   // DB / legacy alias for Business
-  enterprise: {
-    wallets: 25,
-    networks: 10,
-    transactions: Infinity,
-    syncIntervalMs: 30_000,
-    aiRequests: null,
-  },
+  enterprise: SHARED_PLAN_LIMITS.business,
 };
 
 // Backward-compatible alias
@@ -172,7 +151,7 @@ const initialState: WalletState = {
   isLoadingWallets: false,
   isSyncing: {},
   isAddingWallet: false,
-  currentPlan: 'pro', // Default to pro for development
+  currentPlan: 'starter',
   ownerUserId: null,
   lastSyncAt: {},
   error: null,
@@ -188,8 +167,26 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       addWallet: async (input: AddWalletInput) => {
         const state = get();
 
+        try {
+          const { useSubscriptionStore } = await import('@/stores/subscription-store');
+          const subState = useSubscriptionStore.getState();
+          if (subState.subscription) {
+            const entitlement = subState.getEntitlement();
+            if (!entitlement.entitled) {
+              set({
+                error:
+                  entitlement.reason ||
+                  'Your subscription has expired. Renew to add wallets.',
+              });
+              return;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+
         const limit = PLAN_WALLET_LIMITS[state.currentPlan] ?? 1;
-        if (state.wallets.length >= limit) {
+        if (Number.isFinite(limit) && state.wallets.length >= limit) {
           set({ error: `You have reached the wallet limit for your plan (${limit} wallets)` });
           return;
         }
@@ -406,6 +403,39 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       loadWalletsFromDB: async () => {
         set({ isLoadingWallets: true });
         try {
+          // Align local plan + subscription period with server before sync loops run.
+          try {
+            const subRes = await fetch('/api/subscription');
+            if (subRes.ok) {
+              const subJson = await subRes.json();
+              const { useSubscriptionStore } = await import('@/stores/subscription-store');
+              const { toWalletPlanId } = await import('@/lib/plans/entitlements');
+              if (subJson.subscription) {
+                const existing = useSubscriptionStore.getState().subscription;
+                const serverEnd = subJson.subscription.endDate;
+                const serverPlan = subJson.subscription.planId;
+                const entitled = Boolean(subJson.entitled);
+                useSubscriptionStore.getState().setSubscription({
+                  planId: serverPlan,
+                  planName: existing?.planName || serverPlan,
+                  billingPeriod: existing?.billingPeriod || 'monthly',
+                  price: existing?.price ?? 0,
+                  startDate: subJson.subscription.startDate || existing?.startDate || new Date().toISOString(),
+                  endDate: serverEnd,
+                  txHash: existing?.txHash || 'server',
+                  paymentToken: existing?.paymentToken || 'USDC',
+                  paymentChain: existing?.paymentChain ?? 8453,
+                  status: entitled ? 'active' : 'expired',
+                  aiRequestsUsed: existing?.aiRequestsUsed ?? 0,
+                  syncPausedAt: entitled ? null : existing?.syncPausedAt ?? new Date().toISOString(),
+                });
+                set({ currentPlan: toWalletPlanId(serverPlan) });
+              }
+            }
+          } catch {
+            /* local subscription store remains the fallback */
+          }
+
           const response = await fetch('/api/wallets');
           if (response.ok) {
             const result = await response.json();
@@ -527,6 +557,23 @@ export const useWalletStore = create<WalletState & WalletActions>()(
        *   - auto (default): full if never synced, else incremental
        */
       syncWallet: async (walletId: string, mode: 'full' | 'incremental' | 'auto' = 'auto') => {
+        // Soft client gate — authoritative check lives on the sync API.
+        try {
+          const { useSubscriptionStore } = await import('@/stores/subscription-store');
+          const subState = useSubscriptionStore.getState();
+          if (subState.subscription) {
+            const entitlement = subState.getEntitlement();
+            if (!entitlement.entitled) {
+              return {
+                success: false,
+                error: entitlement.reason || 'Subscription expired. Renew to resume sync.',
+              };
+            }
+          }
+        } catch {
+          /* store may be unavailable in non-browser contexts */
+        }
+
         const state = get();
         let wallet = state.wallets.find(w => w.id === walletId);
         if (!wallet || wallet.isSyncing) {
@@ -599,6 +646,8 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             const errorMessage =
               syncResponse.status === 429 || /rate.?limit/i.test(rawError)
                 ? 'Provider rate limit reached. Please wait a minute and try again.'
+                : syncResponse.status === 402
+                  ? rawError
                 : syncResponse.status === 409
                   ? 'Wallet is already syncing. Please wait for it to finish.'
                   : rawError;
@@ -713,6 +762,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       canAddWallet: () => {
         const state = get();
         const limit = PLAN_WALLET_LIMITS[state.currentPlan] ?? 1;
+        if (!Number.isFinite(limit)) return true;
         return state.wallets.length < limit;
       },
 
@@ -825,6 +875,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           ownerUserId: userId,
         });
         try {
+          localStorage.removeItem('radareum-wallets');
           localStorage.removeItem('sentinel-wallets');
           localStorage.removeItem('cryptobooks-wallets');
         } catch {
@@ -835,6 +886,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       reset: () => {
         set(initialState);
         try {
+          localStorage.removeItem('radareum-wallets');
           localStorage.removeItem('sentinel-wallets');
           localStorage.removeItem('cryptobooks-wallets');
         } catch {
@@ -843,7 +895,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       },
     }),
     {
-      name: 'sentinel-wallets',
+      name: 'radareum-wallets',
       partialize: (state) => ({
         wallets: state.wallets,
         activeWalletId: state.activeWalletId,

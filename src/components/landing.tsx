@@ -38,7 +38,7 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
               <div className="w-8 h-8 bg-[#0052ff] rounded-lg flex items-center justify-center">
                 <Shield className="h-4 w-4 text-white" />
               </div>
-              <span className="text-xl font-bold text-[#f7f8f8]">Sentinel</span>
+              <span className="text-xl font-bold text-[#f7f8f8]">Radareum</span>
             </div>
             <div className="hidden md:flex items-center gap-8 text-sm text-[#8a8f98]">
               <a href="#features" className="hover:text-[#f7f8f8] transition-colors">Features</a>
@@ -406,7 +406,7 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
           </div>
           <p className="text-[#8a8f98] text-lg max-w-2xl mx-auto mb-8">
             Get instant notifications, check your portfolio, and interact with AI — all from Telegram.
-            Connect @wallet_Sentinelbot to your account.
+            Connect @wallet_Radareumbot to your account.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
             {[
@@ -432,7 +432,7 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
                 <div className="w-8 h-8 bg-[#0052ff] rounded-lg flex items-center justify-center">
                   <Shield className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-lg font-bold text-[#f7f8f8]">Sentinel</span>
+                <span className="text-lg font-bold text-[#f7f8f8]">Radareum</span>
               </div>
               <p className="text-sm text-[#8a8f98] leading-relaxed">
                 Crypto wallet intelligence platform. Track, classify, and report your crypto finances.
@@ -464,7 +464,7 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
             </div>
           </div>
           <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-[#8a8f98]">&copy; 2025 Sentinel. All rights reserved.</p>
+            <p className="text-sm text-[#8a8f98]">&copy; 2025 Radareum. All rights reserved.</p>
             <div className="flex items-center gap-4 text-sm text-[#8a8f98]">
               <a href="#" className="hover:text-[#f7f8f8] transition-colors">Privacy Policy</a>
               <a href="#" className="hover:text-[#f7f8f8] transition-colors">Terms of Service</a>

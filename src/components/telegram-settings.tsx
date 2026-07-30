@@ -1,28 +1,11 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import {
-  Bell,
   Send,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Clock,
-  Calendar,
-  Fuel,
   Save,
   CheckCircle2,
   ExternalLink,
@@ -30,44 +13,25 @@ import {
   Link2,
   Unlink,
   MessageSquare,
-  Bot,
   ChevronDown,
 } from 'lucide-react';
-import { defaultTelegramSettings, daysOfWeek, assets } from '@/lib/mock-data';
 import { useWalletStore } from '@/stores/wallet-store';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { planDisplayName } from '@/lib/plans/address-families';
+import {
+  createDefaultAlertPayloads,
+  disableAlertPayloads,
+  type AlertKey,
+  type AlertPayloads,
+} from '@/lib/plans/alerts';
+import { AlertCatalogPanels } from '@/components/alerts/alert-catalog-panels';
+import { PlanAlertsBanner } from '@/components/alerts/alert-ui';
 
 type ConnectionStatus = 'disconnected' | 'linking' | 'connected';
 
-type TelegramSettingsState = typeof defaultTelegramSettings;
-
-const ALERT_KEYS = [
-  'inboundAbove',
-  'outboundAbove',
-  'portfolioReaches',
-  'assetRises',
-  'assetDrops',
-  'dailySummary',
-  'weeklyReport',
-  'gasExceeds',
-] as const;
-
-type TelegramAlertKey = (typeof ALERT_KEYS)[number];
-
-function disableAllAlerts(prev: TelegramSettingsState): TelegramSettingsState {
-  const next = { ...prev, enabled: false };
-  // Alert entries carry different payloads per key, so the indexed write is
-  // narrowed to the shared `enabled` flag they all have.
-  const toggles = next as Record<TelegramAlertKey, { enabled: boolean }>;
-  for (const key of ALERT_KEYS) {
-    toggles[key] = { ...prev[key], enabled: false };
-  }
-  return next;
-}
-
-export function TelegramSettings() {
-  const [settings, setSettings] = useState(defaultTelegramSettings);
+export function TelegramSettings({ onUpgrade }: { onUpgrade?: () => void }) {
+  const [payloads, setPayloads] = useState<AlertPayloads>(() => createDefaultAlertPayloads());
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [telegramLink, setTelegramLink] = useState<string | null>(null);
   const [isLinking, setIsLinking] = useState(false);
@@ -76,28 +40,21 @@ export function TelegramSettings() {
 
   const { currentPlan } = useWalletStore();
   const isConnected = connectionStatus === 'connected';
-  const alertsActive = isConnected;
   const alertsPanelId = 'telegram-alerts-panel';
 
-  const updateSetting = <K extends keyof typeof settings>(
-    key: K,
-    field: string,
-    value: boolean | number | string
-  ) => {
-    if (!alertsActive) return;
-    const current = settings[key] as Record<string, unknown>;
-    setSettings({
-      ...settings,
+  const updateSetting = (key: AlertKey, field: string, value: boolean | number | string) => {
+    if (!isConnected) return;
+    setPayloads(prev => ({
+      ...prev,
       [key]: {
-        ...current,
+        ...prev[key],
         [field]: value,
       },
-    });
+    }));
   };
 
   const handleConnect = async () => {
     setIsLinking(true);
-
     try {
       const response = await fetch('/api/telegram/connect', {
         method: 'POST',
@@ -113,9 +70,7 @@ export function TelegramSettings() {
         if (result.success && result.data) {
           setTelegramLink(result.data.link);
           setConnectionStatus('linking');
-
           window.open(result.data.link, '_blank');
-
           toast.success('Telegram link opened', {
             description: 'Press Start in the bot to link your account',
           });
@@ -127,7 +82,6 @@ export function TelegramSettings() {
                 const checkResult = await checkResponse.json();
                 if (checkResult.success) {
                   setConnectionStatus('connected');
-                  setSettings((prev) => ({ ...prev, enabled: true }));
                   clearInterval(pollInterval);
                   toast.success('Telegram connected successfully!');
                 }
@@ -153,7 +107,7 @@ export function TelegramSettings() {
   const handleDisconnect = () => {
     setConnectionStatus('disconnected');
     setTelegramLink(null);
-    setSettings((prev) => disableAllAlerts(prev));
+    setPayloads(disableAlertPayloads(payloads));
     toast.success('Telegram disconnected');
   };
 
@@ -163,12 +117,10 @@ export function TelegramSettings() {
   };
 
   const handleSave = () => {
-    toast.success('Alert settings saved successfully', {
-      description: 'Settings will apply within a minute',
+    toast.success('Telegram alert settings saved', {
+      description: `Applied for your ${planDisplayName(currentPlan)} plan`,
     });
   };
-
-  const alertChecked = (enabled: boolean) => (alertsActive ? enabled : false);
 
   return (
     <div className="space-y-6">
@@ -194,11 +146,14 @@ export function TelegramSettings() {
                       Linking…
                     </Badge>
                   )}
+                  <Badge className="bg-white/5 text-[#8a8f98] border-0 text-[10px]">
+                    {planDisplayName(currentPlan)}
+                  </Badge>
                 </div>
                 <CardDescription className="text-[#8a8f98] text-xs mt-0.5">
                   {isConnected
-                    ? 'Receive alerts and chat with the smart accountant via Telegram'
-                    : 'Connect Telegram to activate alert preferences'}
+                    ? 'Active alert preferences, plus chat with the smart AI to analyze your wallet'
+                    : 'Connect Telegram to activate alert preferences and chat with the smart AI for wallet analysis'}
                 </CardDescription>
               </div>
             </div>
@@ -249,7 +204,7 @@ export function TelegramSettings() {
                 variant="outline"
                 size="sm"
                 className="rounded-xl border-white/10 text-[#8a8f98] hover:bg-white/5 hover:text-[#d0d6e0] h-9 w-9 p-0"
-                onClick={() => setAlertsExpanded((open) => !open)}
+                onClick={() => setAlertsExpanded(open => !open)}
                 aria-expanded={alertsExpanded}
                 aria-controls={alertsPanelId}
                 aria-label={alertsExpanded ? 'Collapse alerts' : 'Expand alerts'}
@@ -257,7 +212,7 @@ export function TelegramSettings() {
                 <ChevronDown
                   className={cn(
                     'h-4 w-4 transition-transform duration-300 ease-out',
-                    alertsExpanded && 'rotate-180'
+                    alertsExpanded && 'rotate-180',
                   )}
                   aria-hidden
                 />
@@ -304,7 +259,7 @@ export function TelegramSettings() {
                   <div className="min-w-0">
                     <p className="text-sm text-[#f7f8f8]">Connected to @{botUsername}</p>
                     <p className="text-[10px] text-[#8a8f98]">
-                      Chat with the smart accountant and receive alerts
+                      Channel live · plan gates which alerts can fire
                     </p>
                   </div>
                 </div>
@@ -325,361 +280,31 @@ export function TelegramSettings() {
             id={alertsPanelId}
             className={cn(
               'grid transition-[grid-template-rows,opacity] duration-300 ease-in-out',
-              alertsExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+              alertsExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
             )}
             aria-hidden={!alertsExpanded}
           >
             <div
               className={cn(
                 'min-h-0 overflow-hidden space-y-4',
-                !alertsExpanded && 'pointer-events-none'
+                !alertsExpanded && 'pointer-events-none',
               )}
             >
               {!isConnected && connectionStatus !== 'linking' && (
-                <div className="rounded-xl px-3.5 py-2.5 border border-white/5 bg-[#191a1b]/40">
-                  <p className="text-xs text-[#8a8f98]">
-                    Alert toggles stay off until Telegram is connected. Link @{botUsername} to enable
-                    them.
-                  </p>
-                </div>
+                <PlanAlertsBanner
+                  title="Connect Telegram to configure alerts"
+                  description="Preferences stay off until the bot is linked. Your plan still determines which tiers unlock."
+                />
               )}
 
-              <div
-                className={cn(
-                  'rounded-xl border border-white/5 overflow-hidden transition-opacity',
-                  !alertsActive && 'opacity-55'
-                )}
-              >
-                {/* Incoming transfers */}
-                <AlertRow
-                  muted={!alertsActive}
-                  icon={<DollarSign className="h-4 w-4 text-[#0ecb81]" />}
-                  iconBg="bg-[#0ecb81]/10"
-                  title="Incoming transfers above"
-                  description="Alert when receiving a large amount"
-                  control={
-                    <>
-                      <Input
-                        type="number"
-                        value={settings.inboundAbove.amount}
-                        onChange={(e) =>
-                          updateSetting('inboundAbove', 'amount', parseFloat(e.target.value) || 0)
-                        }
-                        disabled={!alertsActive}
-                        className="w-24 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs font-mono-num text-center disabled:opacity-50"
-                        dir="ltr"
-                      />
-                      <span className="text-xs text-[#8a8f98]">USD</span>
-                      <Switch
-                        checked={alertChecked(settings.inboundAbove.enabled)}
-                        disabled={!alertsActive}
-                        onCheckedChange={(checked) =>
-                          updateSetting('inboundAbove', 'enabled', checked)
-                        }
-                      />
-                    </>
-                  }
-                />
-
-                <Separator className="bg-white/5" />
-
-                {/* Outgoing transfers */}
-                <AlertRow
-                  muted={!alertsActive}
-                  icon={<DollarSign className="h-4 w-4 text-[#f6465d]" />}
-                  iconBg="bg-[#f6465d]/10"
-                  title="Outgoing transfers above"
-                  description="Alert when sending a large amount"
-                  control={
-                    <>
-                      <Input
-                        type="number"
-                        value={settings.outboundAbove.amount}
-                        onChange={(e) =>
-                          updateSetting('outboundAbove', 'amount', parseFloat(e.target.value) || 0)
-                        }
-                        disabled={!alertsActive}
-                        className="w-24 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs font-mono-num text-center disabled:opacity-50"
-                        dir="ltr"
-                      />
-                      <span className="text-xs text-[#8a8f98]">USD</span>
-                      <Switch
-                        checked={alertChecked(settings.outboundAbove.enabled)}
-                        disabled={!alertsActive}
-                        onCheckedChange={(checked) =>
-                          updateSetting('outboundAbove', 'enabled', checked)
-                        }
-                      />
-                    </>
-                  }
-                />
-
-                <Separator className="bg-white/5" />
-
-                {/* Portfolio threshold */}
-                <AlertRow
-                  muted={!alertsActive}
-                  icon={<Bell className="h-4 w-4 text-[#0052ff]" />}
-                  iconBg="bg-[#0052ff]/10"
-                  title="When wallet reaches"
-                  description="Alert when total value reaches a threshold"
-                  control={
-                    <>
-                      <Input
-                        type="number"
-                        value={settings.portfolioReaches.amount}
-                        onChange={(e) =>
-                          updateSetting(
-                            'portfolioReaches',
-                            'amount',
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                        disabled={!alertsActive}
-                        className="w-24 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs font-mono-num text-center disabled:opacity-50"
-                        dir="ltr"
-                      />
-                      <span className="text-xs text-[#8a8f98]">USD</span>
-                      <Switch
-                        checked={alertChecked(settings.portfolioReaches.enabled)}
-                        disabled={!alertsActive}
-                        onCheckedChange={(checked) =>
-                          updateSetting('portfolioReaches', 'enabled', checked)
-                        }
-                      />
-                    </>
-                  }
-                />
-
-                <Separator className="bg-white/5" />
-
-                {/* Asset rises */}
-                <AlertRow
-                  muted={!alertsActive}
-                  icon={<TrendingUp className="h-4 w-4 text-[#0ecb81]" />}
-                  iconBg="bg-[#0ecb81]/10"
-                  title="When an asset rises by"
-                  description="Alert when a specific asset price rises"
-                  control={
-                    <>
-                      <Select
-                        value={settings.assetRises.asset}
-                        onValueChange={(value) => updateSetting('assetRises', 'asset', value)}
-                        disabled={!alertsActive}
-                      >
-                        <SelectTrigger className="w-20 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs disabled:opacity-50">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#191a1b] border-white/10">
-                          {assets.map((a) => (
-                            <SelectItem
-                              key={a.id}
-                              value={a.symbol}
-                              className="text-[#d0d6e0] text-xs"
-                            >
-                              {a.symbol}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number"
-                        value={settings.assetRises.percentage}
-                        onChange={(e) =>
-                          updateSetting(
-                            'assetRises',
-                            'percentage',
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                        disabled={!alertsActive}
-                        className="w-20 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs font-mono-num text-center disabled:opacity-50"
-                        dir="ltr"
-                      />
-                      <span className="text-xs text-[#8a8f98]">%</span>
-                      <Switch
-                        checked={alertChecked(settings.assetRises.enabled)}
-                        disabled={!alertsActive}
-                        onCheckedChange={(checked) =>
-                          updateSetting('assetRises', 'enabled', checked)
-                        }
-                      />
-                    </>
-                  }
-                />
-
-                <Separator className="bg-white/5" />
-
-                {/* Asset drops */}
-                <AlertRow
-                  muted={!alertsActive}
-                  icon={<TrendingDown className="h-4 w-4 text-[#f6465d]" />}
-                  iconBg="bg-[#f6465d]/10"
-                  title="When an asset drops by"
-                  description="Alert when a specific asset price drops"
-                  control={
-                    <>
-                      <Select
-                        value={settings.assetDrops.asset}
-                        onValueChange={(value) => updateSetting('assetDrops', 'asset', value)}
-                        disabled={!alertsActive}
-                      >
-                        <SelectTrigger className="w-20 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs disabled:opacity-50">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#191a1b] border-white/10">
-                          {assets.map((a) => (
-                            <SelectItem
-                              key={a.id}
-                              value={a.symbol}
-                              className="text-[#d0d6e0] text-xs"
-                            >
-                              {a.symbol}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number"
-                        value={settings.assetDrops.percentage}
-                        onChange={(e) =>
-                          updateSetting(
-                            'assetDrops',
-                            'percentage',
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                        disabled={!alertsActive}
-                        className="w-20 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs font-mono-num text-center disabled:opacity-50"
-                        dir="ltr"
-                      />
-                      <span className="text-xs text-[#8a8f98]">%</span>
-                      <Switch
-                        checked={alertChecked(settings.assetDrops.enabled)}
-                        disabled={!alertsActive}
-                        onCheckedChange={(checked) =>
-                          updateSetting('assetDrops', 'enabled', checked)
-                        }
-                      />
-                    </>
-                  }
-                />
-
-                <Separator className="bg-white/5" />
-
-                {/* Daily summary */}
-                <AlertRow
-                  muted={!alertsActive}
-                  icon={<Clock className="h-4 w-4 text-[#627eea]" />}
-                  iconBg="bg-[#627eea]/10"
-                  title="Daily summary at"
-                  description="Daily report of wallet value and changes"
-                  control={
-                    <>
-                      <Input
-                        type="time"
-                        value={settings.dailySummary.time}
-                        onChange={(e) => updateSetting('dailySummary', 'time', e.target.value)}
-                        disabled={!alertsActive}
-                        className="w-24 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs font-mono-num text-center disabled:opacity-50"
-                        dir="ltr"
-                      />
-                      <Switch
-                        checked={alertChecked(settings.dailySummary.enabled)}
-                        disabled={!alertsActive}
-                        onCheckedChange={(checked) =>
-                          updateSetting('dailySummary', 'enabled', checked)
-                        }
-                      />
-                    </>
-                  }
-                />
-
-                <Separator className="bg-white/5" />
-
-                {/* Weekly report */}
-                <AlertRow
-                  muted={!alertsActive}
-                  icon={<Calendar className="h-4 w-4 text-[#f7931a]" />}
-                  iconBg="bg-[#f7931a]/10"
-                  title="Weekly report every"
-                  description="Weekly report with all transactions"
-                  control={
-                    <>
-                      <Select
-                        value={settings.weeklyReport.day}
-                        onValueChange={(value) => updateSetting('weeklyReport', 'day', value)}
-                        disabled={!alertsActive}
-                      >
-                        <SelectTrigger className="w-28 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs disabled:opacity-50">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#191a1b] border-white/10">
-                          {daysOfWeek.map((day) => (
-                            <SelectItem key={day} value={day} className="text-[#d0d6e0] text-xs">
-                              {day}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Switch
-                        checked={alertChecked(settings.weeklyReport.enabled)}
-                        disabled={!alertsActive}
-                        onCheckedChange={(checked) =>
-                          updateSetting('weeklyReport', 'enabled', checked)
-                        }
-                      />
-                    </>
-                  }
-                />
-
-                <Separator className="bg-white/5" />
-
-                {/* Gas fees */}
-                <AlertRow
-                  muted={!alertsActive}
-                  icon={<Fuel className="h-4 w-4 text-[#f6465d]" />}
-                  iconBg="bg-[#f6465d]/10"
-                  title="Gas fees exceed"
-                  description="Alert when daily gas fees exceed a threshold"
-                  control={
-                    <>
-                      <Input
-                        type="number"
-                        value={settings.gasExceeds.amount}
-                        onChange={(e) =>
-                          updateSetting('gasExceeds', 'amount', parseFloat(e.target.value) || 0)
-                        }
-                        disabled={!alertsActive}
-                        className="w-24 h-8 bg-[#191a1b] border-white/5 text-[#d0d6e0] text-xs font-mono-num text-center disabled:opacity-50"
-                        dir="ltr"
-                      />
-                      <span className="text-xs text-[#8a8f98]">USD/day</span>
-                      <Switch
-                        checked={alertChecked(settings.gasExceeds.enabled)}
-                        disabled={!alertsActive}
-                        onCheckedChange={(checked) =>
-                          updateSetting('gasExceeds', 'enabled', checked)
-                        }
-                      />
-                    </>
-                  }
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#191a1b]/50 rounded-lg p-3 border border-white/5">
-            <div className="flex items-center gap-2.5">
-              <Bot className="h-4 w-4 text-[#0052ff] shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-[#d0d6e0]">
-                  The smart accountant is also available on Telegram
-                </p>
-                <p className="text-[10px] text-[#8a8f98]">
-                  Ask about your wallet, taxes, and get instant reports
-                </p>
-              </div>
+              <AlertCatalogPanels
+                channel="telegram"
+                planId={currentPlan}
+                payloads={payloads}
+                channelReady={isConnected}
+                onUpdate={updateSetting}
+                onUpgrade={onUpgrade}
+              />
             </div>
           </div>
 
@@ -696,48 +321,6 @@ export function TelegramSettings() {
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function AlertRow({
-  icon,
-  iconBg,
-  title,
-  description,
-  control,
-  muted,
-}: {
-  icon: ReactNode;
-  iconBg: string;
-  title: string;
-  description: string;
-  control: ReactNode;
-  muted?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex items-center justify-between gap-4 p-4 transition-colors',
-        muted ? 'bg-transparent' : 'hover:bg-[#191a1b]/50'
-      )}
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <div
-          className={cn(
-            'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-            iconBg,
-            muted && 'opacity-70'
-          )}
-        >
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className={cn('text-sm', muted ? 'text-[#8a8f98]' : 'text-[#d0d6e0]')}>{title}</p>
-          <p className="text-xs text-[#8a8f98]">{description}</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">{control}</div>
     </div>
   );
 }

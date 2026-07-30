@@ -3,12 +3,12 @@
  *
  * Telegram Bot webhook handler.
  * Receives messages from Telegram for account linking and alerts.
- * AI assistant replies are stubbed until the new Sentinel AI layer ships.
+ * AI assistant replies are stubbed until the new Radareum AI layer ships.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { AiQuotaError, assertAiQuota } from '@/lib/ai/tools';
+import { AiQuotaError, assertAiQuota, SubscriptionEntitlementError } from '@/lib/ai/tools';
 
 // In-memory store for telegram-to-user mapping (should be DB in production)
 const telegramUserMap = new Map<string, { userId: string; plan: string; walletAddress?: string; connectedAt: number }>();
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
     try {
       await assertAiQuota(userMapping.userId, userMapping.plan);
     } catch (error) {
-      if (error instanceof AiQuotaError) {
+      if (error instanceof SubscriptionEntitlementError || error instanceof AiQuotaError) {
         await sendTelegramMessage(chatId, `⚠️ ${error.message}`);
         return NextResponse.json({ ok: true });
       }

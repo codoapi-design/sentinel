@@ -2,16 +2,11 @@
  * useWalletAutoSync Hook
  *
  * Background sync loop for the active wallet:
- *   1. Every N seconds (plan-based, default 60s) run an incremental sync
- *      that writes fresh blockchain data into Supabase.
- *   2. If the DB snapshot changed, reload transactions into Zustand and
- *      bump lastSyncAt so usePortfolio re-reads from the DB.
+ *   1. Every N seconds (plan-based) run an incremental sync
+ *   2. Manual Sync always runs immediately while the subscription is active
  *
- * Manual Sync (dashboard button) uses full mode so missing historical
- * transactions are backfilled from the chain and upserted by date.
- *
- * The UI never talks to Etherscan/CoinGecko directly — only the sync
- * endpoint does, and displays always come from the database.
+ * When the subscription expires, auto and manual sync pause until renew.
+ * On renew, incremental sync resumes from lastSyncedAt / last_synced_block.
  */
 
 'use client';
@@ -19,6 +14,8 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useWalletStore, PLAN_LIMITS } from '@/stores/wallet-store';
+import { useSubscriptionStore } from '@/stores/subscription-store';
+import { SUBSCRIPTION_EXPIRED_MESSAGE } from '@/lib/plans/entitlements';
 
 function isUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -46,6 +43,15 @@ export function useWalletAutoSync() {
     }
     if (isSyncing[activeWalletId]) return;
 
+    const subState = useSubscriptionStore.getState();
+    if (subState.subscription) {
+      const entitlement = subState.getEntitlement();
+      if (!entitlement.entitled) {
+        console.warn('[AutoSync] Subscription inactive — auto sync paused');
+        return;
+      }
+    }
+
     const lastSync = lastSyncAt[activeWalletId] || 0;
     if (Date.now() - lastSync < syncIntervalMs - 5_000) return;
 
@@ -59,8 +65,13 @@ export function useWalletAutoSync() {
         body: JSON.stringify({ mode: 'incremental' }),
       });
 
+      if (response.status === 402) {
+        const payload = await response.json().catch(() => ({}));
+        console.warn('[AutoSync] Entitlement blocked:', payload.error);
+        return;
+      }
+
       if (!response.ok) {
-        // Fall back to store sync (still DB-first) if the endpoint fails
         await syncWallet(activeWalletId, 'incremental');
         return;
       }
@@ -68,8 +79,6 @@ export function useWalletAutoSync() {
       const result = await response.json();
       const changed = Boolean(result.changed);
 
-      // Always bump lastSyncAt so the interval timing stays correct.
-      // When data changed, reload txs from DB so UI reflects the new snapshot.
       if (changed) {
         await loadTransactionsFromDB(activeWalletId);
       }
@@ -106,7 +115,6 @@ export function useWalletAutoSync() {
   useEffect(() => {
     if (!activeWalletId || !isUUID(activeWalletId)) return;
 
-    // First background check shortly after mount (gives initial DB load time)
     const initialTimeout = setTimeout(() => {
       runIncrementalRefresh();
     }, 15_000);
@@ -121,11 +129,6 @@ export function useWalletAutoSync() {
     };
   }, [activeWalletId, runIncrementalRefresh, syncIntervalMs]);
 
-  /**
-   * Manual Sync button: full blockchain re-sync for the active wallet.
-   * Pulls balances + full tx history, upserts missing rows into the DB,
-   * then refreshes the UI via lastSyncAt / loadTransactionsFromDB.
-   */
   const triggerSync = useCallback(async () => {
     if (!activeWalletId) return;
     if (!isUUID(activeWalletId)) {
@@ -134,6 +137,15 @@ export function useWalletAutoSync() {
       return;
     }
     if (isSyncing[activeWalletId]) return;
+
+    const subState = useSubscriptionStore.getState();
+    if (subState.subscription) {
+      const entitlement = subState.getEntitlement();
+      if (!entitlement.entitled) {
+        toast.error(entitlement.reason || SUBSCRIPTION_EXPIRED_MESSAGE);
+        return;
+      }
+    }
 
     const toastId = toast.loading('Syncing wallet from blockchain...');
     try {

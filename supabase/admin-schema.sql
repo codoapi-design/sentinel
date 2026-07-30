@@ -1,5 +1,5 @@
 -- ============================================
--- Sentinel Admin Dashboard - Database Schema
+-- Radareum Admin Dashboard - Database Schema
 -- Execute this in Supabase SQL Editor
 -- ============================================
 

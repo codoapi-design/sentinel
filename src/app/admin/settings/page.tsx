@@ -35,9 +35,9 @@ export default function AdminSettingsPage() {
   const [serviceStatuses, setServiceStatuses] = useState<Array<{ name: string; status: string; details: string }>>([]);
 
   const [settings, setSettings] = useState({
-    siteName: 'Sentinel',
+    siteName: 'Radareum',
     siteDescription: 'Digital Wallet Monitoring Platform',
-    supportEmail: 'support@sentinel.app',
+    supportEmail: 'support@radareum.app',
     maintenanceMode: false,
     registrationEnabled: true,
     emailVerificationRequired: true,

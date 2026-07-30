@@ -1,32 +1,36 @@
 /**
- * Sentinel AI — Usage Tracking & Free Plan Quota
+ * Radareum AI — Usage Tracking & Plan Quotas
  *
- * Daily counters (`chat_count`, `analysis_count`) roll over for paid plans.
- * Free Plan accumulates a lifetime request total in `total_input_tokens` is NOT
- * used for that — instead we keep a parallel lifetime sum by never resetting
- * daily counters while the user's profile plan is `free`, and gate at 50.
+ * Counting windows:
+ *   - Free Plan: lifetime (no daily reset) for the trial budget
+ *   - Starter / Pro: calendar-month window (YYYY-MM)
+ *   - Business: unlimited (no gate)
  *
- * Tracking failures are swallowed; quota failures reject the request.
+ * Also requires an active subscription period (server entitlement).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { LlmUsage } from '@/lib/ai/llm';
 import { pricingTiers } from '@/lib/mock-data';
+import { normalizePlanId } from '@/lib/plans/address-families';
+import {
+  assertServerEntitlement,
+  SubscriptionEntitlementError,
+} from '@/lib/plans/entitlements-server';
 import { createServerClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/types';
-import { normalizePlanId } from '@/lib/plans/address-families';
 
 export type AiUsageKind = 'chat' | 'analysis';
+
+export type AiQuotaWindow = 'lifetime' | 'month' | 'day';
 
 export interface RecordAiUsageInput {
   userId: string;
   kind: AiUsageKind;
-  /** Token counts from the LLM path; absent on the deterministic path. */
   usage?: LlmUsage;
   supabase?: SupabaseClient<Database>;
-  /** When true (Free Plan), daily counters do not reset — trial-lifetime total. */
-  accumulateLifetime?: boolean;
+  window?: AiQuotaWindow;
 }
 
 export interface AiUsageSnapshot {
@@ -35,7 +39,6 @@ export interface AiUsageSnapshot {
   totalInputTokens: number;
   totalOutputTokens: number;
   lastResetDate: string;
-  /** chat + analysis for the active counting window. */
   requestCount: number;
 }
 
@@ -44,8 +47,10 @@ export class AiQuotaError extends Error {
   readonly used: number;
   readonly limit: number;
 
-  constructor(used: number, limit: number) {
-    super(`Free Plan AI limit reached (${used}/${limit}). Upgrade to continue.`);
+  constructor(used: number, limit: number, planLabel = 'plan') {
+    super(
+      `${planLabel} AI limit reached (${used}/${limit}). Upgrade or wait for the next period to continue.`,
+    );
     this.name = 'AiQuotaError';
     this.used = used;
     this.limit = limit;
@@ -56,11 +61,21 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function monthKey(isoDate: string): string {
+  return isoDate.slice(0, 7);
+}
+
 function requestCount(snapshot: Pick<AiUsageSnapshot, 'chatCount' | 'analysisCount'>): number {
   return snapshot.chatCount + snapshot.analysisCount;
 }
 
-/** Resolve the caller's plan from user_profiles (defaults to starter). */
+export function resolveAiQuotaWindow(planId: string | null | undefined): AiQuotaWindow {
+  const normalized = normalizePlanId(planId);
+  if (normalized === 'free') return 'lifetime';
+  if (normalized === 'business') return 'month'; // unused when unlimited
+  return 'month';
+}
+
 export async function resolveUserPlanId(
   userId: string,
   supabase?: SupabaseClient<Database>,
@@ -80,7 +95,7 @@ export async function resolveUserPlanId(
 
 export function getAiRequestLimit(planId: string | null | undefined): number | null {
   const key = (planId || 'starter').toLowerCase();
-  const tier = pricingTiers.find(t => t.id === key);
+  const tier = pricingTiers.find(t => t.id === key || (key === 'business' && t.id === 'enterprise'));
   if (tier?.limits.aiRequests !== undefined) {
     return tier.limits.aiRequests ?? null;
   }
@@ -88,10 +103,45 @@ export function getAiRequestLimit(planId: string | null | undefined): number | n
   return null;
 }
 
-/** Read current usage snapshot without mutating. */
+function countsInWindow(
+  existing: {
+    chat_count: number | null;
+    analysis_count: number | null;
+    last_reset_date: string | null;
+  } | null,
+  window: AiQuotaWindow,
+): { chat: number; analysis: number; resetDate: string } {
+  const date = today();
+  if (!existing) return { chat: 0, analysis: 0, resetDate: date };
+
+  if (window === 'lifetime') {
+    return {
+      chat: existing.chat_count ?? 0,
+      analysis: existing.analysis_count ?? 0,
+      resetDate: date,
+    };
+  }
+
+  if (window === 'month') {
+    const sameMonth = monthKey(existing.last_reset_date ?? '') === monthKey(date);
+    return {
+      chat: sameMonth ? existing.chat_count ?? 0 : 0,
+      analysis: sameMonth ? existing.analysis_count ?? 0 : 0,
+      resetDate: date,
+    };
+  }
+
+  const sameDay = existing.last_reset_date === date;
+  return {
+    chat: sameDay ? existing.chat_count ?? 0 : 0,
+    analysis: sameDay ? existing.analysis_count ?? 0 : 0,
+    resetDate: date,
+  };
+}
+
 export async function getAiUsageSnapshot(
   userId: string,
-  opts?: { supabase?: SupabaseClient<Database>; accumulateLifetime?: boolean },
+  opts?: { supabase?: SupabaseClient<Database>; window?: AiQuotaWindow },
 ): Promise<AiUsageSnapshot | null> {
   const id = userId?.trim();
   if (!id) return null;
@@ -104,30 +154,16 @@ export async function getAiUsageSnapshot(
       .eq('user_id', id)
       .maybeSingle();
 
-    if (!existing) {
-      return {
-        chatCount: 0,
-        analysisCount: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        lastResetDate: today(),
-        requestCount: 0,
-      };
-    }
-
-    const sameDay = existing.last_reset_date === today();
-    const chatCount =
-      opts?.accumulateLifetime || sameDay ? existing.chat_count ?? 0 : 0;
-    const analysisCount =
-      opts?.accumulateLifetime || sameDay ? existing.analysis_count ?? 0 : 0;
+    const window = opts?.window ?? 'month';
+    const base = countsInWindow(existing, window);
 
     return {
-      chatCount,
-      analysisCount,
-      totalInputTokens: existing.total_input_tokens ?? 0,
-      totalOutputTokens: existing.total_output_tokens ?? 0,
-      lastResetDate: existing.last_reset_date ?? today(),
-      requestCount: chatCount + analysisCount,
+      chatCount: base.chat,
+      analysisCount: base.analysis,
+      totalInputTokens: existing?.total_input_tokens ?? 0,
+      totalOutputTokens: existing?.total_output_tokens ?? 0,
+      lastResetDate: existing?.last_reset_date ?? today(),
+      requestCount: base.chat + base.analysis,
     };
   } catch (error) {
     console.warn('[AI Usage] Failed to read usage:', error);
@@ -136,42 +172,43 @@ export async function getAiUsageSnapshot(
 }
 
 /**
- * Rejects Free Plan callers who have used their shared AI budget.
- * Paid / uncapped plans always pass.
+ * Requires active subscription, then enforces plan AI caps.
  */
 export async function assertAiQuota(
   userId: string,
   planId?: string | null,
   supabase?: SupabaseClient<Database>,
 ): Promise<{ ok: true; used: number; limit: number | null; planId: string }> {
-  const resolvedPlan = (planId ?? (await resolveUserPlanId(userId, supabase))).toLowerCase();
+  const entitlement = await assertServerEntitlement(userId, supabase);
+  const resolvedPlan = (planId ?? entitlement.planId).toLowerCase();
   const limit = getAiRequestLimit(resolvedPlan);
   if (limit == null) {
     return { ok: true, used: 0, limit: null, planId: resolvedPlan };
   }
 
-  const isFree = normalizePlanId(resolvedPlan) === 'free';
-  const snapshot = await getAiUsageSnapshot(userId, {
-    supabase,
-    accumulateLifetime: isFree,
-  });
+  const window = resolveAiQuotaWindow(resolvedPlan);
+  const snapshot = await getAiUsageSnapshot(userId, { supabase, window });
   const used = snapshot?.requestCount ?? 0;
+  const tier = pricingTiers.find(
+    t => t.id === resolvedPlan || (resolvedPlan === 'business' && t.id === 'enterprise'),
+  );
+  const label = tier?.nameEn ?? 'Plan';
 
   if (used >= limit) {
-    throw new AiQuotaError(used, limit);
+    throw new AiQuotaError(used, limit, label);
   }
 
   return { ok: true, used, limit, planId: resolvedPlan };
 }
 
-/** Records one AI interaction. Never throws and never rejects. */
 export async function recordAiUsage(input: RecordAiUsageInput): Promise<AiUsageSnapshot | null> {
   const userId = input.userId?.trim();
   if (!userId) return null;
 
   try {
     const supabase = input.supabase ?? createServerClient();
-    const date = today();
+    const planId = await resolveUserPlanId(userId, supabase);
+    const window = input.window ?? resolveAiQuotaWindow(planId);
     const inputTokens = input.usage?.promptTokens ?? 0;
     const outputTokens = input.usage?.completionTokens ?? 0;
 
@@ -181,17 +218,13 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<AiUsageS
       .eq('user_id', userId)
       .maybeSingle();
 
-    const sameDay = existing?.last_reset_date === date;
-    const keepPrior = input.accumulateLifetime === true || sameDay;
-    const baseChat = keepPrior ? existing?.chat_count ?? 0 : 0;
-    const baseAnalysis = keepPrior ? existing?.analysis_count ?? 0 : 0;
-
+    const base = countsInWindow(existing, window);
     const next: AiUsageSnapshot = {
-      chatCount: baseChat + (input.kind === 'chat' ? 1 : 0),
-      analysisCount: baseAnalysis + (input.kind === 'analysis' ? 1 : 0),
+      chatCount: base.chat + (input.kind === 'chat' ? 1 : 0),
+      analysisCount: base.analysis + (input.kind === 'analysis' ? 1 : 0),
       totalInputTokens: (existing?.total_input_tokens ?? 0) + inputTokens,
       totalOutputTokens: (existing?.total_output_tokens ?? 0) + outputTokens,
-      lastResetDate: date,
+      lastResetDate: base.resetDate,
       requestCount: 0,
     };
     next.requestCount = requestCount(next);
@@ -220,3 +253,5 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<AiUsageS
     return null;
   }
 }
+
+export { SubscriptionEntitlementError };

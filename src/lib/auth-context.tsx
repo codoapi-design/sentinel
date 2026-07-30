@@ -11,7 +11,11 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+  ) => Promise<{ error: string | null; needsEmailConfirmation?: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
@@ -96,23 +100,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // New account must not inherit the previous user's local wallet cache
       clearUserLocalState(null);
 
-      const { error } = await supabase.auth.signUp({
+      // Prefer server register (auto-confirmed) to avoid confirmation-email rate limits
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, fullName }),
+      });
+      const payload = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        return { error: (payload.error as string) || 'Registration failed' };
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
       });
 
-      if (error) return { error: error.message };
-      return { error: null };
+      if (error) {
+        return { error: error.message };
+      }
+
+      if (data.session?.user) {
+        bindSessionUser(data.session.user);
+        setSession(data.session);
+        setUser(data.session.user);
+      }
+
+      return { error: null, needsEmailConfirmation: false as const };
     } catch (err) {
       console.error('Sign up error:', err);
       return { error: 'An unexpected error occurred. Please try again.' };
     }
-  }, []);
+  }, [bindSessionUser]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     try {

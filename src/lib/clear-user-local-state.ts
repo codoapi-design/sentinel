@@ -5,10 +5,12 @@
 
 import { useWalletStore } from '@/stores/wallet-store';
 import { useUiPreferencesStore, UI_PREFERENCES_STORAGE_KEY } from '@/stores/ui-preferences-store';
+import { useProfileStore } from '@/stores/profile-store';
 
 /** Zustand persist keys + legacy keys that hold user-scoped data */
 export const USER_SCOPED_STORAGE_KEYS = [
-  'sentinel-wallets',
+  'radareum-wallets',
+  'sentinel-wallets', // legacy brand key
   'cryptobooks-wallets',
   'cryptobooks-ai', // legacy key from removed AI store
   'cryptobooks_subscription',
@@ -33,6 +35,12 @@ export function clearUserLocalState(nextUserId: string | null = null): void {
 
   try {
     useUiPreferencesStore.getState().reset();
+  } catch {
+    // ignore
+  }
+
+  try {
+    useProfileStore.getState().reset();
   } catch {
     // ignore
   }

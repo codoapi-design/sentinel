@@ -1,5 +1,5 @@
 /**
- * Tax-Loss Harvesting Engine for Sentinel
+ * Tax-Loss Harvesting Engine for Radareum
  * Identifies opportunities to harvest tax losses and optimize tax position
  */
 

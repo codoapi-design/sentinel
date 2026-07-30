@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — Deterministic Tool Planner
+ * Radareum AI — Deterministic Tool Planner
  *
  * Part 2 §2.8: the planner decides *what* to retrieve; it never retrieves and
  * never computes. This implementation is keyword and context driven — no model

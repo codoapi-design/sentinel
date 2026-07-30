@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — LLM adapter and prompt assembly layer.
+ * Radareum AI — LLM adapter and prompt assembly layer.
  *
  * `generateNarrative` is the single entry point. It uses the LLM when a
  * provider key is configured and the deterministic renderer otherwise, and

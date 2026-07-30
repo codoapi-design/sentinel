@@ -392,7 +392,7 @@ export default function AdminContentPage() {
                     title: template.title,
                     slug: template.slug,
                     content: `<h1>${template.title}</h1>\n<p>${template.title} content will be added here...</p>`,
-                    meta_description: `${template.title} - Sentinel`,
+                    meta_description: `${template.title} - Radareum`,
                     is_published: false,
                   });
                 }}

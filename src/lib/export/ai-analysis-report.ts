@@ -146,7 +146,7 @@ export async function enrichReportPayloadWithAi(
       store.setAnalysis(resolvedScope, data);
     } catch (err) {
       console.warn(
-        '[Sentinel] AI analysis unavailable for export',
+        '[Radareum] AI analysis unavailable for export',
         buildAiAnalysisCacheKey(resolvedScope),
         err,
       );

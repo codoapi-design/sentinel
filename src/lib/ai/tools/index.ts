@@ -1,5 +1,5 @@
 /**
- * Sentinel AI — Agent Runtime
+ * Radareum AI — Agent Runtime
  *
  * The pipeline every AI surface goes through (Part 2 §2.17 Golden Pipeline):
  *
