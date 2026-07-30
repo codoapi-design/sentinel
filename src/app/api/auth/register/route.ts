@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { ensureFreeTrialSubscription } from '@/lib/plans/ensure-free-trial';
 import { createServerClient } from '@/lib/supabase/server';
 
 const MAX_NAME = 80;
 
 /**
  * POST /api/auth/register
- * Creates a confirmed user via service role (avoids flaky confirmation-email rate limits)
- * then the client signs in with the same credentials.
+ * Creates a confirmed user via service role, then the client signs in.
+ * Also starts a 3-day Free Plan subscription.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -62,14 +63,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Registration failed' }, { status: 500 });
     }
 
-    // Ensure profile row (DB trigger may be missing on older projects)
     const now = new Date().toISOString();
     const profilePayload = {
       user_id: user.id,
       email,
       full_name: fullName,
       avatar_url: null,
-      plan: 'starter',
+      plan: 'free',
       status: 'active',
       created_at: now,
       updated_at: now,
@@ -77,20 +77,25 @@ export async function POST(request: NextRequest) {
 
     const insert = await admin.from('user_profiles').insert(profilePayload as never);
     if (insert.error) {
-      // Retry with id if schema requires it
       if (/null value in column ["']?id["']?/i.test(insert.error.message)) {
-        await admin
-          .from('user_profiles')
-          .insert({ ...profilePayload, id: user.id } as never);
+        await admin.from('user_profiles').insert({ ...profilePayload, id: user.id } as never);
       } else if (!/duplicate|unique/i.test(insert.error.message)) {
         console.warn('[API /auth/register] profile insert', insert.error.message);
       }
+    }
+
+    let trial = null;
+    try {
+      trial = await ensureFreeTrialSubscription(user.id, admin);
+    } catch (err) {
+      console.warn('[API /auth/register] free trial setup failed:', err);
     }
 
     return NextResponse.json({
       success: true,
       userId: user.id,
       email,
+      freeTrial: trial,
     });
   } catch (error) {
     console.error('[API /auth/register]', error);

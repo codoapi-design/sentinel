@@ -564,6 +564,12 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           if (subState.subscription) {
             const entitlement = subState.getEntitlement();
             if (!entitlement.entitled) {
+              try {
+                const { useUpgradePromptStore } = await import('@/stores/upgrade-prompt-store');
+                useUpgradePromptStore.getState().openUpgradePrompt(entitlement.reason || undefined);
+              } catch {
+                /* ignore */
+              }
               return {
                 success: false,
                 error: entitlement.reason || 'Subscription expired. Renew to resume sync.',

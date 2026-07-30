@@ -117,11 +117,6 @@ export default function SignupPage() {
           <span className="text-xl font-bold text-[#f7f8f8]">Radareum</span>
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/demo">
-            <Button variant="ghost" className="text-[#8a8f98] hover:text-[#f7f8f8] text-sm">
-              Try Demo
-            </Button>
-          </Link>
           <Link href="/login">
             <Button variant="outline" className="rounded-full border-white/10 text-[#d0d6e0] hover:bg-[#191a1b] text-sm">
               Sign In

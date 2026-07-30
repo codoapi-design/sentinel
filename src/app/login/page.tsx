@@ -76,14 +76,9 @@ export default function LoginPage() {
           <span className="text-xl font-bold text-[#f7f8f8]">Radareum</span>
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/demo">
-            <Button variant="ghost" className="text-[#8a8f98] hover:text-[#f7f8f8] text-sm">
-              Try Demo
-            </Button>
-          </Link>
           <Link href="/signup">
             <Button variant="outline" className="rounded-full border-white/10 text-[#d0d6e0] hover:bg-[#191a1b] text-sm">
-              Sign Up
+              Start for free
             </Button>
           </Link>
         </div>
@@ -236,18 +231,9 @@ export default function LoginPage() {
           <p className="text-center text-sm text-[#8a8f98] mt-6">
             Don&apos;t have an account?{' '}
             <Link href="/signup" className="text-[#0052ff] hover:text-[#0052ff]/80 font-medium transition-colors">
-              Create one
+              Start for free
             </Link>
           </p>
-
-          {/* Demo Link */}
-          <div className="mt-4 text-center">
-            <Link href="/demo">
-              <Button variant="ghost" className="text-[#8a8f98] hover:text-[#f7f8f8] text-xs">
-                Or try the demo first
-              </Button>
-            </Link>
-          </div>
         </div>
       </div>
     </div>

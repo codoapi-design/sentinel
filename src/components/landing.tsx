@@ -21,15 +21,14 @@ import {
 } from 'lucide-react';
 import { pricingTiers } from '@/lib/mock-data';
 import Link from 'next/link';
+import { LandingNetworkBackground } from '@/components/landing-network-bg';
 
-interface LandingPageProps {
-  onGetStarted: () => void;
-  onDemo: () => void;
-}
-
-export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
+export function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#08090a] text-[#f7f8f8]" dir="ltr">
+    <div className="relative min-h-screen bg-[#08090a] text-[#f7f8f8]" dir="ltr">
+      <LandingNetworkBackground />
+
+      <div className="relative z-10">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-[#08090a]/80 backdrop-blur-xl border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -59,7 +58,7 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
                 <Button
                   className="rounded-full bg-[#0052ff] hover:bg-[#0045dd] text-white px-6"
                 >
-                  Get Started
+                  Start for free
                 </Button>
               </Link>
             </div>
@@ -68,11 +67,10 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 landing-gradient" />
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-[#0052ff]/5 rounded-full blur-3xl" />
+      <section className="relative overflow-hidden px-4 pt-32 pb-20">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#08090a]/70" />
 
-        <div className="max-w-4xl mx-auto text-center relative">
+        <div className="relative mx-auto max-w-4xl text-center">
           <Badge className="mb-6 bg-[#0052ff]/10 text-[#0052ff] border-[#0052ff]/20 px-4 py-1.5 text-sm rounded-full">
             Crypto Wallet Intelligence Platform
           </Badge>
@@ -94,17 +92,8 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
                 size="lg"
                 className="rounded-full bg-[#0052ff] hover:bg-[#0045dd] text-white px-8 py-6 text-lg font-medium shadow-lg shadow-[#0052ff]/25"
               >
-                Get Started
+                Start for free
                 <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-            <Link href="/demo">
-              <Button
-                size="lg"
-                variant="outline"
-                className="rounded-full border-white/10 text-[#d0d6e0] hover:bg-[#191a1b] px-8 py-6 text-lg"
-              >
-                Try Demo
               </Button>
             </Link>
           </div>
@@ -364,7 +353,7 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
                           : 'bg-[#191a1b] hover:bg-[#28282c] text-[#f7f8f8]'
                       }`}
                     >
-                      {tier.isFree ? 'Start Free Trial' : 'Get Started'}
+                      {tier.isFree ? 'Start for free' : 'Get Started'}
                     </Button>
                   </Link>
                 </CardContent>
@@ -472,6 +461,7 @@ export function LandingPage({ onGetStarted, onDemo }: LandingPageProps) {
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 }

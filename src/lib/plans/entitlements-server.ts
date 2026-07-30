@@ -6,7 +6,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
-  snapshotFromProfilePlan,
   snapshotFromSubscriptionRow,
   snapshotNone,
   SubscriptionEntitlementError,
@@ -17,8 +16,9 @@ import { createServerClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/types';
 
 /**
- * Server entitlement: subscriptions table first, then profile.plan as soft signal.
+ * Server entitlement: subscriptions table is authoritative.
  * Expired / missing period → not entitled (sync + AI blocked).
+ * Profile.plan alone is not enough to stay entitled without a period end.
  */
 export async function resolveServerEntitlement(
   userId: string,
@@ -40,22 +40,6 @@ export async function resolveServerEntitlement(
     }
   } catch (err) {
     console.warn('[Entitlement] subscriptions lookup failed:', err);
-  }
-
-  // Soft fallback: profile plan without a subscriptions row (legacy / first boot).
-  // Once a subscriptions period exists, expiry is enforced above.
-  try {
-    const { data: profile } = await client
-      .from('user_profiles')
-      .select('plan')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (profile?.plan) {
-      return snapshotFromProfilePlan(profile.plan);
-    }
-  } catch (err) {
-    console.warn('[Entitlement] profile lookup failed:', err);
   }
 
   return snapshotNone();

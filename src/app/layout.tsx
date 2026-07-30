@@ -11,7 +11,8 @@ const geistMono = GeistMono;
 
 export const metadata: Metadata = {
   title: "Radareum — Crypto Wallet Intelligence",
-  description: "Automated crypto accounting with intelligent tracking, AI-powered insights, and real-time wallet monitoring",
+  description:
+    "Multi-chain wallet intelligence: live sync, AI classification, security radar, and professional crypto reports. Start free for 3 days.",
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>",
   },

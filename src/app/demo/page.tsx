@@ -1,12 +1,6 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { useRouter } from 'next/navigation';
-import { Dashboard } from '@/components/dashboard';
-
+/** Demo mode removed — send visitors to the marketing landing page. */
 export default function DemoPage() {
-  const router = useRouter();
-
-  // The Dashboard renders its own demo banner (with a sign-in prompt) and empty
-  // states. No sample/mock data is shown; sign-in routes to the real login flow.
-  return <Dashboard onLogout={() => router.push('/login')} isDemo={true} />;
+  redirect('/');
 }

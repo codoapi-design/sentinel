@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { buildPeriodEnd, toWalletPlanId } from '@/lib/plans/entitlements';
+import { ensureFreeTrialSubscription } from '@/lib/plans/ensure-free-trial';
 import { pricingTiers } from '@/lib/mock-data';
 import { processReferralPaidConversion } from '@/lib/referrals/core';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
@@ -143,6 +144,14 @@ export async function GET(request: NextRequest) {
     }
 
     const admin = createServerClient();
+
+    // OAuth / first login: grant Free Plan if the user has no subscription yet
+    try {
+      await ensureFreeTrialSubscription(user.id, admin);
+    } catch (err) {
+      console.warn('[Subscription GET] ensure free trial skipped:', err);
+    }
+
     const { data: sub } = await admin
       .from('subscriptions')
       .select('*')

@@ -6,10 +6,14 @@
 import { pricingTiers } from '@/lib/mock-data';
 
 export const SUBSCRIPTION_EXPIRED_MESSAGE =
-  'Your subscription has expired. Renew to resume wallet sync and AI features.';
+  'Your Free Plan or subscription has ended. Upgrade to resume wallet sync and AI features.';
 
 export const SUBSCRIPTION_REQUIRED_MESSAGE =
-  'An active plan is required. Start a Free Trial or subscribe to continue.';
+  'An active plan is required. Start for free or subscribe to continue.';
+
+export const FREE_PLAN_EXPIRED_MESSAGE =
+  'Your 3-day Free Plan has ended. Upgrade to keep syncing wallets and using AI.';
+
 
 export class SubscriptionEntitlementError extends Error {
   readonly status: number;
@@ -86,7 +90,8 @@ export function evaluateClientSubscription(sub: {
     status: 'expired',
     endDate: sub.endDate,
     daysRemaining: 0,
-    reason: SUBSCRIPTION_EXPIRED_MESSAGE,
+    reason:
+      sub.planId === 'free' ? FREE_PLAN_EXPIRED_MESSAGE : SUBSCRIPTION_EXPIRED_MESSAGE,
   };
 }
 
@@ -125,7 +130,8 @@ export function snapshotFromSubscriptionRow(sub: {
     status: 'expired',
     endDate,
     daysRemaining: 0,
-    reason: SUBSCRIPTION_EXPIRED_MESSAGE,
+    reason:
+      sub.plan === 'free' ? FREE_PLAN_EXPIRED_MESSAGE : SUBSCRIPTION_EXPIRED_MESSAGE,
   };
 }
 

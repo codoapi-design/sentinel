@@ -36,6 +36,10 @@ import { useWalletAutoSync } from '@/hooks/use-wallet-auto-sync';
 import { useAuth } from '@/lib/auth-context';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
 import { filterVisibleTransactions } from '@/lib/finance/visibility';
+import { useSubscriptionStore } from '@/stores/subscription-store';
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt-store';
+import { UpgradeRequiredModal } from '@/components/upgrade-required-modal';
+import { FREE_PLAN_EXPIRED_MESSAGE } from '@/lib/plans/entitlements';
 
 /**
  * RealDashboard - Dashboard for authenticated users.
@@ -92,11 +96,36 @@ export function RealDashboard() {
   // Auto-sync hook
   const { triggerSync } = useWalletAutoSync();
 
+  // Expired Free Plan / subscription → periodic upgrade prompt
+  useEffect(() => {
+    const checkAndPrompt = (force = false) => {
+      const entitlement = useSubscriptionStore.getState().getEntitlement();
+      if (entitlement.entitled) return;
+      const prompt = useUpgradePromptStore.getState();
+      const elapsed = Date.now() - prompt.lastShownAt;
+      if (force || elapsed > 10 * 60 * 1000) {
+        prompt.openUpgradePrompt(
+          entitlement.planId === 'free'
+            ? FREE_PLAN_EXPIRED_MESSAGE
+            : entitlement.reason || FREE_PLAN_EXPIRED_MESSAGE,
+        );
+      }
+    };
+
+    const initial = setTimeout(() => checkAndPrompt(true), 2_500);
+    const interval = setInterval(() => checkAndPrompt(false), 10 * 60 * 1000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, []);
+
   // Load wallets from DB, then hydrate transactions from DB.
   // Only run a provider sync if this wallet has never been synced.
   useEffect(() => {
     loadWalletsFromDB();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // Get active wallet data
   const activeWallet = getActiveWallet();
@@ -634,6 +663,12 @@ export function RealDashboard() {
 
       {/* AI Chat — outside the flex shell; portals to body; always mounted */}
       <AIChat pageContext={chatContext} />
+      <UpgradeRequiredModal
+        onUpgrade={() => {
+          setActiveTab('subscription');
+          setActiveSection(null);
+        }}
+      />
     </>
   );
 }

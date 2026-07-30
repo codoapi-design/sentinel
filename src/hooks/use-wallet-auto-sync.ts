@@ -15,10 +15,22 @@ import { useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useWalletStore, PLAN_LIMITS } from '@/stores/wallet-store';
 import { useSubscriptionStore } from '@/stores/subscription-store';
-import { SUBSCRIPTION_EXPIRED_MESSAGE } from '@/lib/plans/entitlements';
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt-store';
+import { FREE_PLAN_EXPIRED_MESSAGE, SUBSCRIPTION_EXPIRED_MESSAGE } from '@/lib/plans/entitlements';
 
 function isUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+function promptUpgradeIfExpired(): boolean {
+  const entitlement = useSubscriptionStore.getState().getEntitlement();
+  if (entitlement.entitled) return false;
+  useUpgradePromptStore.getState().openUpgradePrompt(
+    entitlement.planId === 'free'
+      ? FREE_PLAN_EXPIRED_MESSAGE
+      : entitlement.reason || SUBSCRIPTION_EXPIRED_MESSAGE,
+  );
+  return true;
 }
 
 export function useWalletAutoSync() {
@@ -44,12 +56,10 @@ export function useWalletAutoSync() {
     if (isSyncing[activeWalletId]) return;
 
     const subState = useSubscriptionStore.getState();
-    if (subState.subscription) {
-      const entitlement = subState.getEntitlement();
-      if (!entitlement.entitled) {
-        console.warn('[AutoSync] Subscription inactive — auto sync paused');
-        return;
-      }
+    const entitlement = subState.getEntitlement();
+    if (!entitlement.entitled) {
+      console.warn('[AutoSync] Subscription inactive — auto sync paused');
+      return;
     }
 
     const lastSync = lastSyncAt[activeWalletId] || 0;
@@ -68,6 +78,7 @@ export function useWalletAutoSync() {
       if (response.status === 402) {
         const payload = await response.json().catch(() => ({}));
         console.warn('[AutoSync] Entitlement blocked:', payload.error);
+        promptUpgradeIfExpired();
         return;
       }
 
@@ -138,13 +149,10 @@ export function useWalletAutoSync() {
     }
     if (isSyncing[activeWalletId]) return;
 
-    const subState = useSubscriptionStore.getState();
-    if (subState.subscription) {
-      const entitlement = subState.getEntitlement();
-      if (!entitlement.entitled) {
-        toast.error(entitlement.reason || SUBSCRIPTION_EXPIRED_MESSAGE);
-        return;
-      }
+    const entitlement = useSubscriptionStore.getState().getEntitlement();
+    if (!entitlement.entitled) {
+      promptUpgradeIfExpired();
+      return;
     }
 
     const toastId = toast.loading('Syncing wallet from blockchain...');
@@ -159,6 +167,9 @@ export function useWalletAutoSync() {
           { id: toastId },
         );
       } else {
+        if (/expired|subscription|upgrade|Free Plan/i.test(result.error || '')) {
+          promptUpgradeIfExpired();
+        }
         toast.error(result.error || 'Sync failed. Please try again.', { id: toastId });
       }
     } catch (error) {

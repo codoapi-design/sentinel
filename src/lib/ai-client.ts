@@ -136,6 +136,11 @@ async function postAi<T>(url: string, body: unknown, signal?: AbortSignal): Prom
     | null;
 
   if (!response.ok || !payload?.data) {
+    if (response.status === 402 && typeof window !== 'undefined') {
+      void import('@/stores/upgrade-prompt-store').then(({ useUpgradePromptStore }) => {
+        useUpgradePromptStore.getState().openUpgradePrompt(payload?.error || undefined);
+      });
+    }
     throw new AiRequestError(
       payload?.error || `Request failed (${response.status})`,
       response.status,
@@ -231,6 +236,17 @@ export function describeAiError(error: unknown): AiErrorPresentation {
       kind: 'auth',
       title: 'Sign in to continue',
       message: 'Your session has expired. Sign in again to run analysis on your wallet data.',
+      retryable: false,
+    };
+  }
+
+  if (status === 402) {
+    return {
+      kind: 'auth',
+      title: 'Upgrade required',
+      message:
+        message ||
+        'Your Free Plan has ended. Upgrade to keep using AI analysis and chat.',
       retryable: false,
     };
   }
