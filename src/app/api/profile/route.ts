@@ -231,11 +231,25 @@ export async function GET() {
       profile?.email || user.email,
     );
 
+    // Plan label must match the live subscription (not a stale profile.plan cache).
+    let plan = profile?.plan || 'free';
+    try {
+      const { resolveAuthoritativePlan } = await import('@/lib/plans/resolve-plan');
+      const resolved = await resolveAuthoritativePlan(adminClient(), user.id, {
+        syncProfile: true,
+      });
+      if (resolved) {
+        plan = resolved.walletPlanId;
+      }
+    } catch (err) {
+      console.warn('[API /profile GET] plan resolve skipped:', err);
+    }
+
     return NextResponse.json({
       fullName,
       email: profile?.email || user.email || '',
       avatarUrl: normalizeStoredAvatar(profile?.avatar_url),
-      plan: profile?.plan || 'free',
+      plan,
     });
   } catch (error) {
     console.error('[API /profile GET]', error);

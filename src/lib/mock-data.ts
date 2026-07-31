@@ -29,7 +29,7 @@ export interface Transaction {
   /** Accounting classification label (Income, Expense, Trade, …) */
   typeLabel: string;
   /**
-   * On-chain / explorer-style activity (Receive, Transfer, Swap, Approve, …).
+   * On-chain / explorer-style method (Receive, Transfer, Swap, Approve, …).
    * Shown beside Date, before Classification.
    */
   activity: string;
@@ -44,6 +44,12 @@ export interface Transaction {
   txHash: string;
   counterparty: string;
   counterpartyLabel: string;
+  /** Native gas units used (from receipt); 0 if unknown / not paid by wallet */
+  gasUsed?: number;
+  /** Gas fee in native units (ETH on L1/L2); 0 if unknown */
+  gasFeeEth?: number;
+  /** Gas fee in USD when priced; 0 if unknown */
+  gasFeeUsd?: number;
 }
 
 export interface PortfolioDay {

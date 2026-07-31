@@ -11,12 +11,10 @@ import {
   Landmark,
   Fuel,
   TrendingUp,
-  TrendingDown,
 } from 'lucide-react';
 import {
   type Transaction,
 } from '@/lib/mock-data';
-import { cn } from '@/lib/utils';
 import { isExpenseType, isRevenueType } from '@/lib/finance/summary';
 import {
   filterVisibleTransactions,
@@ -30,11 +28,13 @@ import {
   TypesPageFilterStats,
   type TypeFilterStatRow,
 } from '@/components/types-filter-stats';
+import { useWalletReadModels } from '@/hooks/use-wallet-read-models';
 
 interface TypesSectionProps {
   transactions: Transaction[];
   onTypeClick: (typeId: string) => void;
   onFilteredDataChange?: (data: TypeStats[]) => void;
+  precomputedStats?: TypeStats[] | null;
 }
 
 export interface TypeStats extends TypeFilterStatRow {
@@ -68,6 +68,27 @@ export function TypesTab({
 }: TypesTabProps) {
   const [filteredData, setFilteredData] = useState<TypeStats[]>([]);
   const [filtersReady, setFiltersReady] = useState(false);
+  const { types: readModelTypes } = useWalletReadModels();
+
+  const precomputedStats = useMemo((): TypeStats[] | null => {
+    if (!readModelTypes.length) return null;
+    return readModelTypes.map(d => {
+      const config = typeConfig[d.key];
+      return {
+        typeId: d.key,
+        typeLabel: config?.label || d.label || d.key,
+        typeIcon: config?.icon || d.key,
+        totalRevenue: d.inflowUsd,
+        totalExpenses: d.outflowUsd,
+        totalVolume: d.volumeUsd,
+        txCount: d.txCount,
+        netFlow: d.inflowUsd - d.outflowUsd,
+        lastTxDate: d.lastTxDate,
+        topToken: d.topToken,
+        color: config?.color || '#8a8f98',
+      };
+    });
+  }, [readModelTypes]);
 
   const handleFilteredDataChange = useCallback((data: TypeStats[]) => {
     setFiltersReady(true);
@@ -87,6 +108,7 @@ export function TypesTab({
       <TypesPageFilterStats types={statsTypes} />
       <TypesSection
         transactions={transactions}
+        precomputedStats={precomputedStats}
         onTypeClick={onTypeClick}
         onFilteredDataChange={handleFilteredDataChange}
       />
@@ -98,6 +120,7 @@ export function TypesSection({
   transactions,
   onTypeClick,
   onFilteredDataChange,
+  precomputedStats,
 }: TypesSectionProps) {
   const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
   const hasHiddenItems = useMemo(
@@ -110,6 +133,10 @@ export function TypesSection({
   );
 
   const typeStats = useMemo((): TypeStats[] => {
+    if (precomputedStats && precomputedStats.length > 0) {
+      return [...precomputedStats].sort((a, b) => b.txCount - a.txCount);
+    }
+
     const statsMap = new Map<string, TypeStats & { tokenCounts: Record<string, number> }>();
 
     visibleTransactions.forEach(tx => {
@@ -160,7 +187,7 @@ export function TypesSection({
     result.sort((a, b) => b.txCount - a.txCount);
 
     return result;
-  }, [visibleTransactions]);
+  }, [visibleTransactions, precomputedStats]);
 
   useEffect(() => {
     onFilteredDataChange?.(typeStats);
@@ -173,6 +200,11 @@ export function TypesSection({
     pageItems: pagedTypes,
     totalItems,
   } = useTablePagination(typeStats);
+
+  const totalVolumeAll = useMemo(
+    () => typeStats.reduce((sum, ts) => sum + (ts.totalVolume || 0), 0),
+    [typeStats],
+  );
 
   if (typeStats.length === 0) {
     return (
@@ -233,10 +265,10 @@ export function TypesSection({
             <thead>
               <tr className="border-b border-white/5">
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Type</th>
-                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Inflow</th>
-                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Outflow</th>
-                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Net Flow</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Volume</th>
+                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Share</th>
+                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Avg / Tx</th>
+                <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Top Token</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Transactions</th>
                 <th className="text-[#8a8f98] text-xs font-medium p-3 text-right">Last Tx</th>
                 <th className="w-8"></th>
@@ -244,9 +276,11 @@ export function TypesSection({
             </thead>
             <tbody>
               {pagedTypes.map((ts) => {
-                const isNetPositive = ts.netFlow >= 0;
                 const config = typeConfig[ts.typeId];
                 const IconComp = config?.IconComponent || Coins;
+                const sharePct =
+                  totalVolumeAll > 0 ? (ts.totalVolume / totalVolumeAll) * 100 : 0;
+                const avgPerTx = ts.txCount > 0 ? ts.totalVolume / ts.txCount : 0;
 
                 return (
                   <tr
@@ -277,35 +311,26 @@ export function TypesSection({
                     </td>
                     <td className="p-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <ArrowDownLeft className="h-3 w-3 text-[#0ecb81]" />
-                        <span className="font-mono-num text-xs text-[#0ecb81]">
-                          ${ts.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <ArrowUpRight className="h-3 w-3 text-[#f6465d]" />
-                        <span className="font-mono-num text-xs text-[#f6465d]">
-                          ${ts.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-3 text-right">
-                      <span className={cn(
-                        'font-mono-num text-xs font-medium',
-                        isNetPositive ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-                      )}>
-                        {isNetPositive ? '+' : ''}${Math.abs(ts.netFlow).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
                         <Coins className="h-3 w-3 text-[#0052ff]" />
                         <span className="font-mono-num text-xs text-[#d0d6e0]">
                           ${ts.totalVolume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
+                    </td>
+                    <td className="p-3 text-right">
+                      <span className="font-mono-num text-xs text-[#d0d6e0]">
+                        {sharePct.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <span className="font-mono-num text-xs text-[#d0d6e0]">
+                        ${avgPerTx.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <span className="text-xs font-medium text-[#f7f8f8]">
+                        {ts.topToken || '—'}
+                      </span>
                     </td>
                     <td className="p-3 text-right">
                       <span className="font-mono-num text-xs text-[#d0d6e0]">{ts.txCount}</span>

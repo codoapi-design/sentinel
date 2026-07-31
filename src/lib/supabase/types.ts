@@ -878,6 +878,105 @@ export interface Database {
         Relationships: [];
       };
 
+      // ─── Wallet read models (dashboard hydrate) ───
+      wallet_financial_summary: {
+        Row: {
+          wallet_id: string;
+          user_id: string;
+          inflow_usd: number;
+          outflow_usd: number;
+          net_flow_usd: number;
+          gas_fees_usd: number;
+          trading_volume_usd: number;
+          tx_count: number;
+          priced_cashflow_count: number;
+          unpriced_count: number;
+          excluded_activity_count: number;
+          methodology: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          wallet_id: string;
+          user_id: string;
+          inflow_usd?: number;
+          outflow_usd?: number;
+          net_flow_usd?: number;
+          gas_fees_usd?: number;
+          trading_volume_usd?: number;
+          tx_count?: number;
+          priced_cashflow_count?: number;
+          unpriced_count?: number;
+          excluded_activity_count?: number;
+          methodology?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          wallet_id?: string;
+          user_id?: string;
+          inflow_usd?: number;
+          outflow_usd?: number;
+          net_flow_usd?: number;
+          gas_fees_usd?: number;
+          trading_volume_usd?: number;
+          tx_count?: number;
+          priced_cashflow_count?: number;
+          unpriced_count?: number;
+          excluded_activity_count?: number;
+          methodology?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      wallet_dimension_stats: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          user_id: string;
+          dimension: string;
+          dimension_key: string;
+          label: string | null;
+          tx_count: number;
+          volume_usd: number;
+          inflow_usd: number;
+          outflow_usd: number;
+          top_token: string | null;
+          last_tx_date: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          user_id: string;
+          dimension: string;
+          dimension_key: string;
+          label?: string | null;
+          tx_count?: number;
+          volume_usd?: number;
+          inflow_usd?: number;
+          outflow_usd?: number;
+          top_token?: string | null;
+          last_tx_date?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          wallet_id?: string;
+          user_id?: string;
+          dimension?: string;
+          dimension_key?: string;
+          label?: string | null;
+          tx_count?: number;
+          volume_usd?: number;
+          inflow_usd?: number;
+          outflow_usd?: number;
+          top_token?: string | null;
+          last_tx_date?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
       // ─── Investment Lots (return since connected) ───
       investment_lots: {
         Row: {
@@ -1082,7 +1181,20 @@ export interface Database {
           status: string;
           current_period_start: string;
           current_period_end: string;
-          cancel_at_period_end: boolean;
+          trial_end: string | null;
+          canceled_at: string | null;
+          payment_provider: string | null;
+          payment_provider_id: string | null;
+          wallets_limit: number | null;
+          networks_limit: number | null;
+          transactions_limit: number | null;
+          ai_chats_limit: number | null;
+          api_calls_limit: number | null;
+          wallets_used: number | null;
+          transactions_used: number | null;
+          ai_chats_used: number | null;
+          api_calls_used: number | null;
+          api_calls_reset_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1091,9 +1203,22 @@ export interface Database {
           user_id: string;
           plan: string;
           status?: string;
-          current_period_start?: string;
-          current_period_end?: string;
-          cancel_at_period_end?: boolean;
+          current_period_start: string;
+          current_period_end: string;
+          trial_end?: string | null;
+          canceled_at?: string | null;
+          payment_provider?: string | null;
+          payment_provider_id?: string | null;
+          wallets_limit?: number | null;
+          networks_limit?: number | null;
+          transactions_limit?: number | null;
+          ai_chats_limit?: number | null;
+          api_calls_limit?: number | null;
+          wallets_used?: number | null;
+          transactions_used?: number | null;
+          ai_chats_used?: number | null;
+          api_calls_used?: number | null;
+          api_calls_reset_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1104,7 +1229,20 @@ export interface Database {
           status?: string;
           current_period_start?: string;
           current_period_end?: string;
-          cancel_at_period_end?: boolean;
+          trial_end?: string | null;
+          canceled_at?: string | null;
+          payment_provider?: string | null;
+          payment_provider_id?: string | null;
+          wallets_limit?: number | null;
+          networks_limit?: number | null;
+          transactions_limit?: number | null;
+          ai_chats_limit?: number | null;
+          api_calls_limit?: number | null;
+          wallets_used?: number | null;
+          transactions_used?: number | null;
+          ai_chats_used?: number | null;
+          api_calls_used?: number | null;
+          api_calls_reset_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

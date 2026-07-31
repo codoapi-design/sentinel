@@ -13,6 +13,13 @@ export {
   NETWORKS,
 } from './service';
 export {
+  ALCHEMY_NETWORK_CATALOG,
+  discoverAlchemyNetworks,
+  resolveAlchemyEvmSyncChainIds,
+  clearAlchemyNetworkDiscoveryCache,
+  type AlchemyNetworkDef,
+} from './networks';
+export {
   classifyTransaction,
   getProtocolInfo,
   getMethodInfo,

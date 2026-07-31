@@ -1,14 +1,14 @@
 /**
  * usePortfolio Hook
  *
- * Fetches portfolio data from /api/portfolio, which ALWAYS reads from Supabase.
- * Re-fetches whenever the wallet store reports a completed sync (lastSyncAt),
- * so the UI stays in lockstep with the database without hitting external APIs.
+ * Fetches portfolio holdings from /api/portfolio (DB-first, fast path).
+ * Shared module cache + in-flight dedupe so Overview / Chart / Assets
+ * share one request per wallet instead of N parallel heavy GETs.
  */
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWalletStore } from '@/stores/wallet-store';
 
 export interface PortfolioToken {
@@ -105,88 +105,159 @@ interface UsePortfolioReturn {
   source: string | null;
 }
 
-export function usePortfolio(): UsePortfolioReturn {
-  const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<string | null>(null);
-  const fetchGen = useRef(0);
-  const hasLoadedOnce = useRef(false);
+type PortfolioCacheEntry = {
+  portfolio: PortfolioData | null;
+  source: string | null;
+  error: string | null;
+  isLoading: boolean;
+  hasLoadedOnce: boolean;
+  inflight: Promise<void> | null;
+  lastSyncSeen: number;
+};
 
-  const activeWalletId = useWalletStore(s => s.activeWalletId);
-  const wallets = useWalletStore(s => s.wallets);
-  const lastSyncAt = useWalletStore(s =>
-    activeWalletId ? s.lastSyncAt[activeWalletId] || 0 : 0,
-  );
+const cache = new Map<string, PortfolioCacheEntry>();
+const listeners = new Set<() => void>();
 
-  const fetchPortfolio = useCallback(async (forceRefresh = false) => {
-    const activeWallet = wallets.find(w => w.id === activeWalletId);
-    if (!activeWallet) {
-      setPortfolio(null);
-      hasLoadedOnce.current = false;
-      return;
-    }
+function emit() {
+  for (const l of listeners) l();
+}
 
-    const gen = ++fetchGen.current;
-    // Soft loading only on first load or explicit refresh — silent refresh after sync
-    if (!hasLoadedOnce.current || forceRefresh) setIsLoading(true);
-    setError(null);
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
+function getEntry(walletId: string): PortfolioCacheEntry {
+  let entry = cache.get(walletId);
+  if (!entry) {
+    entry = {
+      portfolio: null,
+      source: null,
+      error: null,
+      isLoading: false,
+      hasLoadedOnce: false,
+      inflight: null,
+      lastSyncSeen: 0,
+    };
+    cache.set(walletId, entry);
+  }
+  return entry;
+}
+
+async function loadPortfolio(walletId: string, forceRefresh = false): Promise<void> {
+  const entry = getEntry(walletId);
+  if (entry.inflight && !forceRefresh) {
+    return entry.inflight;
+  }
+
+  const showSpinner = !entry.hasLoadedOnce || forceRefresh;
+  if (showSpinner) {
+    entry.isLoading = true;
+    entry.error = null;
+    emit();
+  }
+
+  const run = (async () => {
     try {
       const params = new URLSearchParams();
-      params.set('walletId', activeWallet.id);
-      // forceRefresh triggers sync-then-DB on the server; routine polls never set it
+      params.set('walletId', walletId);
       if (forceRefresh) params.set('refresh', 'true');
 
       const response = await fetch(`/api/portfolio?${params.toString()}`);
-
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: 'Failed to fetch portfolio' }));
         throw new Error(errData.error || `HTTP ${response.status}`);
       }
 
       const result = await response.json();
-      if (gen !== fetchGen.current) return; // stale
-
       if (result.success && result.data) {
-        setPortfolio(result.data);
-        setSource(result.source || 'database');
-        hasLoadedOnce.current = true;
+        entry.portfolio = result.data as PortfolioData;
+        entry.source = result.source || 'database';
+        entry.hasLoadedOnce = true;
+        entry.error = null;
       } else {
         throw new Error(result.error || 'No data returned');
       }
     } catch (err) {
-      if (gen !== fetchGen.current) return;
       console.error('[usePortfolio] Error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load portfolio');
+      entry.error = err instanceof Error ? err.message : 'Failed to load portfolio';
     } finally {
-      if (gen === fetchGen.current) setIsLoading(false);
+      entry.isLoading = false;
+      entry.inflight = null;
+      emit();
     }
+  })();
+
+  entry.inflight = run;
+  return run;
+}
+
+export function usePortfolio(): UsePortfolioReturn {
+  const activeWalletId = useWalletStore(s => s.activeWalletId);
+  const wallets = useWalletStore(s => s.wallets);
+  const lastSyncAt = useWalletStore(s =>
+    activeWalletId ? s.lastSyncAt[activeWalletId] || 0 : 0,
+  );
+  const [, bump] = useState(0);
+
+  useEffect(() => subscribe(() => bump(n => n + 1)), []);
+
+  useEffect(() => {
+    if (!activeWalletId) return;
+    const activeWallet = wallets.find(w => w.id === activeWalletId);
+    if (!activeWallet) {
+      const entry = getEntry(activeWalletId);
+      entry.portfolio = null;
+      entry.hasLoadedOnce = false;
+      entry.error = null;
+      emit();
+      return;
+    }
+    void loadPortfolio(activeWalletId, false);
   }, [activeWalletId, wallets]);
 
-  // Initial load + wallet switch
-  useEffect(() => {
-    hasLoadedOnce.current = false;
-    fetchPortfolio(false);
-  }, [activeWalletId, fetchPortfolio]);
-
-  // After any completed sync, re-read portfolio from the DB (no external APIs)
-  const prevSyncAt = useRef(0);
+  // Silent refresh after sync — debounced so streaming tx counts don't spam GETs
   useEffect(() => {
     if (!activeWalletId || !lastSyncAt) return;
-    if (lastSyncAt === prevSyncAt.current) return;
-    prevSyncAt.current = lastSyncAt;
-    // Skip the very first lastSyncAt=0→N if we just did the initial fetch
-    if (hasLoadedOnce.current) {
-      fetchPortfolio(false);
+    const entry = getEntry(activeWalletId);
+    if (lastSyncAt === entry.lastSyncSeen) return;
+    if (!entry.hasLoadedOnce) {
+      entry.lastSyncSeen = lastSyncAt;
+      return;
     }
-  }, [lastSyncAt, activeWalletId, fetchPortfolio]);
+    entry.lastSyncSeen = lastSyncAt;
+    const t = window.setTimeout(() => {
+      void loadPortfolio(activeWalletId, false);
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [lastSyncAt, activeWalletId]);
 
+  const refetch = useCallback(
+    async (refresh?: boolean) => {
+      if (!activeWalletId) return;
+      await loadPortfolio(activeWalletId, Boolean(refresh));
+    },
+    [activeWalletId],
+  );
+
+  if (!activeWalletId) {
+    return {
+      portfolio: null,
+      isLoading: false,
+      error: null,
+      refetch,
+      source: null,
+    };
+  }
+
+  const entry = getEntry(activeWalletId);
   return {
-    portfolio,
-    isLoading,
-    error,
-    refetch: (refresh?: boolean) => fetchPortfolio(Boolean(refresh)),
-    source,
+    portfolio: entry.portfolio,
+    isLoading: entry.isLoading,
+    error: entry.error,
+    refetch,
+    source: entry.source,
   };
 }

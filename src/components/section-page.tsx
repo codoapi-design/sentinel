@@ -107,12 +107,18 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
       return allTransactions.filter(tx => isRevenueType(tx.type) || isExpenseType(tx.type));
     }
     if (sectionType === 'gas') {
-      return allTransactions.filter(tx => tx.type === 'gas');
+      // Gas is paid on any tx where this wallet was the sender — not only type==='gas'
+      return allTransactions.filter(
+        tx => (tx.gasFeeEth || 0) > 0 || (tx.gasFeeUsd || 0) > 0,
+      );
     }
     return allTransactions;
   }, [allTransactions, sectionType]);
 
   const totalValue = useMemo(() => {
+    if (sectionType === 'gas') {
+      return sectionTransactions.reduce((sum, tx) => sum + (tx.gasFeeUsd || 0), 0);
+    }
     if (sectionType === 'flow') {
       return sectionTransactions.reduce(
         (sum, tx) => sum + (isRevenueType(tx.type) ? tx.value : -tx.value),
@@ -129,18 +135,21 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
   }, []);
 
   const buildExportPayload = useCallback(() => {
+    const rows = sectionType === 'flow' ? sectionTransactions : filteredData;
     const filteredTotal =
       sectionType === 'flow'
-        ? filteredData.reduce(
+        ? rows.reduce(
             (sum, tx) => sum + (isRevenueType(tx.type) ? tx.value : -tx.value),
             0,
           )
-        : filteredData.reduce((sum, tx) => sum + tx.value, 0);
+        : sectionType === 'gas'
+          ? rows.reduce((sum, tx) => sum + (tx.gasFeeUsd || 0), 0)
+          : rows.reduce((sum, tx) => sum + tx.value, 0);
     return buildTransactionsReportPayload({
       title: config.title,
       subtitle: config.description,
       filenameBase: `radareum-${sectionType}`,
-      transactions: filteredData,
+      transactions: rows,
       clients,
       aiScope: {
         page: sectionType,
@@ -156,7 +165,7 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
         },
       ],
     });
-  }, [config, sectionType, filteredData, clients, sectionTransactions.length]);
+  }, [config, sectionType, filteredData, clients, sectionTransactions]);
 
   const handleDownloadExcel = useCallback(async () => {
     try {
@@ -257,20 +266,8 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
         </div>
       </div>
 
-      {/* Transactions Table with Column Filters */}
-      <Card className="bg-[#0f1011] border-white/5">
-        <CardContent className="p-0">
-          <ColumnFilterTable
-            transactions={sectionTransactions}
-            showTypeColumn={true}
-            onFilteredDataChange={handleFilteredDataChange}
-            clients={clients}
-          />
-        </CardContent>
-      </Card>
-
       {/* Total Value Card */}
-      <Card className="bg-[#0f1011] border-white/5 overflow-hidden">
+      <Card className="bg-[#0f1011] border-white/5 overflow-hidden relative">
         <div className="absolute inset-0 pointer-events-none" style={{
           background: `radial-gradient(ellipse at top right, ${config.bgColor} 0%, transparent 60%)`,
         }} />
@@ -295,9 +292,23 @@ export function SectionPage({ sectionType, onBack, clients = [] }: SectionPagePr
         chartCaptureRef={chartCaptureRef}
       />
 
+      {/* Net Flow is an aggregate (Inflow − Outflow) — no transaction list */}
+      {sectionType !== 'flow' && (
+        <Card className="bg-[#0f1011] border-white/5">
+          <CardContent className="p-0">
+            <ColumnFilterTable
+              transactions={sectionTransactions}
+              showTypeColumn={true}
+              onFilteredDataChange={handleFilteredDataChange}
+              clients={clients}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* AI Analysis Section */}
       <AIAnalysisSection
-        transactions={filteredData}
+        transactions={sectionType === 'flow' ? sectionTransactions : filteredData}
         clients={clients}
         sectionTitle={config.title}
         sectionColor={config.color}

@@ -27,7 +27,7 @@ import {
   Search,
   Check,
 } from 'lucide-react';
-import { usePortfolio, type PortfolioToken } from '@/hooks/use-portfolio';
+import { usePortfolio, type PortfolioData, type PortfolioToken } from '@/hooks/use-portfolio';
 import { TablePagination } from '@/components/table-pagination';
 import { useTablePagination } from '@/hooks/use-table-pagination';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
@@ -42,6 +42,9 @@ import { cn } from '@/lib/utils';
 interface AssetsTableProps {
   onAssetClick?: (assetId: string) => void;
   onFilteredDataChange?: (data: PortfolioToken[]) => void;
+  /** Optional shared portfolio (avoids relying on a second mount when parent already fetched). */
+  portfolio?: PortfolioData | null;
+  isLoading?: boolean;
 }
 
 function formatNumber(num: number, decimals: number = 2): string {
@@ -254,7 +257,7 @@ interface AssetsTabProps {
  * Stats track the same visible list as AssetsTable (spam/$0 + column filters).
  */
 export function AssetsTab({ onAssetClick }: AssetsTabProps) {
-  const { portfolio } = usePortfolio();
+  const { portfolio, isLoading } = usePortfolio();
   const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
   const rawTokens = useMemo(() => portfolio?.tokens || [], [portfolio?.tokens]);
   const visibleTokens = useMemo(
@@ -286,6 +289,8 @@ export function AssetsTab({ onAssetClick }: AssetsTabProps) {
       </div>
       <AssetsPageFilterStats assets={statsAssets} />
       <AssetsTable
+        portfolio={portfolio}
+        isLoading={isLoading}
         onAssetClick={onAssetClick}
         onFilteredDataChange={handleFilteredDataChange}
       />
@@ -293,8 +298,15 @@ export function AssetsTab({ onAssetClick }: AssetsTabProps) {
   );
 }
 
-export function AssetsTable({ onAssetClick, onFilteredDataChange }: AssetsTableProps) {
-  const { portfolio, isLoading } = usePortfolio();
+export function AssetsTable({
+  onAssetClick,
+  onFilteredDataChange,
+  portfolio: portfolioProp,
+  isLoading: isLoadingProp,
+}: AssetsTableProps) {
+  const hooked = usePortfolio();
+  const portfolio = portfolioProp ?? hooked.portfolio;
+  const isLoading = isLoadingProp ?? hooked.isLoading;
   const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
 
   const rawTokens = useMemo(() => portfolio?.tokens || [], [portfolio?.tokens]);

@@ -69,7 +69,8 @@ export async function POST(request: NextRequest) {
       email,
       full_name: fullName,
       avatar_url: null,
-      plan: 'free',
+      // Live DB check historically disallows `free` on profiles; subscription row is authoritative.
+      plan: 'starter',
       status: 'active',
       created_at: now,
       updated_at: now,
@@ -84,7 +85,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let trial = null;
+    // Prefer Free on profile when the constraint allows it (migration applied).
+    await admin
+      .from('user_profiles')
+      .update({ plan: 'free', updated_at: now } as never)
+      .eq('user_id', user.id);
+
+    let trial: Awaited<ReturnType<typeof ensureFreeTrialSubscription>> | null = null;
     try {
       trial = await ensureFreeTrialSubscription(user.id, admin);
     } catch (err) {

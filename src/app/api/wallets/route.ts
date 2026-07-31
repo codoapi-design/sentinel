@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
 import { getSyncEngine } from '@/lib/blockchain/sync-engine';
+import { tryCloneWalletFromExistingAddress } from '@/lib/blockchain/clone-wallet-data';
 import {
   primaryDisplayAddress,
   validateWalletAddresses,
@@ -25,17 +26,14 @@ import {
   SubscriptionEntitlementError,
 } from '@/lib/plans/entitlements-server';
 import { getWalletLimit } from '@/lib/plans/limits';
+import { resolveWalletPlanId } from '@/lib/plans/resolve-plan';
 
 async function resolveUserPlan(
   supabase: ReturnType<typeof createServerClient>,
   userId: string,
 ): Promise<string> {
-  const { data } = await supabase
-    .from('user_profiles')
-    .select('plan')
-    .eq('user_id', userId)
-    .maybeSingle();
-  return normalizePlanId(data?.plan || 'starter');
+  // subscriptions table is authoritative — never trust profile.plan alone.
+  return resolveWalletPlanId(supabase, userId);
 }
 
 function mapWalletRow(w: {
@@ -223,7 +221,7 @@ export async function POST(request: NextRequest) {
         tron_address: tronAddress,
         bitcoin_address: bitcoinAddress,
         label,
-        is_syncing: false,
+        is_syncing: true,
       })
       .select()
       .single();
@@ -236,22 +234,76 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    getSyncEngine()
-      .fullSync(data.id)
-      .then(syncResult => {
-        console.log('[Wallets] Background sync completed:', {
-          success: syncResult.overallSuccess,
-          records: syncResult.totalRecordsSynced,
-          durationMs: syncResult.totalDurationMs,
-        });
-      })
-      .catch(syncInitError => {
-        console.error('[Wallets] Background sync error:', syncInitError);
+    // If this address was already synced for any user, clone DB history first
+    // (no Alchemy), then only pull incremental updates.
+    let cloneResult = {
+      cloned: false,
+      sourceWalletId: null as string | null,
+      transactionsCopied: 0,
+      positionsCopied: 0,
+      lastSyncedBlock: null as number | null,
+      lastSyncedAt: null as string | null,
+    };
+    try {
+      cloneResult = await tryCloneWalletFromExistingAddress({
+        evmAddress,
+        targetWalletId: data.id,
+        targetUserId: userId,
       });
+    } catch (cloneErr) {
+      console.warn('[Wallets] Clone-from-existing skipped:', cloneErr);
+    }
+
+    // Re-read wallet so response includes cloned cursors.
+    const { data: fresh } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('id', data.id)
+      .single();
+    const walletRow = fresh || data;
+
+    if (cloneResult.cloned && (cloneResult.lastSyncedBlock || 0) > 0) {
+      // Incremental Alchemy only — history already in DB.
+      getSyncEngine()
+        .incrementalSync(data.id)
+        .then(syncResult => {
+          console.log('[Wallets] Background incremental sync (after clone) completed:', {
+            success: syncResult.overallSuccess,
+            records: syncResult.totalRecordsSynced,
+            durationMs: syncResult.totalDurationMs,
+            clonedFrom: cloneResult.sourceWalletId,
+          });
+        })
+        .catch(syncInitError => {
+          console.error('[Wallets] Background incremental sync error:', syncInitError);
+        });
+    } else {
+      // First-time address — full historical Alchemy sync.
+      getSyncEngine()
+        .fullSync(data.id)
+        .then(syncResult => {
+          console.log('[Wallets] Background full sync completed:', {
+            success: syncResult.overallSuccess,
+            records: syncResult.totalRecordsSynced,
+            durationMs: syncResult.totalDurationMs,
+          });
+        })
+        .catch(syncInitError => {
+          console.error('[Wallets] Background sync error:', syncInitError);
+        });
+    }
 
     return NextResponse.json({
       success: true,
-      data: mapWalletRow(data),
+      data: mapWalletRow(walletRow),
+      hydratedFromCache: cloneResult.cloned,
+      clone: cloneResult.cloned
+        ? {
+            sourceWalletId: cloneResult.sourceWalletId,
+            transactionsCopied: cloneResult.transactionsCopied,
+            positionsCopied: cloneResult.positionsCopied,
+          }
+        : null,
     });
   } catch (error) {
     console.error('Wallets POST error:', error);

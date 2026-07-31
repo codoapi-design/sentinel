@@ -6,6 +6,7 @@ import {
   evaluateClientSubscription,
   type EntitlementSnapshot,
 } from '@/lib/plans/entitlements';
+import { getPlanLimits as getSharedPlanLimits } from '@/lib/plans/limits';
 
 // ============================================================
 // Types
@@ -32,8 +33,11 @@ interface SubscriptionState {
   subscription: Subscription | null;
   /** Remembers that a free trial was started on this browser (one-shot). */
   freeTrialClaimed: boolean;
+  /** True after GET /api/subscription has been applied for the current session. */
+  serverHydrated: boolean;
   setSubscription: (sub: Subscription) => void;
   clearSubscription: () => void;
+  markServerHydrated: () => void;
   markFreeTrialClaimed: () => void;
   /** Marks active→expired when endDate passed; records syncPausedAt once. */
   refreshExpiry: () => EntitlementSnapshot;
@@ -98,10 +102,12 @@ export const useSubscriptionStore = create<SubscriptionState>()(
     (set, get) => ({
       subscription: null,
       freeTrialClaimed: false,
+      serverHydrated: false,
 
       setSubscription: (sub: Subscription) => {
         set(state => ({
           subscription: sub,
+          serverHydrated: true,
           freeTrialClaimed:
             state.freeTrialClaimed ||
             sub.planId === 'free' ||
@@ -110,12 +116,16 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       },
 
       clearSubscription: () => {
-        set({ subscription: null });
+        set({ subscription: null, serverHydrated: false });
         try {
           localStorage.removeItem('cryptobooks_subscription');
         } catch {
           /* ignore */
         }
+      },
+
+      markServerHydrated: () => {
+        set({ serverHydrated: true });
       },
 
       markFreeTrialClaimed: () => {
@@ -147,7 +157,13 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       getPlan: () => {
         const sub = get().subscription;
         if (!sub) return null;
-        return pricingTiers.find(t => t.id === sub.planId) || null;
+        return (
+          pricingTiers.find(t => t.id === sub.planId) ||
+          (sub.planId === 'business'
+            ? pricingTiers.find(t => t.id === 'enterprise')
+            : null) ||
+          null
+        );
       },
 
       getDaysRemaining: () => evaluateClientSubscription(get().subscription).daysRemaining,
@@ -162,12 +178,26 @@ export const useSubscriptionStore = create<SubscriptionState>()(
 
       getPlanLimits: () => {
         const plan = get().getPlan();
-        if (!plan) return null;
-        return plan.limits;
+        if (plan?.limits) return plan.limits;
+        const sub = get().subscription;
+        if (!sub) return null;
+        const lim = getSharedPlanLimits(sub.planId);
+        return {
+          wallets: lim.wallets,
+          networks: lim.networks,
+          transactions: lim.transactions,
+          syncInterval: `${Math.round(lim.syncIntervalMs / 1000)}s`,
+          reports: 'Plan default',
+          aiRequests: lim.aiRequests,
+        };
       },
     }),
     {
       name: 'cryptobooks_subscription',
+      partialize: (state) => ({
+        subscription: state.subscription,
+        freeTrialClaimed: state.freeTrialClaimed,
+      }),
     }
   )
 );

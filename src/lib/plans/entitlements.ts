@@ -101,6 +101,15 @@ export function toWalletPlanId(planId: string): string {
   return planId;
 }
 
+/** Canonical pricing-tier id (Business product is `enterprise` in pricingTiers). */
+export function toPricingTierId(planId: string | null | undefined): string {
+  const p = (planId || 'starter').toLowerCase().trim();
+  if (p === 'business') return 'enterprise';
+  if (p === 'trial') return 'free';
+  if (p === 'basic') return 'starter';
+  return p;
+}
+
 /** Shared helper for server entitlement evaluation from raw DB fields. */
 export function snapshotFromSubscriptionRow(sub: {
   plan?: string | null;
@@ -116,7 +125,7 @@ export function snapshotFromSubscriptionRow(sub: {
   if (active) {
     return {
       entitled: true,
-      planId: sub.plan || 'starter',
+      planId: toPricingTierId(sub.plan || 'starter'),
       status: 'active',
       endDate,
       daysRemaining: daysRemaining(endDate),
@@ -126,12 +135,14 @@ export function snapshotFromSubscriptionRow(sub: {
 
   return {
     entitled: false,
-    planId: sub.plan || 'starter',
+    planId: toPricingTierId(sub.plan || 'starter'),
     status: 'expired',
     endDate,
     daysRemaining: 0,
     reason:
-      sub.plan === 'free' ? FREE_PLAN_EXPIRED_MESSAGE : SUBSCRIPTION_EXPIRED_MESSAGE,
+      toPricingTierId(sub.plan) === 'free'
+        ? FREE_PLAN_EXPIRED_MESSAGE
+        : SUBSCRIPTION_EXPIRED_MESSAGE,
   };
 }
 

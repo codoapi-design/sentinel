@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -14,7 +15,11 @@ import {
   ArrowLeftRight,
   LineChart,
 } from 'lucide-react';
-import { usePortfolio } from '@/hooks/use-portfolio';
+import {
+  usePortfolio,
+  type InvestmentReturnSummary,
+} from '@/hooks/use-portfolio';
+import { useWalletReadModels } from '@/hooks/use-wallet-read-models';
 import { useWalletStore } from '@/stores/wallet-store';
 import { SUMMARY_INFLOW, SUMMARY_OUTFLOW } from '@/lib/finance/labels';
 
@@ -61,14 +66,90 @@ function formatUsd(value: number): string {
 
 export function PortfolioOverview({ onSectionClick }: PortfolioOverviewProps) {
   const { portfolio, isLoading, error, refetch } = usePortfolio();
-  const { wallets } = useWalletStore();
+  const {
+    summary: readModelSummary,
+    isLoading: readModelsLoading,
+    refetch: refetchReadModels,
+  } = useWalletReadModels();
+  const activeWalletId = useWalletStore(s => s.activeWalletId);
+  const wallets = useWalletStore(s => s.wallets);
+  const lastSyncAt = useWalletStore(s =>
+    activeWalletId ? s.lastSyncAt[activeWalletId] || 0 : 0,
+  );
+  const loadTransactionsFromDB = useWalletStore(s => s.loadTransactionsFromDB);
+  const [investmentReturn, setInvestmentReturn] = useState<InvestmentReturnSummary | null>(null);
+  const gasEnrichAttempted = useRef(false);
 
-  if (isLoading && !portfolio) {
+  // Investment return is deferred so Total Value / Assets never wait on lots math.
+  useEffect(() => {
+    if (!activeWalletId) {
+      setInvestmentReturn(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `/api/portfolio/investment-return?walletId=${encodeURIComponent(activeWalletId)}&summary=1`,
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json.success && json.data) {
+          setInvestmentReturn(json.data as InvestmentReturnSummary);
+        }
+      } catch {
+        // Soft-fail — card stays in "tracking starts" / prior state
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWalletId, lastSyncAt]);
+
+  // One-shot gas receipt backfill when the Gas card is still $0 (legacy synced rows).
+  useEffect(() => {
+    if (!activeWalletId || gasEnrichAttempted.current) return;
+    const gasUsd = readModelSummary?.gasFeesUsd ?? portfolio?.transactionSummary?.gasFees ?? null;
+    if (gasUsd === null) return;
+    if (gasUsd > 0) {
+      gasEnrichAttempted.current = true;
+      return;
+    }
+    gasEnrichAttempted.current = true;
+    void (async () => {
+      try {
+        await fetch(`/api/wallets/${activeWalletId}/enrich-gas`, { method: 'POST' });
+        await Promise.all([
+          refetchReadModels({ silent: true }),
+          loadTransactionsFromDB(activeWalletId),
+        ]);
+      } catch {
+        // Soft-fail — user can open Gas Fees page and refresh
+      }
+    })();
+  }, [
+    activeWalletId,
+    readModelSummary?.gasFeesUsd,
+    portfolio?.transactionSummary?.gasFees,
+    refetchReadModels,
+    loadTransactionsFromDB,
+  ]);
+
+  // Prefer holdings for first paint when available; otherwise cash-flow cards.
+  const hasHoldings = Boolean(portfolio);
+  const hasSummaryCards = Boolean(readModelSummary || portfolio?.transactionSummary);
+  const waitingForFirstPaint =
+    !hasHoldings &&
+    !hasSummaryCards &&
+    ((isLoading && !portfolio) || (readModelsLoading && !readModelSummary));
+
+  if (waitingForFirstPaint) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <Loader2 className="h-5 w-5 text-[#0052ff] animate-spin" />
-          <span className="text-sm text-[#8a8f98]">Loading portfolio data from blockchain...</span>
+          <span className="text-sm text-[#8a8f98]">Loading portfolio...</span>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[0, 1, 2, 3].map(i => (
@@ -82,7 +163,7 @@ export function PortfolioOverview({ onSectionClick }: PortfolioOverviewProps) {
     );
   }
 
-  if (error && !portfolio) {
+  if (error && !portfolio && !readModelSummary) {
     return (
       <div className="bg-[#0f1011] border border-[#f6465d]/20 rounded-xl p-6 flex items-center gap-3">
         <AlertCircle className="h-5 w-5 text-[#f6465d]" />
@@ -100,19 +181,19 @@ export function PortfolioOverview({ onSectionClick }: PortfolioOverviewProps) {
     );
   }
 
-  if (!portfolio && wallets.length === 0) {
+  if (!portfolio && !readModelSummary && wallets.length === 0) {
     return null;
   }
 
   const totalValue = portfolio?.totalValueUsd || 0;
   const summary = portfolio?.transactionSummary;
-  const totalRevenue = summary?.totalRevenue || 0;
-  const totalExpenses = summary?.totalExpenses || 0;
-  const netFlow = summary?.netFlow || 0;
-  const gasFees = summary?.gasFees || 0;
-  const tradingVolume = summary?.tradingVolume || 0;
-  const investmentReturn = portfolio?.investmentReturn ?? null;
+  const totalRevenue = readModelSummary?.inflowUsd ?? summary?.totalRevenue ?? 0;
+  const totalExpenses = readModelSummary?.outflowUsd ?? summary?.totalExpenses ?? 0;
+  const netFlow = readModelSummary?.netFlowUsd ?? summary?.netFlow ?? 0;
+  const gasFees = readModelSummary?.gasFeesUsd ?? summary?.gasFees ?? 0;
+  const tradingVolume = readModelSummary?.tradingVolumeUsd ?? summary?.tradingVolume ?? 0;
   const methodology =
+    readModelSummary?.methodology ||
     summary?.methodology ||
     'USD cash flow · trades excluded from Inflow/Outflow · gas shown separately';
 
@@ -155,10 +236,14 @@ export function PortfolioOverview({ onSectionClick }: PortfolioOverviewProps) {
         <div>
           <p className="text-sm text-[#8a8f98] mb-1">Total Portfolio Value</p>
           <div className="flex items-baseline gap-3">
-            <span className="text-4xl sm:text-5xl font-bold text-[#f7f8f8] font-mono-num">
-              {formatUsd(totalValue)}
-            </span>
-            {changePercent !== 0 && (
+            {!portfolio && isLoading ? (
+              <span className="h-10 w-40 bg-white/5 rounded animate-pulse inline-block" />
+            ) : (
+              <span className="text-4xl sm:text-5xl font-bold text-[#f7f8f8] font-mono-num">
+                {formatUsd(totalValue)}
+              </span>
+            )}
+            {portfolio && changePercent !== 0 && (
               <div
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium font-mono-num ${
                   isPositive

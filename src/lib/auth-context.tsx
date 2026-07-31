@@ -125,6 +125,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         bindSessionUser(data.session.user);
         setSession(data.session);
         setUser(data.session.user);
+
+        // Apply Free Plan from register response so the dashboard never flashes "expired".
+        try {
+          const { useSubscriptionStore, FREE_TRIAL_TX } = await import(
+            '@/stores/subscription-store'
+          );
+          const trial = payload.freeTrial as
+            | { startDate?: string; endDate?: string; created?: boolean }
+            | null
+            | undefined;
+          if (trial?.endDate) {
+            useSubscriptionStore.getState().setSubscription({
+              planId: 'free',
+              planName: 'Free',
+              billingPeriod: 'monthly',
+              price: 0,
+              startDate: trial.startDate || new Date().toISOString(),
+              endDate: trial.endDate,
+              txHash: FREE_TRIAL_TX,
+              paymentToken: 'FREE',
+              paymentChain: 0,
+              status: 'active',
+              aiRequestsUsed: 0,
+              syncPausedAt: null,
+            });
+          }
+        } catch {
+          /* store may be unavailable */
+        }
       }
 
       return { error: null, needsEmailConfirmation: false as const };

@@ -24,7 +24,7 @@ export const useUpgradePromptStore = create<UpgradePromptState>((set, get) => ({
       lastShownAt: Date.now(),
     });
   },
-  closeUpgradePrompt: () => set({ open: false }),
+  closeUpgradePrompt: () => set({ open: false, reason: null }),
 }));
 
 export { DEFAULT_REASON as FREE_PLAN_EXPIRED_PROMPT };

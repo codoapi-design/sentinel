@@ -29,11 +29,13 @@ import {
   NetworksPageFilterStats,
   type NetworkFilterStatRow,
 } from '@/components/networks-filter-stats';
+import { useWalletReadModels } from '@/hooks/use-wallet-read-models';
 
 interface NetworksSectionProps {
   transactions: Transaction[];
   onNetworkClick: (networkId: string) => void;
   onFilteredDataChange?: (data: NetworkStats[]) => void;
+  precomputedStats?: NetworkStats[] | null;
 }
 
 export interface NetworkStats extends NetworkFilterStatRow {
@@ -65,6 +67,27 @@ export function NetworksTab({
 }: NetworksTabProps) {
   const [filteredData, setFilteredData] = useState<NetworkStats[]>([]);
   const [filtersReady, setFiltersReady] = useState(false);
+  const { networks: readModelNetworks } = useWalletReadModels();
+
+  const precomputedStats = useMemo((): NetworkStats[] | null => {
+    if (!readModelNetworks.length) return null;
+    return readModelNetworks.map(d => {
+      const networkInfo = networks.find(n => n.value === d.key);
+      return {
+        networkId: d.key,
+        networkLabel: networkInfo?.label || d.label || d.key,
+        totalRevenue: d.inflowUsd,
+        totalExpenses: d.outflowUsd,
+        totalVolume: d.volumeUsd,
+        txCount: d.txCount,
+        netFlow: d.inflowUsd - d.outflowUsd,
+        gasFees: 0,
+        lastTxDate: d.lastTxDate,
+        topToken: d.topToken,
+        color: networkColors[d.key] || '#8a8f98',
+      };
+    });
+  }, [readModelNetworks]);
 
   const handleFilteredDataChange = useCallback((data: NetworkStats[]) => {
     setFiltersReady(true);
@@ -84,6 +107,7 @@ export function NetworksTab({
       <NetworksPageFilterStats networks={statsNetworks} />
       <NetworksSection
         transactions={transactions}
+        precomputedStats={precomputedStats}
         onNetworkClick={onNetworkClick}
         onFilteredDataChange={handleFilteredDataChange}
       />
@@ -95,6 +119,7 @@ export function NetworksSection({
   transactions,
   onNetworkClick,
   onFilteredDataChange,
+  precomputedStats,
 }: NetworksSectionProps) {
   const showSpamAndDust = useUiPreferencesStore((s) => s.showSpamAndDust);
   const hasHiddenItems = useMemo(
@@ -107,6 +132,10 @@ export function NetworksSection({
   );
 
   const networkStats = useMemo((): NetworkStats[] => {
+    if (precomputedStats && precomputedStats.length > 0) {
+      return [...precomputedStats].sort((a, b) => b.txCount - a.txCount);
+    }
+
     const byNetwork = new Map<string, Transaction[]>();
     for (const tx of visibleTransactions) {
       const list = byNetwork.get(tx.network) || [];
@@ -144,7 +173,7 @@ export function NetworksSection({
 
     result.sort((a, b) => b.txCount - a.txCount);
     return result;
-  }, [visibleTransactions]);
+  }, [visibleTransactions, precomputedStats]);
 
   useEffect(() => {
     onFilteredDataChange?.(networkStats);

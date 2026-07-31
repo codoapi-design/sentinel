@@ -14,8 +14,8 @@ async function main() {
   if (!process.env.ALCHEMY_API_KEY) {
     console.warn('WARNING: ALCHEMY_API_KEY is not set — Base/Optimism will be skipped');
   }
-  if (!process.env.ETHERSCAN_API_KEY) {
-    console.warn('WARNING: ETHERSCAN_API_KEY is not set');
+  if (!process.env.ALCHEMY_API_KEY && !process.env.ALCHEMY) {
+    console.warn('WARNING: ALCHEMY_API_KEY is not set');
   }
 
   const supabase = createClient(url, key, {

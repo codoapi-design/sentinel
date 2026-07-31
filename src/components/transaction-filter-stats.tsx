@@ -251,7 +251,7 @@ export function TransactionFilterStats({
 
       <StatCard
         icon={<Activity className="h-3 w-3 shrink-0 text-[#f7931a]" />}
-        label="Top Activity"
+        label="Top Method"
       >
         <ModeValue mode={stats.topActivity} />
       </StatCard>
@@ -451,7 +451,7 @@ export function ClientTransactionFilterStats({
 
         <StatCard
           icon={<Activity className="h-3 w-3 shrink-0 text-[#f7931a]" />}
-          label="Top Activity"
+          label="Top Method"
         >
           <ModeValue mode={stats.topActivity} />
         </StatCard>
@@ -643,7 +643,7 @@ export function NetworkTransactionFilterStats({
 
         <StatCard
           icon={<Activity className="h-3 w-3 shrink-0 text-[#f7931a]" />}
-          label="Top Activity"
+          label="Top Method"
         >
           <ModeValue mode={stats.topActivity} />
         </StatCard>
@@ -691,7 +691,7 @@ export function NetworkTransactionFilterStats({
 /**
  * Main Transactions tab: 2×5 filter-bound stats (same set as the table).
  * Row 1: Inflow · Outflow · Net Flow · Volume · Transactions
- * Row 2: Active Period · Top Activity · Top Token · Top Network · Top Counterparty
+ * Row 2: Active Period · Top Method · Top Token · Top Network · Top Counterparty
  */
 export function TransactionsPageFilterStats({
   transactions,
@@ -854,7 +854,7 @@ export function TransactionsPageFilterStats({
 
         <StatCard
           icon={<Activity className="h-3 w-3 shrink-0 text-[#f7931a]" />}
-          label="Top Activity"
+          label="Top Method"
         >
           <ModeValue mode={stats.topActivity} />
         </StatCard>
@@ -1055,7 +1055,7 @@ export function TypeTransactionFilterStats({
 
         <StatCard
           icon={<Activity className="h-3 w-3 shrink-0 text-[#f7931a]" />}
-          label="Top Activity"
+          label="Top Method"
         >
           <ModeValue mode={stats.topActivity} />
         </StatCard>

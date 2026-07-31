@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { buildPeriodEnd, toWalletPlanId } from '@/lib/plans/entitlements';
+import { buildPeriodEnd } from '@/lib/plans/entitlements';
 import { ensureFreeTrialSubscription } from '@/lib/plans/ensure-free-trial';
 import { pricingTiers } from '@/lib/mock-data';
 import { processReferralPaidConversion } from '@/lib/referrals/core';
@@ -61,19 +61,14 @@ export async function POST(request: NextRequest) {
     } = await cookieClient.auth.getUser();
 
     if (user) {
-      const profilePlan = toWalletPlanId(planId);
-      try {
-        await cookieClient
-          .from('user_profiles')
-          .update({ plan: profilePlan, updated_at: new Date().toISOString() })
-          .eq('user_id', user.id);
-      } catch (err) {
-        console.warn('[Subscription] Profile plan update skipped:', err);
-      }
-
       // Persist period so server sync/AI gates can enforce expiry.
+      // Profile.plan is synced from the subscription row (authoritative).
       try {
         const admin = createServerClient();
+        const { toPricingTierId } = await import('@/lib/plans/entitlements');
+        const { syncProfilePlanFromSubscription } = await import('@/lib/plans/resolve-plan');
+        const pricingPlanId = toPricingTierId(planId);
+
         const { data: existing } = await admin
           .from('subscriptions')
           .select('id')
@@ -84,11 +79,10 @@ export async function POST(request: NextRequest) {
 
         const row = {
           user_id: user.id,
-          plan: planId,
+          plan: pricingPlanId,
           status: 'active',
           current_period_start: subscription.startDate,
           current_period_end: subscription.endDate,
-          cancel_at_period_end: false,
           updated_at: new Date().toISOString(),
         };
 
@@ -98,13 +92,15 @@ export async function POST(request: NextRequest) {
           await admin.from('subscriptions').insert(row);
         }
 
+        await syncProfilePlanFromSubscription(admin, user.id, pricingPlanId);
+
         // Referral rewards (paid plans only)
         if (!isFree && user) {
           try {
             const reward = await processReferralPaidConversion({
               supabase: admin,
               payerUserId: user.id,
-              planId,
+              planId: pricingPlanId,
               priceUsd: Number(subscription.price) || 0,
               billingPeriod: period,
             });
@@ -152,34 +148,25 @@ export async function GET(request: NextRequest) {
       console.warn('[Subscription GET] ensure free trial skipped:', err);
     }
 
-    const { data: sub } = await admin
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { resolveAuthoritativePlan } = await import('@/lib/plans/resolve-plan');
+    const resolved = await resolveAuthoritativePlan(admin, user.id, { syncProfile: true });
 
-    if (!sub) {
+    if (!resolved) {
       return NextResponse.json({
         subscription: null,
         entitled: false,
       });
     }
 
-    const entitled =
-      sub.status === 'active' &&
-      typeof sub.current_period_end === 'string' &&
-      new Date(sub.current_period_end).getTime() > Date.now();
-
     return NextResponse.json({
       subscription: {
-        planId: sub.plan,
-        status: entitled ? 'active' : 'expired',
-        startDate: sub.current_period_start,
-        endDate: sub.current_period_end,
+        planId: resolved.pricingPlanId,
+        planName: resolved.planName,
+        status: resolved.entitlement.entitled ? 'active' : 'expired',
+        startDate: resolved.startDate,
+        endDate: resolved.endDate,
       },
-      entitled,
+      entitled: resolved.entitlement.entitled,
     });
   } catch (error) {
     console.error('Subscription GET error:', error);

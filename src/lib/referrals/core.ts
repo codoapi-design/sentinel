@@ -263,7 +263,6 @@ export async function processReferralPaidConversion(args: {
         status: 'active',
         current_period_start: periodStart,
         current_period_end: periodEndIso,
-        cancel_at_period_end: false,
         updated_at: now.toISOString(),
       };
 

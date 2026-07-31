@@ -18,6 +18,7 @@
 import { createServerClient } from '@/lib/supabase/server';
 import { classifySyncedTransaction } from '@/lib/finance/classify';
 import { resolveTypeLabelAr } from '@/lib/finance/summary';
+import { isTrustedToken, isTrustedTransaction } from '@/lib/finance/token-trust';
 import type {
   CacheDataType,
   CacheEntry,
@@ -192,6 +193,19 @@ export class BlockchainCache {
       const supabase = createServerClient();
 
       const rows = tokens
+        .filter(t =>
+          isTrustedToken({
+            symbol: t.symbol,
+            name: t.name,
+            address: t.address,
+            chainId: t.chainId,
+            network: t.chain,
+            isSpam: t.isSpam,
+            isVerified: t.isVerified,
+            priceUsd: t.priceUsd,
+            valueUsd: t.valueUsd,
+          }),
+        )
         .filter(t => t.valueUsd >= 0.01) // Skip dust
         .map(t => ({
           wallet_id: walletId,
@@ -207,13 +221,21 @@ export class BlockchainCache {
           price_usd: t.priceUsd,
           value_usd: t.valueUsd,
           change_24h: t.change24h,
-          is_spam: t.isSpam,
-          is_verified: t.isVerified,
+          is_spam: false,
+          is_verified: true,
           source: t.provider || provider,
           logo_url: t.logoUrl,
         }));
 
-      if (rows.length === 0) return 0;
+      if (rows.length === 0) {
+        // Still prune legacy spam / unverified rows for this wallet.
+        await supabase
+          .from('asset_positions')
+          .delete()
+          .eq('wallet_id', walletId)
+          .or('is_spam.eq.true,is_verified.eq.false');
+        return 0;
+      }
 
       // Batch upsert (Supabase handles up to ~100 rows efficiently)
       const batchSize = 50;
@@ -231,6 +253,13 @@ export class BlockchainCache {
           console.warn('[Cache] Token upsert error:', error.message);
         }
       }
+
+      // Remove spam / unverified leftovers from earlier syncs.
+      await supabase
+        .from('asset_positions')
+        .delete()
+        .eq('wallet_id', walletId)
+        .or('is_spam.eq.true,is_verified.eq.false');
     } catch (error) {
       console.warn('[Cache] Token position error:', error);
     }
@@ -300,9 +329,68 @@ export class BlockchainCache {
     try {
       const supabase = createServerClient();
 
-      const rows = transactions.map(tx => {
+      const rows = [];
+      for (const tx of transactions) {
         const classified = classifySyncedTransaction(tx);
-        return {
+        const topTransfer = classified.tokenTransfers?.[0];
+        const trusted = isTrustedTransaction({
+          token_symbol: topTransfer?.tokenSymbol || null,
+          token_name: topTransfer?.tokenName || null,
+          token_address: topTransfer?.tokenAddress || null,
+          price_usd: classified.priceUsd ?? topTransfer?.priceUsd ?? null,
+          value_usd: classified.valueUsd ?? topTransfer?.valueUsd ?? null,
+          value_eth: classified.valueEth,
+          chainId: classified.chainId,
+          network: classified.chain,
+        });
+        if (!trusted) continue;
+
+        const transfers = classified.tokenTransfers || [];
+        let bestTransfer = transfers[0];
+        let bestUsd = -1;
+        for (const t of transfers) {
+          const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : 0;
+          if (u > bestUsd) {
+            bestTransfer = t;
+            bestUsd = u;
+          }
+        }
+
+        let tokenSymbol: string | null = null;
+        for (const t of transfers) {
+          const s = (t.tokenSymbol || '').trim();
+          if (s && s.toUpperCase() !== 'UNKNOWN') {
+            tokenSymbol = s;
+            break;
+          }
+        }
+        if (!tokenSymbol) tokenSymbol = transfers[0]?.tokenSymbol || null;
+
+        let tokenName: string | null = null;
+        for (const t of transfers) {
+          const n = (t.tokenName || '').trim();
+          if (n && n.toUpperCase() !== 'UNKNOWN') {
+            tokenName = n;
+            break;
+          }
+        }
+        if (!tokenName) tokenName = transfers[0]?.tokenName || null;
+
+        const valueUsdTop =
+          classified.valueUsd ??
+          transfers.reduce<number | null>((best, t) => {
+            const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : null;
+            if (u == null) return best;
+            return best == null || u > best ? u : best;
+          }, null) ??
+          null;
+
+        const priceUsdTop =
+          classified.priceUsd ??
+          transfers.find(t => typeof t.priceUsd === 'number' && t.priceUsd > 0)?.priceUsd ??
+          null;
+
+        rows.push({
           wallet_id: walletId,
           tx_hash: classified.hash,
           block_number: classified.blockNumber,
@@ -312,7 +400,7 @@ export class BlockchainCache {
           to_addr: classified.to,
           value_wei: classified.value,
           value_eth: classified.valueEth,
-          gas_used: 0,
+          gas_used: classified.gasUsed || 0,
           gas_price_wei: classified.gasFee,
           gas_fee_eth: classified.gasFeeEth,
           status: classified.status === 'confirmed',
@@ -325,85 +413,28 @@ export class BlockchainCache {
           protocol_ar: classified.protocolAr,
           network: classified.chain,
           network_ar: classified.chain,
-          token_symbol: (() => {
-            const transfers = classified.tokenTransfers || [];
-            for (const t of transfers) {
-              const s = (t.tokenSymbol || '').trim();
-              if (s && s.toUpperCase() !== 'UNKNOWN') return s;
-            }
-            return transfers[0]?.tokenSymbol || null;
-          })(),
-          token_name: (() => {
-            const transfers = classified.tokenTransfers || [];
-            for (const t of transfers) {
-              const n = (t.tokenName || '').trim();
-              if (n && n.toUpperCase() !== 'UNKNOWN') return n;
-            }
-            return transfers[0]?.tokenName || null;
-          })(),
-          token_address: (() => {
-            const transfers = classified.tokenTransfers || [];
-            // Prefer address of highest priced leg, else first
-            let best = transfers[0];
-            let bestUsd = -1;
-            for (const t of transfers) {
-              const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : 0;
-              if (u > bestUsd) {
-                best = t;
-                bestUsd = u;
-              }
-            }
-            return best?.tokenAddress || null;
-          })(),
-          token_value: (() => {
-            const transfers = classified.tokenTransfers || [];
-            let best = transfers[0];
-            let bestUsd = -1;
-            for (const t of transfers) {
-              const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : 0;
-              if (u > bestUsd) {
-                best = t;
-                bestUsd = u;
-              }
-            }
-            return best?.valueFormatted || 0;
-          })(),
-          token_decimals: classified.tokenTransfers[0]?.decimals || 18,
-          // Prefer null over 0 so readers can distinguish unpriced from dust
-          value_usd: (() => {
-            const top =
-              classified.valueUsd ??
-              classified.tokenTransfers?.reduce<number | null>((best, t) => {
-                const u = typeof t.valueUsd === 'number' && t.valueUsd > 0 ? t.valueUsd : null;
-                if (u == null) return best;
-                return best == null || u > best ? u : best;
-              }, null) ??
-              null;
-            return typeof top === 'number' && top > 0 ? top : null;
-          })(),
-          price_usd: (() => {
-            const p =
-              classified.priceUsd ??
-              classified.tokenTransfers?.find(t => typeof t.priceUsd === 'number' && t.priceUsd > 0)
-                ?.priceUsd ??
-              null;
-            return typeof p === 'number' && p > 0 ? p : null;
-          })(),
+          token_symbol: tokenSymbol,
+          token_name: tokenName,
+          token_address: bestTransfer?.tokenAddress || null,
+          token_value: bestTransfer?.valueFormatted || 0,
+          token_decimals: transfers[0]?.decimals || 18,
+          value_usd: typeof valueUsdTop === 'number' && valueUsdTop > 0 ? valueUsdTop : null,
+          price_usd: typeof priceUsdTop === 'number' && priceUsdTop > 0 ? priceUsdTop : null,
           counterparty: classified.direction === 'in' ? classified.from : classified.to,
           counterparty_label: classified.protocol || classified.protocolAr || null,
           raw_data: { tokenTransfers: classified.tokenTransfers, provider } as unknown as Json,
-        };
-      });
+        });
+      }
+
+      if (rows.length === 0) return 0;
 
       const batchSize = 50;
       for (let i = 0; i < rows.length; i += batchSize) {
         const batch = rows.slice(i, i + batchSize);
-        const { error } = await supabase
-          .from('transactions')
-          .upsert(batch, {
-            onConflict: 'tx_hash,wallet_id,network',
-            ignoreDuplicates: true,
-          });
+        const { error } = await supabase.from('transactions').upsert(batch, {
+          onConflict: 'tx_hash,wallet_id,network',
+          ignoreDuplicates: true,
+        });
 
         if (!error) upserted += batch.length;
         else console.warn('[Cache] Transaction upsert error:', error.message);
@@ -412,6 +443,53 @@ export class BlockchainCache {
       console.warn('[Cache] Transaction cache error:', error);
     }
     return upserted;
+  }
+
+  /**
+   * Remove legacy unverified / unpriced ERC-20 history so UI + Inflow match.
+   * Native transfers are kept; spam-symbol and unpriced token rows are deleted.
+   */
+  async pruneUntrustedTransactions(walletId: string): Promise<number> {
+    let deleted = 0;
+    try {
+      const supabase = createServerClient();
+      const badIds: string[] = [];
+      const page = 500;
+      for (let from = 0; ; from += page) {
+        const { data } = await supabase
+          .from('transactions')
+          .select('id, token_symbol, token_name, token_address, price_usd, value_usd, value_eth, network')
+          .eq('wallet_id', walletId)
+          .range(from, from + page - 1);
+        if (!data?.length) break;
+
+        for (const row of data) {
+          if (
+            !isTrustedTransaction({
+              token_symbol: row.token_symbol,
+              token_name: row.token_name,
+              token_address: row.token_address,
+              price_usd: row.price_usd,
+              value_usd: row.value_usd,
+              value_eth: row.value_eth,
+              network: row.network,
+            })
+          ) {
+            badIds.push(row.id);
+          }
+        }
+        if (data.length < page) break;
+      }
+
+      for (let i = 0; i < badIds.length; i += 100) {
+        const slice = badIds.slice(i, i + 100);
+        const { error } = await supabase.from('transactions').delete().in('id', slice);
+        if (!error) deleted += slice.length;
+      }
+    } catch (err) {
+      console.warn('[Cache] pruneUntrustedTransactions failed:', err);
+    }
+    return deleted;
   }
 
   // ────────────────────────────────────────────────────────────

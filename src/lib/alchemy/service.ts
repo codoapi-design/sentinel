@@ -9,7 +9,7 @@
  */
 
 import { Alchemy, Network, AssetTransfersCategory, AssetTransfersResult, SortingOrder, TransactionReceipt, TransactionResponse } from 'alchemy-sdk';
-import { classifyTransaction, type ClassifiedTransaction, type TokenTransfer } from './classifier';
+import { classifyTransaction, getMethodInfo, type ClassifiedTransaction, type TokenTransfer } from './classifier';
 import { getApiKey } from '@/lib/env';
 import type {
   TokenBalance as ChainTokenBalance,
@@ -19,9 +19,17 @@ import type {
   TransactionDirection,
 } from '@/lib/blockchain/types';
 import { classifySyncedTransaction } from '@/lib/finance/classify';
+import {
+  ALCHEMY_CHAIN_ID_TO_KEY,
+  ALCHEMY_NETWORK_CATALOG,
+  ALCHEMY_RPC_HOST_BY_KEY,
+  clearAlchemyNetworkDiscoveryCache,
+  isAlchemyNetworkTemporarilyForbidden,
+  markAlchemyNetworkForbidden,
+} from '@/lib/alchemy/networks';
 
 // ============================================================
-// Network Configuration
+// Network Configuration (built from Alchemy catalog + SDK enums)
 // ============================================================
 
 interface NetworkConfig {
@@ -32,91 +40,56 @@ interface NetworkConfig {
   chainId: number;
 }
 
-export const NETWORKS: Record<string, NetworkConfig> = {
-  ethereum: {
-    alchemyNetwork: Network.ETH_MAINNET,
-    name: 'Ethereum',
-    nameAr: 'Ethereum',
-    nativeCurrency: 'ETH',
-    chainId: 1,
-  },
-  base: {
-    alchemyNetwork: Network.BASE_MAINNET,
-    name: 'Base',
-    nameAr: 'Base',
-    nativeCurrency: 'ETH',
-    chainId: 8453,
-  },
-  arbitrum: {
-    alchemyNetwork: Network.ARB_MAINNET,
-    name: 'Arbitrum',
-    nameAr: 'Arbitrum',
-    nativeCurrency: 'ETH',
-    chainId: 42161,
-  },
-  optimism: {
-    alchemyNetwork: Network.OPT_MAINNET,
-    name: 'OP Mainnet',
-    nameAr: 'Optimism',
-    nativeCurrency: 'ETH',
-    chainId: 10,
-  },
-  polygon: {
-    alchemyNetwork: Network.MATIC_MAINNET,
-    name: 'Polygon',
-    nameAr: 'Polygon',
-    nativeCurrency: 'MATIC',
-    chainId: 137,
-  },
-  bsc: {
-    alchemyNetwork: Network.BNB_MAINNET,
-    name: 'BNB Smart Chain',
-    nameAr: 'BNB Chain',
-    nativeCurrency: 'BNB',
-    chainId: 56,
-  },
-  linea: {
-    alchemyNetwork: Network.LINEA_MAINNET,
-    name: 'Linea',
-    nameAr: 'Linea',
-    nativeCurrency: 'ETH',
-    chainId: 59144,
-  },
-  hyperliquid: {
-    alchemyNetwork: Network.HYPERLIQUID_MAINNET,
-    name: 'HyperEVM',
-    nameAr: 'HyperEVM',
-    nativeCurrency: 'HYPE',
-    chainId: 999,
-  },
-  monad: {
-    alchemyNetwork: null,
-    name: 'Monad',
-    nameAr: 'Monad',
-    nativeCurrency: 'MON',
-    chainId: 143,
-  },
-  arc: {
-    alchemyNetwork: null,
-    name: 'Arc Testnet',
-    nameAr: 'Arc',
-    nativeCurrency: 'USDC',
-    chainId: 5042002,
-  },
+const SDK_NETWORK_BY_KEY: Partial<Record<string, Network>> = {
+  ethereum: Network.ETH_MAINNET,
+  base: Network.BASE_MAINNET,
+  arbitrum: Network.ARB_MAINNET,
+  optimism: Network.OPT_MAINNET,
+  polygon: Network.MATIC_MAINNET,
+  bsc: Network.BNB_MAINNET,
+  avalanche: Network.AVAX_MAINNET,
+  linea: Network.LINEA_MAINNET,
+  scroll: Network.SCROLL_MAINNET,
+  zksync: Network.ZKSYNC_MAINNET,
+  mantle: Network.MANTLE_MAINNET,
+  blast: Network.BLAST_MAINNET,
+  gnosis: Network.GNOSIS_MAINNET,
+  celo: Network.CELO_MAINNET,
+  metis: Network.METIS_MAINNET,
+  worldchain: Network.WORLDCHAIN_MAINNET,
+  unichain: Network.UNICHAIN_MAINNET,
+  ink: Network.INK_MAINNET,
+  soneium: Network.SONEIUM_MAINNET,
+  abstract: Network.ABSTRACT_MAINNET,
+  sonic: Network.SONIC_MAINNET,
+  sei: Network.SEI_MAINNET,
+  bera: Network.BERACHAIN_MAINNET,
+  opbnb: Network.OPBNB_MAINNET,
+  apechain: Network.APECHAIN_MAINNET,
+  ronin: Network.RONIN_MAINNET,
+  hyperliquid: Network.HYPERLIQUID_MAINNET,
+  rootstock: Network.ROOTSTOCK_MAINNET,
+  shape: Network.SHAPE_MAINNET,
+  zetachain: Network.ZETACHAIN_MAINNET,
+  astar: Network.ASTAR_MAINNET,
+  polygonzkevm: Network.POLYGONZKEVM_MAINNET,
+  solana: Network.SOLANA_MAINNET,
 };
 
-const CHAIN_ID_TO_NETWORK_KEY: Record<number, string> = {
-  1: 'ethereum',
-  8453: 'base',
-  42161: 'arbitrum',
-  10: 'optimism',
-  137: 'polygon',
-  56: 'bsc',
-  59144: 'linea',
-  999: 'hyperliquid',
-  143: 'monad',
-  5042002: 'arc',
-};
+export const NETWORKS: Record<string, NetworkConfig> = Object.fromEntries(
+  ALCHEMY_NETWORK_CATALOG.filter(n => n.family === 'evm').map(n => [
+    n.key,
+    {
+      alchemyNetwork: SDK_NETWORK_BY_KEY[n.key] ?? null,
+      name: n.name,
+      nameAr: n.name,
+      nativeCurrency: n.nativeCurrency,
+      chainId: n.chainId,
+    },
+  ]),
+);
+
+const CHAIN_ID_TO_NETWORK_KEY: Record<number, string> = { ...ALCHEMY_CHAIN_ID_TO_KEY };
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -148,6 +121,7 @@ function getAlchemyClient(networkKey: string): Alchemy {
   // Drop cached clients if the API key changed (e.g. after .env.local update + HMR).
   if (alchemyClientsKey !== apiKey) {
     alchemyClients.clear();
+    clearAlchemyNetworkDiscoveryCache();
     alchemyClientsKey = apiKey;
   }
 
@@ -173,28 +147,14 @@ function getAlchemyClient(networkKey: string): Alchemy {
 }
 
 /** Alchemy JSON-RPC host per network key (avoids flaky alchemy-sdk SERVER_ERROR under concurrency). */
-const ALCHEMY_RPC_HOST: Record<string, string> = {
-  ethereum: 'eth-mainnet.g.alchemy.com',
-  base: 'base-mainnet.g.alchemy.com',
-  arbitrum: 'arb-mainnet.g.alchemy.com',
-  optimism: 'opt-mainnet.g.alchemy.com',
-  polygon: 'polygon-mainnet.g.alchemy.com',
-  bsc: 'bnb-mainnet.g.alchemy.com',
-  linea: 'linea-mainnet.g.alchemy.com',
-  hyperliquid: 'hyperliquid-mainnet.g.alchemy.com',
-  monad: 'monad-mainnet.g.alchemy.com',
-  arc: 'arc-testnet.g.alchemy.com',
-};
-
-/** Chains whose Alchemy app returned 403 (network not enabled on the API key). */
-const alchemyForbiddenNetworks = new Set<string>();
+const ALCHEMY_RPC_HOST: Record<string, string> = { ...ALCHEMY_RPC_HOST_BY_KEY };
 
 export function isAlchemyNetworkForbidden(networkKeyOrChainId: string | number): boolean {
   const key =
     typeof networkKeyOrChainId === 'number'
       ? chainIdToAlchemyNetworkKey(networkKeyOrChainId)
       : networkKeyOrChainId;
-  return key ? alchemyForbiddenNetworks.has(key) : false;
+  return key ? isAlchemyNetworkTemporarilyForbidden(key) : false;
 }
 
 export class AlchemyNetworkForbiddenError extends Error {
@@ -214,7 +174,7 @@ async function alchemyRpc<T = unknown>(
   params: unknown[],
   retries = 2,
 ): Promise<T> {
-  if (alchemyForbiddenNetworks.has(networkKey)) {
+  if (isAlchemyNetworkTemporarilyForbidden(networkKey)) {
     throw new AlchemyNetworkForbiddenError(networkKey);
   }
 
@@ -234,7 +194,7 @@ async function alchemyRpc<T = unknown>(
         next: { revalidate: 0 },
       });
       if (response.status === 403) {
-        alchemyForbiddenNetworks.add(networkKey);
+        markAlchemyNetworkForbidden(networkKey);
         throw new AlchemyNetworkForbiddenError(networkKey);
       }
       if (!response.ok) {
@@ -698,7 +658,7 @@ export async function getNativeBalanceWei(
 }
 
 /**
- * Unpriced native + ERC-20 holdings for one chain (for ProviderManager + CoinGecko).
+ * Unpriced native + ERC-20 holdings for one chain (Alchemy Token API).
  * Uses raw JSON-RPC (more reliable than alchemy-sdk under parallel sync).
  */
 export async function fetchAlchemyChainBalances(
@@ -754,7 +714,7 @@ export async function fetchAlchemyChainBalances(
       .filter(b => b._raw > BigInt(0))
       // Cap metadata lookups so sync stays within route timeout (spam-heavy chains like BSC).
       .sort((a, b) => (a._raw > b._raw ? -1 : a._raw < b._raw ? 1 : 0))
-      .slice(0, 50);
+      .slice(0, 150);
 
     // Metadata in small batches
     for (let i = 0; i < nonZero.length; i += 5) {
@@ -1028,5 +988,124 @@ export async function fetchAlchemyTransfersAsWalletTxs(
   }
 
   transactions.sort((a, b) => b.timestamp - a.timestamp);
-  return transactions;
+  return enrichWalletTxMethodsAndGas(networkKey, walletAddress, transactions);
+}
+
+/**
+ * Attach methodId/methodName + gas fees from Alchemy receipts.
+ * Gas is attributed only when the wallet is the transaction sender (paid the fee).
+ */
+async function enrichWalletTxMethodsAndGas(
+  networkKey: string,
+  walletAddress: string,
+  transactions: WalletTransaction[],
+): Promise<WalletTransaction[]> {
+  if (transactions.length === 0) return transactions;
+
+  const userAddr = walletAddress.toLowerCase();
+  const needMethod = (tx: WalletTransaction) => {
+    const id = (tx.methodId || '').toLowerCase();
+    return !id || id === '0x';
+  };
+  const needGas = (tx: WalletTransaction) =>
+    !(typeof tx.gasFeeEth === 'number' && tx.gasFeeEth > 0);
+
+  const hashes = [
+    ...new Set(
+      transactions
+        .filter(tx => tx.hash && (needMethod(tx) || needGas(tx)))
+        .map(tx => tx.hash),
+    ),
+  ];
+
+  type EnrichMeta = {
+    methodId: string | null;
+    methodName: string | null;
+    gasFeeWei: string;
+    gasFeeEth: number;
+    gasUsed: number;
+    paidByWallet: boolean;
+  };
+  const byHash = new Map<string, EnrichMeta>();
+  const concurrency = 8;
+
+  for (let i = 0; i < hashes.length; i += concurrency) {
+    const batch = hashes.slice(i, i + concurrency);
+    await Promise.all(
+      batch.map(async hash => {
+        try {
+          const [rawTx, receipt] = await Promise.all([
+            alchemyRpc<{ input?: string; data?: string; from?: string } | null>(
+              networkKey,
+              'eth_getTransactionByHash',
+              [hash],
+              1,
+            ),
+            alchemyRpc<{
+              gasUsed?: string;
+              effectiveGasPrice?: string;
+              gasPrice?: string;
+              from?: string;
+            } | null>(networkKey, 'eth_getTransactionReceipt', [hash], 1),
+          ]);
+
+          const input = (rawTx?.input || rawTx?.data || '').toLowerCase();
+          const methodId = input.length >= 10 ? input.slice(0, 10) : null;
+          const info = methodId ? getMethodInfo(methodId) : null;
+
+          let gasFeeWei = '0';
+          let gasFeeEth = 0;
+          let gasUsed = 0;
+          const receiptFrom = (receipt?.from || rawTx?.from || '').toLowerCase();
+          const paidByWallet = Boolean(receiptFrom && receiptFrom === userAddr);
+
+          if (paidByWallet && receipt?.gasUsed) {
+            try {
+              const used = BigInt(receipt.gasUsed);
+              const price = BigInt(
+                receipt.effectiveGasPrice || receipt.gasPrice || '0x0',
+              );
+              const fee = used * price;
+              gasUsed = Number(used);
+              gasFeeWei = fee.toString();
+              gasFeeEth = Number(fee) / 1e18;
+            } catch {
+              // leave gas at 0
+            }
+          }
+
+          byHash.set(hash, {
+            methodId,
+            methodName: info?.name || null,
+            gasFeeWei,
+            gasFeeEth,
+            gasUsed,
+            paidByWallet,
+          });
+        } catch {
+          // Leave method/gas null — classifySyncedTransaction keeps direction fallback
+        }
+      }),
+    );
+  }
+
+  return transactions.map(tx => {
+    const meta = byHash.get(tx.hash);
+    const existingId = (tx.methodId || '').toLowerCase();
+    const hasMethod = existingId && existingId !== '0x';
+    const hasGas = typeof tx.gasFeeEth === 'number' && tx.gasFeeEth > 0;
+
+    if (!meta) {
+      return classifySyncedTransaction(tx);
+    }
+
+    return classifySyncedTransaction({
+      ...tx,
+      methodId: hasMethod ? tx.methodId : meta.methodId || tx.methodId,
+      methodName: hasMethod ? tx.methodName : meta.methodName || tx.methodName,
+      gasFee: hasGas ? tx.gasFee : meta.paidByWallet ? meta.gasFeeWei : tx.gasFee,
+      gasFeeEth: hasGas ? tx.gasFeeEth : meta.paidByWallet ? meta.gasFeeEth : 0,
+      gasUsed: hasGas ? tx.gasUsed : meta.paidByWallet ? meta.gasUsed : 0,
+    });
+  });
 }

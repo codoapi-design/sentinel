@@ -5,8 +5,8 @@
  * caching, retries and cost accounting all live behind this façade.
  *
  * ── Failover order ──────────────────────────────────────────────────────────
- *   spot        Alchemy → CoinGecko → DefiLlama
- *   historical  DefiLlama → CoinGecko            (Alchemy has no batched
+ *   spot        Alchemy → CoinGecko
+ *   historical  CoinGecko                        (Alchemy has no batched
  *                                                 historical endpoint)
  * Unconfigured providers are skipped, not attempted. Each provider only sees
  * the tokens still unresolved by the previous one, so a fallback never re-pays
@@ -65,8 +65,9 @@ import {
   type ProviderUsageSnapshot,
 } from './usage';
 
-const SPOT_CHAIN: ProviderId[] = ['alchemy', 'coingecko', 'defillama'];
-const HISTORICAL_CHAIN: ProviderId[] = ['defillama', 'coingecko'];
+/** Spot: Alchemy first, CoinGecko fills gaps. Historical: CoinGecko only. */
+const SPOT_CHAIN: ProviderId[] = ['alchemy', 'coingecko'];
+const HISTORICAL_CHAIN: ProviderId[] = ['coingecko'];
 
 type Settlement = { quote: PriceQuote } | { miss: PriceMiss };
 

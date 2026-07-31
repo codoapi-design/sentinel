@@ -524,7 +524,7 @@ export function InvestmentReturnAssetPage({
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-[#8a8f98] border-b border-white/5">
                       <th className="px-4 py-3 font-medium">Date</th>
-                      <th className="px-4 py-3 font-medium">Activity</th>
+                      <th className="px-4 py-3 font-medium">Method</th>
                       <th className="px-4 py-3 font-medium">Classification</th>
                       <th className="px-4 py-3 font-medium text-right">Qty</th>
                       <th className="px-4 py-3 font-medium text-right">Value then</th>

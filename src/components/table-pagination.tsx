@@ -30,22 +30,8 @@ interface TablePaginationProps {
   className?: string;
 }
 
-function getVisiblePages(currentPage: number, totalPages: number): number[] {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  }
-  const pages: number[] = [1];
-  if (currentPage > 3) pages.push(-1);
-  const start = Math.max(2, currentPage - 1);
-  const end = Math.min(totalPages - 1, currentPage + 1);
-  for (let i = start; i <= end; i++) pages.push(i);
-  if (currentPage < totalPages - 2) pages.push(-2);
-  pages.push(totalPages);
-  return pages;
-}
-
 /**
- * Shared pagination bar matching the Transactions table UX.
+ * Shared pagination bar: rows-per-page + range label + « Page X of Y » between arrows.
  */
 export function TablePagination({
   page,
@@ -64,7 +50,6 @@ export function TablePagination({
 
   const from = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalItems);
-  const visible = getVisiblePages(page, totalPages);
 
   return (
     <div
@@ -107,7 +92,7 @@ export function TablePagination({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
@@ -118,28 +103,9 @@ export function TablePagination({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          {visible.map((p, idx) =>
-            p < 0 ? (
-              <span key={`e-${idx}`} className="px-1 text-xs text-[#8a8f98]">
-                …
-              </span>
-            ) : (
-              <Button
-                key={p}
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  'h-7 w-7 text-xs',
-                  page === p
-                    ? 'bg-[#0052ff] text-white hover:bg-[#0052ff]'
-                    : 'text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-[#191a1b]',
-                )}
-                onClick={() => onPageChange(p)}
-              >
-                {p}
-              </Button>
-            ),
-          )}
+          <span className="text-xs text-[#d0d6e0] font-medium tabular-nums min-w-[5.5rem] text-center">
+            Page {page} of {totalPages}
+          </span>
           <Button
             variant="ghost"
             size="icon"

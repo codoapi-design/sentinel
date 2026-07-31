@@ -1,30 +1,17 @@
 /**
- * Sync Engine for Radareum Hybrid Blockchain Architecture
+ * Sync Engine for Radareum — Alchemy-only wallet ingest
  *
- * Manages the full data ingestion lifecycle:
+ *   Phase 1: Balances (Alchemy Token API) → price (Alchemy spot / CoinGecko gaps) → DB
+ *   Phase 2: Historical / incremental transfers (Alchemy Transfers API) → CoinGecko historical USD → DB
+ *   Phase 3: Non-EVM families via Alchemy RPC (Solana / Tron / Bitcoin) by plan
+ *   Phase 4: Real-time (Alchemy Notify webhooks) → incremental upsert
  *
- *   Phase 1: Initial Sync
- *   Phase 3: Historical Transactions (Etherscan V2 primary, Covalent fallback)
- *     - Zerion: Current balances + DeFi positions
- *     - DeBank: Complex DeFi protocol details
- *     - Results stored in Supabase cache
- *
- *   Phase 2: Incremental Sync (periodic)
- *     - Alchemy: New transactions since last block
- *     - Zerion: Updated balances & PnL
- *     - DeBank: Updated DeFi positions
- *
- *   Phase 3: Real-time Updates (webhook-driven)
- *     - Alchemy Notify: Address activity webhooks
- *     - Triggers immediate cache invalidation + re-fetch
- *
- *   Phase 4: Reconciliation
- *     - Cross-validate data from multiple providers
- *     - Flag discrepancies for admin review
+ * UI is DB-first: balances are written first so the portfolio can render while
+ * history continues syncing.
  */
 
 import { createServerClient } from '@/lib/supabase/server';
-import { getProviderManager, SYNC_CHAIN_IDS } from './provider-manager';
+import { getProviderManager, resolveSyncChainIds } from './provider-manager';
 import { getBlockchainCache } from './cache';
 import type {
   FullSyncResult,
@@ -35,9 +22,11 @@ import { fetchSolanaBalances, fetchSolanaTransactions } from '@/lib/solana/servi
 import { fetchTronBalances, fetchTronTransactions } from '@/lib/tron/service';
 import { fetchBitcoinBalances, fetchBitcoinTransactions } from '@/lib/bitcoin/service';
 import { primaryDisplayAddress } from '@/lib/wallet/address-validation';
-import { planAllowsAddressFamily, normalizePlanId } from '@/lib/plans/address-families';
+import { planAllowsAddressFamily } from '@/lib/plans/address-families';
 import { upsertPortfolioSnapshot } from '@/lib/finance/portfolio-snapshots';
 import { syncInvestmentReturnAfterBalances } from '@/lib/finance/investment-return';
+import { rebuildWalletReadModels } from '@/lib/finance/wallet-read-models';
+import { backfillWalletGasFees } from '@/lib/alchemy/backfill-gas';
 
 type WalletRow = {
   id: string;
@@ -82,12 +71,8 @@ async function resolveWalletPlan(
   supabase: ReturnType<typeof createServerClient>,
   userId: string,
 ): Promise<string> {
-  const { data } = await supabase
-    .from('user_profiles')
-    .select('plan')
-    .eq('user_id', userId)
-    .maybeSingle();
-  return normalizePlanId(data?.plan || 'starter');
+  const { resolveWalletPlanId } = await import('@/lib/plans/resolve-plan');
+  return resolveWalletPlanId(supabase, userId);
 }
 
 // ────────────────────────────────────────────────────────────
@@ -104,8 +89,9 @@ export class SyncEngine {
   }
 
   /**
-   * Full initial sync for a new wallet
-   * Fetches all data types from optimal providers and stores in Supabase
+   * Full initial sync for a new wallet.
+   * If the wallet already has a sync cursor (e.g. cloned from another user),
+   * delegate to incrementalSync so we never re-pull full history from Alchemy.
    */
   async fullSync(walletId: string): Promise<FullSyncResult> {
     const startTime = Date.now();
@@ -133,6 +119,17 @@ export class SyncEngine {
         };
       }
 
+      // Cloned / already-synced wallets: never run full historical Alchemy again.
+      // Require a block cursor — last_synced_at alone is not enough (startBlock
+      // would fall back to 0 and re-pull full history).
+      if (typeof wallet.last_synced_block === 'number' && wallet.last_synced_block > 0) {
+        console.log(
+          `[SyncEngine] fullSync → incrementalSync for ${walletId} ` +
+            `(last_synced_block=${wallet.last_synced_block})`,
+        );
+        return this.incrementalSync(walletId);
+      }
+
       const evmAddress = wallet.address || null;
       const displayAddress = primaryDisplayAddress(wallet);
       const userPlan = await resolveWalletPlan(supabase, wallet.user_id);
@@ -145,17 +142,28 @@ export class SyncEngine {
 
       try {
         if (evmAddress && planAllowsAddressFamily(userPlan, 'evm')) {
+          // Fast path: balances first so the UI can render portfolio from DB.
           const balancesResult = await this.syncCurrentBalances(walletId, wallet.user_id, evmAddress);
           results.push(balancesResult);
 
-          const defiResult = await this.syncDeFiPositions(walletId, wallet.user_id, evmAddress);
-          results.push(defiResult);
+          await supabase
+            .from('wallets')
+            .update({
+              last_synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', walletId);
 
           const txResult = await this.syncHistoricalTransactions(walletId, wallet.user_id, evmAddress);
           results.push(txResult);
-
-          const pnlResult = await this.syncPnL(walletId, evmAddress);
-          results.push(pnlResult);
+          try {
+            const pruned = await this.cache.pruneUntrustedTransactions(walletId);
+            if (pruned > 0) {
+              console.log(`[SyncEngine] Pruned ${pruned} unverified/spam txs for ${walletId}`);
+            }
+          } catch (pruneErr) {
+            console.warn('[SyncEngine] prune unverified txs skipped:', pruneErr);
+          }
         }
 
         const nonEvm = await this.syncNonEvmFamilies(
@@ -170,12 +178,26 @@ export class SyncEngine {
 
         await supabase.from('sync_status').upsert({
           wallet_id: walletId,
-          provider: 'hybrid',
+          provider: 'alchemy',
           data_type: 'full_sync',
           last_synced_at: new Date().toISOString(),
           status: 'completed',
           records_synced: results.reduce((sum, r) => sum + r.recordsSynced, 0),
         }, { onConflict: 'wallet_id,provider,data_type' });
+
+        try {
+          const gasBf = await backfillWalletGasFees(walletId);
+          console.log('[SyncEngine] Gas fees backfill (full):', gasBf);
+        } catch (gasErr) {
+          console.warn('[SyncEngine] Gas backfill skipped:', gasErr);
+        }
+
+        try {
+          const rm = await rebuildWalletReadModels(walletId);
+          console.log('[SyncEngine] Read models rebuilt (full):', rm);
+        } catch (rmErr) {
+          console.warn('[SyncEngine] Read models rebuild skipped:', rmErr);
+        }
 
       } catch (syncError) {
         errors.push(`Sync error: ${syncError}`);
@@ -275,9 +297,6 @@ export class SyncEngine {
           const balancesResult = await this.syncCurrentBalances(walletId, wallet.user_id, evmAddress);
           results.push(balancesResult);
 
-          const defiResult = await this.syncDeFiPositions(walletId, wallet.user_id, evmAddress);
-          results.push(defiResult);
-
           const txResult = await this.syncNewTransactions(
             walletId,
             wallet.user_id,
@@ -285,9 +304,6 @@ export class SyncEngine {
             wallet.last_synced_block,
           );
           results.push(txResult);
-
-          const pnlResult = await this.syncPnL(walletId, evmAddress);
-          results.push(pnlResult);
         }
 
         const nonEvm = await this.syncNonEvmFamilies(
@@ -299,6 +315,20 @@ export class SyncEngine {
         results.push(...nonEvm);
 
         await this.recordDailyPortfolioSnapshot(walletId, wallet.user_id);
+
+        try {
+          const gasBf = await backfillWalletGasFees(walletId);
+          console.log('[SyncEngine] Gas fees backfill (incremental):', gasBf);
+        } catch (gasErr) {
+          console.warn('[SyncEngine] Gas backfill skipped:', gasErr);
+        }
+
+        try {
+          const rm = await rebuildWalletReadModels(walletId);
+          console.log('[SyncEngine] Read models rebuilt (incremental):', rm);
+        } catch (rmErr) {
+          console.warn('[SyncEngine] Read models rebuild skipped:', rmErr);
+        }
 
       } catch (syncError) {
         console.error('[SyncEngine] Incremental sync error:', syncError);
@@ -447,7 +477,7 @@ export class SyncEngine {
       if (!wallet) {
         return {
           success: false,
-          provider: 'etherscan',
+          provider: 'alchemy',
           dataType: 'transactions',
           recordsSynced: 0,
           durationMs: Date.now() - startTime,
@@ -456,12 +486,13 @@ export class SyncEngine {
         };
       }
 
-      // Re-fetch the latest transactions for this chain from Etherscan (only source)
+      // Re-fetch recent transfers for this chain from Alchemy
       const { transactions } = await this.providerManager.fetchHistoricalTransactions(
         address,
         chainId,
         0,
         25,
+        Math.max(0, (wallet.last_synced_block || 0) - 5),
       );
 
       let stored = 0;
@@ -470,7 +501,7 @@ export class SyncEngine {
           wallet.id,
           wallet.user_id,
           transactions,
-          'etherscan',
+          'alchemy',
         );
 
         const maxBlock = Math.max(...transactions.map(tx => tx.blockNumber));
@@ -480,9 +511,12 @@ export class SyncEngine {
           .eq('id', wallet.id);
       }
 
+      // Refresh balances so the UI picks up new assets quickly
+      await this.syncCurrentBalances(wallet.id, wallet.user_id, address);
+
       return {
         success: true,
-        provider: 'etherscan',
+        provider: 'alchemy',
         dataType: 'transactions',
         recordsSynced: stored,
         durationMs: Date.now() - startTime,
@@ -492,7 +526,7 @@ export class SyncEngine {
     } catch (error) {
       return {
         success: false,
-        provider: 'etherscan',
+        provider: 'alchemy',
         dataType: 'transactions',
         recordsSynced: 0,
         durationMs: Date.now() - startTime,
@@ -621,7 +655,7 @@ export class SyncEngine {
         walletId,
         userId,
         tokens,
-        providers[0] || tokens[0]?.provider || 'etherscan',
+        providers[0] || tokens[0]?.provider || 'alchemy',
       );
 
       // Cache a well-formed portfolio snapshot so `getPortfolio` can serve it
@@ -652,11 +686,11 @@ export class SyncEngine {
         providers,
         lastUpdated: Date.now(),
       };
-      await this.cache.set(address, 'portfolio', providers[0] || 'etherscan', portfolioSnapshot);
+      await this.cache.set(address, 'portfolio', providers[0] || 'alchemy', portfolioSnapshot);
 
       return {
         success: true,
-        provider: providers[0] || 'zerion',
+        provider: providers[0] || 'alchemy',
         dataType: 'portfolio',
         recordsSynced,
         durationMs: Date.now() - startTime,
@@ -666,7 +700,7 @@ export class SyncEngine {
     } catch (error) {
       return {
         success: false,
-        provider: 'zerion',
+        provider: 'alchemy',
         dataType: 'portfolio',
         recordsSynced: 0,
         durationMs: Date.now() - startTime,
@@ -689,12 +723,12 @@ export class SyncEngine {
         walletId,
         userId,
         positions,
-        providers[0] || 'debank',
+        providers[0] || 'alchemy',
       );
 
       return {
         success: true,
-        provider: providers[0] || 'debank',
+        provider: providers[0] || 'alchemy',
         dataType: 'defi',
         recordsSynced,
         durationMs: Date.now() - startTime,
@@ -704,7 +738,7 @@ export class SyncEngine {
     } catch (error) {
       return {
         success: false,
-        provider: 'debank',
+        provider: 'alchemy',
         dataType: 'defi',
         recordsSynced: 0,
         durationMs: Date.now() - startTime,
@@ -721,44 +755,59 @@ export class SyncEngine {
   ): Promise<SyncResult> {
     const startTime = Date.now();
     let totalRecords = 0;
+    let maxBlock = 0;
     const errors: string[] = [];
 
     try {
-      // Paginate every supported chain until history is exhausted (pageSize 100).
+      // Paginate every Alchemy-enabled EVM chain until history is exhausted (pageSize 100).
       // Chains run in parallel; pages within a chain are sequential for rate limits.
-      const chainIds = SYNC_CHAIN_IDS;
+      const chainIds = await resolveSyncChainIds();
       const pageSize = 100;
 
       const chainResults = await Promise.allSettled(
         chainIds.map(async chainId => {
           let stored = 0;
-          await this.providerManager.fetchAllHistoricalTransactions(address, chainId, {
-            pageSize,
-            onBatch: async (transactions, providers) => {
-              if (transactions.length === 0) return;
-              stored += await this.cache.upsertTransactions(
-                walletId,
-                userId,
-                transactions,
-                providers[0] || 'etherscan',
-              );
-            },
-          });
-          return stored;
+          const { maxBlock: chainMax } =
+            await this.providerManager.fetchAllHistoricalTransactions(address, chainId, {
+              pageSize,
+              onBatch: async (transactions, providers) => {
+                if (transactions.length === 0) return;
+                stored += await this.cache.upsertTransactions(
+                  walletId,
+                  userId,
+                  transactions,
+                  providers[0] || 'alchemy',
+                );
+              },
+            });
+          return { stored, chainMax };
         }),
       );
 
       chainResults.forEach((result, i) => {
         if (result.status === 'fulfilled') {
-          totalRecords += result.value;
+          totalRecords += result.value.stored;
+          if (result.value.chainMax > maxBlock) maxBlock = result.value.chainMax;
         } else {
           errors.push(`Chain ${chainIds[i]}: ${result.reason}`);
         }
       });
 
+      // Persist cursor so future syncs (and clones) stay incremental.
+      if (maxBlock > 0) {
+        const supabase = createServerClient();
+        await supabase
+          .from('wallets')
+          .update({
+            last_synced_block: maxBlock,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', walletId);
+      }
+
       return {
         success: errors.length < chainIds.length,
-        provider: 'etherscan',
+        provider: 'alchemy',
         dataType: 'transactions',
         recordsSynced: totalRecords,
         durationMs: Date.now() - startTime,
@@ -768,7 +817,7 @@ export class SyncEngine {
     } catch (error) {
       return {
         success: false,
-        provider: 'etherscan',
+        provider: 'alchemy',
         dataType: 'transactions',
         recordsSynced: totalRecords,
         durationMs: Date.now() - startTime,
@@ -788,7 +837,7 @@ export class SyncEngine {
     let totalRecords = 0;
     let maxBlock = lastSyncedBlock || 0;
     const errors: string[] = [];
-    const chainIds = SYNC_CHAIN_IDS;
+    const chainIds = await resolveSyncChainIds();
     const startBlock = lastSyncedBlock ? lastSyncedBlock + 1 : 0;
     const pageSize = 100;
 
@@ -807,7 +856,7 @@ export class SyncEngine {
                   walletId,
                   userId,
                   transactions,
-                  'etherscan',
+                  'alchemy',
                 );
               },
             });
@@ -835,7 +884,7 @@ export class SyncEngine {
 
       return {
         success: errors.length < chainIds.length,
-        provider: 'etherscan',
+        provider: 'alchemy',
         dataType: 'transactions',
         recordsSynced: totalRecords,
         durationMs: Date.now() - startTime,
@@ -845,7 +894,7 @@ export class SyncEngine {
     } catch (error) {
       return {
         success: false,
-        provider: 'etherscan',
+        provider: 'alchemy',
         dataType: 'transactions',
         recordsSynced: totalRecords,
         durationMs: Date.now() - startTime,
@@ -866,7 +915,7 @@ export class SyncEngine {
 
       return {
         success: true,
-        provider: 'zerion',
+        provider: 'alchemy',
         dataType: 'pnl',
         recordsSynced: pnl ? 1 : 0,
         durationMs: Date.now() - startTime,
@@ -876,7 +925,7 @@ export class SyncEngine {
     } catch (error) {
       return {
         success: false,
-        provider: 'zerion',
+        provider: 'alchemy',
         dataType: 'pnl',
         recordsSynced: 0,
         durationMs: Date.now() - startTime,

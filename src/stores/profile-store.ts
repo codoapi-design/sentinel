@@ -37,9 +37,9 @@ export function profileInitials(name: string, email?: string): string {
 
 export function formatPlanLabel(plan: string | null | undefined): string {
   const id = (plan || 'free').toLowerCase();
-  if (id === 'free') return 'Free Plan';
-  if (id === 'starter') return 'Starter Plan';
+  if (id === 'free' || id === 'trial') return 'Free Plan';
+  if (id === 'starter' || id === 'basic') return 'Starter Plan';
   if (id === 'pro') return 'Pro Plan';
-  if (id === 'business') return 'Business Plan';
+  if (id === 'business' || id === 'enterprise') return 'Business Plan';
   return `${plan} Plan`;
 }

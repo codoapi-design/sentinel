@@ -1,8 +1,8 @@
 /**
  * Transaction Pricing Engine
  *
- * Resolves USD prices for transactions at their block timestamp.
- * Uses CoinGecko (free tier) with in-memory caching.
+ * Spot balances: Alchemy Prices → CoinGecko gaps (via PriceService).
+ * Historical tx enrichment: CoinGecko (Alchemy has no batched historical prices).
  */
 
 import { getApiKey } from '@/lib/env';
@@ -10,7 +10,10 @@ import type { WalletTransaction } from '@/lib/blockchain/types';
 import {
   STABLECOINS,
   isStablecoinSymbol as checkStablecoinSymbol,
+  shouldPriceAsOneUsd,
 } from '@/lib/finance/stablecoins';
+import { getPriceService } from '@/lib/pricing/price-service';
+import { resolveChainKey } from '@/lib/pricing/types';
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 const PRO_BASE = 'https://pro-api.coingecko.com/api/v3';
@@ -134,18 +137,24 @@ export class PricingService {
     }
 
     try {
-      const url = `${this.baseUrl}/simple/price?ids=${coinId}&vs_currencies=usd`;
-      const response = await fetch(url, { headers: this.headers() });
-      if (response.ok) {
-        const data = await response.json();
-        const price = data?.[coinId]?.usd;
-        if (typeof price === 'number' && price > 0) {
-          this.priceCache.set(key, price);
-          return price;
+      const chain = resolveChainKey(chainId);
+      const { prices } = await getPriceService().getSpotPrices([
+        chain
+          ? {
+              chain,
+              address: '0x0000000000000000000000000000000000000000',
+              coingeckoId: coinId,
+            }
+          : { coingeckoId: coinId },
+      ]);
+      for (const quote of prices.values()) {
+        if (typeof quote.priceUsd === 'number' && quote.priceUsd > 0) {
+          this.priceCache.set(key, quote.priceUsd);
+          return quote.priceUsd;
         }
       }
-    } catch {
-      // ignore
+    } catch (error) {
+      console.warn(`[Pricing] Spot native via PriceService failed (chain ${chainId}):`, error);
     }
 
     return 0;
@@ -161,8 +170,13 @@ export class PricingService {
     timestamp: number,
   ): Promise<number> {
     const upperSymbol = symbol.toUpperCase();
-    if (STABLECOINS.has(upperSymbol)) {
+    // Never price scam "USDC" clones at $1 — only official contracts.
+    if (shouldPriceAsOneUsd(chainId, tokenAddress, upperSymbol)) {
       return 1.0;
+    }
+    // Known stablecoin *symbol* on a non-official contract → untrusted / $0.
+    if (STABLECOINS.has(upperSymbol)) {
+      return 0;
     }
 
     const platform = CHAIN_PLATFORMS[chainId];
@@ -299,30 +313,22 @@ export class PricingService {
     tokenAddresses: string[],
   ): Promise<Map<string, number>> {
     const out = new Map<string, number>();
-    const platform = CHAIN_PLATFORMS[chainId];
-    if (!platform || tokenAddresses.length === 0) return out;
+    const chain = resolveChainKey(chainId);
+    if (!chain || tokenAddresses.length === 0) return out;
 
-    const unique = [...new Set(tokenAddresses.map(a => a.toLowerCase()))];
-    const chunkSize = 40; // CoinGecko accepts many comma-separated contracts per call
-    for (let i = 0; i < unique.length; i += chunkSize) {
-      const chunk = unique.slice(i, i + chunkSize);
-      try {
-        const url =
-          `${this.baseUrl}/simple/token_price/${platform}` +
-          `?contract_addresses=${chunk.join(',')}&vs_currencies=usd`;
-        const response = await fetch(url, { headers: this.headers() });
-        if (response.ok) {
-          const data = await response.json();
-          for (const addr of chunk) {
-            const price = data?.[addr]?.usd;
-            if (typeof price === 'number' && price > 0) {
-              out.set(addr, price);
-            }
-          }
+    const unique = [...new Set(tokenAddresses.map(a => a.toLowerCase()).filter(Boolean))];
+    try {
+      const refs = unique.map(address => ({ chain, address }));
+      const { prices } = await getPriceService().getSpotPrices(refs);
+      for (const address of unique) {
+        const key = `${chain}:${address}`;
+        const quote = prices.get(key);
+        if (quote && typeof quote.priceUsd === 'number' && quote.priceUsd > 0) {
+          out.set(address, quote.priceUsd);
         }
-      } catch (error) {
-        console.warn(`[Pricing] Batch token price lookup failed for chain ${chainId}:`, error);
       }
+    } catch (error) {
+      console.warn(`[Pricing] Spot token batch via PriceService failed (chain ${chainId}):`, error);
     }
     return out;
   }

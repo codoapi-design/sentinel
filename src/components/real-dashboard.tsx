@@ -12,6 +12,7 @@ import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
 import { ReferralProgram } from './referral-program';
 import { SectionPage } from './section-page';
+import { GasFeesPage } from './gas-fees-page';
 import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
 import type { InvestmentReturnAssetParams } from '@/hooks/use-investment-return-asset';
@@ -97,9 +98,12 @@ export function RealDashboard() {
   const { triggerSync } = useWalletAutoSync();
 
   // Expired Free Plan / subscription → periodic upgrade prompt
+  // Wait until server subscription is hydrated so stale localStorage never flashes the modal.
   useEffect(() => {
     const checkAndPrompt = (force = false) => {
-      const entitlement = useSubscriptionStore.getState().getEntitlement();
+      const subState = useSubscriptionStore.getState();
+      if (!subState.serverHydrated) return;
+      const entitlement = subState.getEntitlement();
       if (entitlement.entitled) return;
       const prompt = useUpgradePromptStore.getState();
       const elapsed = Date.now() - prompt.lastShownAt;
@@ -453,6 +457,10 @@ export function RealDashboard() {
       return <TradingVolumePage onBack={handleBackFromSection} clients={displayClients} />;
     }
 
+    if (activeSection === 'gas') {
+      return <GasFeesPage onBack={handleBackFromSection} clients={displayClients} />;
+    }
+
     if (activeSection) {
       return (
         <SectionPage
@@ -469,9 +477,7 @@ export function RealDashboard() {
           <div className="space-y-6">
             <PortfolioOverview onSectionClick={handleSectionClick} />
             <PortfolioChart />
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <AssetsTable onAssetClick={handleAssetClick} />
-            </div>
+            <AssetsTable onAssetClick={handleAssetClick} />
             <ClientsSection
               clients={displayClients}
               transactions={displayTransactions}

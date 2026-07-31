@@ -11,6 +11,7 @@ import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
 import { ReferralProgram } from './referral-program';
 import { SectionPage } from './section-page';
+import { GasFeesPage } from './gas-fees-page';
 import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
 import type { InvestmentReturnAssetParams } from '@/hooks/use-investment-return-asset';
@@ -345,6 +346,10 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
       return <TradingVolumePage onBack={handleBackFromSection} clients={displayClients} />;
     }
 
+    if (activeSection === 'gas') {
+      return <GasFeesPage onBack={handleBackFromSection} clients={displayClients} />;
+    }
+
     if (activeSection) {
       return (
         <SectionPage
@@ -361,9 +366,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
           <div className="space-y-6">
             <PortfolioOverview onSectionClick={handleSectionClick} />
             <PortfolioChart />
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <AssetsTable onAssetClick={handleAssetClick} />
-            </div>
+            <AssetsTable onAssetClick={handleAssetClick} />
             <ClientsSection
               clients={displayClients}
               transactions={displayTransactions}

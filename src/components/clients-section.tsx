@@ -35,6 +35,7 @@ import { useTablePagination } from '@/hooks/use-table-pagination';
 import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
 import { ClientsPageFilterStats } from '@/components/clients-filter-stats';
+import { useWalletReadModels } from '@/hooks/use-wallet-read-models';
 
 const clientColors = [
   '#ff007a', '#0052ff', '#0ecb81', '#f6465d', '#f7931a',
@@ -65,6 +66,8 @@ interface ClientsSectionProps {
   defineAddress?: string | null;
   onDefineConsumed?: () => void;
   onFilteredDataChange?: (data: CounterpartyStats[]) => void;
+  /** Precomputed from wallet_dimension_stats — skips client-side aggregation when present. */
+  precomputedStats?: CounterpartyStats[] | null;
 }
 
 interface ClientsTabProps {
@@ -96,6 +99,27 @@ export function ClientsTab({
     [transactions, showSpamAndDust],
   );
 
+  const { clients: readModelClients } = useWalletReadModels();
+  const precomputedStats = useMemo((): CounterpartyStats[] | null => {
+    if (!readModelClients.length) return null;
+    return readModelClients.map(d => {
+      const defined = clients.find(c => c.address.toLowerCase() === d.key.toLowerCase());
+      return {
+        address: d.key,
+        label: defined?.name || d.label || `${d.key.slice(0, 6)}...${d.key.slice(-4)}`,
+        isDefined: !!defined,
+        client: defined,
+        totalRevenue: d.inflowUsd,
+        totalExpenses: d.outflowUsd,
+        totalVolume: d.volumeUsd,
+        txCount: d.txCount,
+        netFlow: d.inflowUsd - d.outflowUsd,
+        lastTxDate: d.lastTxDate,
+        topToken: d.topToken,
+      };
+    });
+  }, [readModelClients, clients]);
+
   const [filteredData, setFilteredData] = useState<CounterpartyStats[]>([]);
   const [filtersReady, setFiltersReady] = useState(false);
 
@@ -121,6 +145,7 @@ export function ClientsTab({
       <ClientsSection
         clients={clients}
         transactions={transactions}
+        precomputedStats={precomputedStats}
         onClientClick={onClientClick}
         onDefineClient={onDefineClient}
         onClientsChange={onClientsChange}
@@ -143,6 +168,7 @@ export function ClientsSection({
   defineAddress,
   onDefineConsumed,
   onFilteredDataChange,
+  precomputedStats,
 }: ClientsSectionProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showDialog, setShowDialog] = useState(false);
@@ -245,6 +271,23 @@ export function ClientsSection({
 
   // Build comprehensive list of all counterparties
   const allCounterparties = useMemo((): CounterpartyStats[] => {
+    if (precomputedStats && precomputedStats.length > 0) {
+      return precomputedStats
+        .map(row => {
+          const client = clients.find(c => c.address.toLowerCase() === row.address.toLowerCase());
+          return {
+            ...row,
+            isDefined: !!client,
+            client,
+            label: client?.name || row.label,
+          };
+        })
+        .sort((a, b) => {
+          if (a.isDefined !== b.isDefined) return a.isDefined ? -1 : 1;
+          return b.txCount - a.txCount;
+        });
+    }
+
     const statsMap = new Map<string, CounterpartyStats & { tokenCounts: Record<string, number> }>();
 
     visibleTransactions.forEach(tx => {
@@ -299,7 +342,7 @@ export function ClientsSection({
     });
 
     return result;
-  }, [clients, visibleTransactions]);
+  }, [clients, visibleTransactions, precomputedStats]);
 
   // Filter by search
   const filteredCounterparties = useMemo(() => {

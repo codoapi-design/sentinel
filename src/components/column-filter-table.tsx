@@ -161,7 +161,7 @@ function ActivityFilter({
 }) {
   return (
     <div className="space-y-2 w-52">
-      <p className="text-xs font-medium text-[#d0d6e0] mb-2">Filter by Activity</p>
+      <p className="text-xs font-medium text-[#d0d6e0] mb-2">Filter by method</p>
       <div className="space-y-1 max-h-56 overflow-y-auto">
         {options.map(activity => (
           <button
@@ -565,7 +565,7 @@ export function ColumnFilterTable({
           )}
           {activityFilterActive && (
             <Badge variant="outline" className="text-[10px] bg-[#0052ff]/5 text-[#0052ff] border-[#0052ff]/20 px-2 py-0.5">
-              Activity: {activityFilter.join(', ')}
+              Method: {activityFilter.join(', ')}
               <X className="h-2.5 w-2.5 mr-1 cursor-pointer" onClick={() => { setActivityFilter([]); setCurrentPage(1); }} />
             </Badge>
           )}
@@ -632,7 +632,7 @@ export function ColumnFilterTable({
                 </div>
               </TableHead>
 
-              {/* On-chain activity (explorer-style) */}
+              {/* On-chain method (explorer-style) */}
               <TableHead className="text-xs font-medium p-2">
                 <div className="group">
                   <ColumnFilterPopup
@@ -647,7 +647,7 @@ export function ColumnFilterTable({
                     }
                   >
                     <div className="flex items-center gap-1" onClick={() => toggleSort('activity')}>
-                      <span>Activity</span>
+                      <span>Method</span>
                       <ArrowUpDown className="h-3 w-3" />
                     </div>
                   </ColumnFilterPopup>
@@ -897,40 +897,29 @@ export function ColumnFilterTable({
               Total: ${formatNumber(totalFilteredValue)}
             </p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-[#191a1b]"
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(currentPage - 1)}
+              aria-label="Previous page"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-              <Button
-                key={page}
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  'h-7 w-7 text-xs',
-                  currentPage === page
-                    ? 'bg-[#0052ff] text-white hover:bg-[#0052ff]'
-                    : 'text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-[#191a1b]'
-                )}
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </Button>
-            ))}
+            <span className="text-xs text-[#d0d6e0] font-medium tabular-nums min-w-[5.5rem] text-center">
+              Page {currentPage} of {totalPages}
+            </span>
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-[#8a8f98] hover:text-[#f7f8f8] hover:bg-[#191a1b]"
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(currentPage + 1)}
+              aria-label="Next page"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>

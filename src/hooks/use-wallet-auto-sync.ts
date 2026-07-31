@@ -23,7 +23,9 @@ function isUUID(id: string): boolean {
 }
 
 function promptUpgradeIfExpired(): boolean {
-  const entitlement = useSubscriptionStore.getState().getEntitlement();
+  const subState = useSubscriptionStore.getState();
+  if (!subState.serverHydrated) return false;
+  const entitlement = subState.getEntitlement();
   if (entitlement.entitled) return false;
   useUpgradePromptStore.getState().openUpgradePrompt(
     entitlement.planId === 'free'
@@ -56,6 +58,7 @@ export function useWalletAutoSync() {
     if (isSyncing[activeWalletId]) return;
 
     const subState = useSubscriptionStore.getState();
+    if (!subState.serverHydrated) return;
     const entitlement = subState.getEntitlement();
     if (!entitlement.entitled) {
       console.warn('[AutoSync] Subscription inactive — auto sync paused');
@@ -149,7 +152,9 @@ export function useWalletAutoSync() {
     }
     if (isSyncing[activeWalletId]) return;
 
-    const entitlement = useSubscriptionStore.getState().getEntitlement();
+    const subState = useSubscriptionStore.getState();
+    if (!subState.serverHydrated) return;
+    const entitlement = subState.getEntitlement();
     if (!entitlement.entitled) {
       promptUpgradeIfExpired();
       return;

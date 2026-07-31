@@ -70,10 +70,13 @@ const PROTOCOL_DB: Record<string, ProtocolInfo> = {
   // Yearn
   '0x0000000022d53366457f9d5e68ec105046fc4383': { name: 'Yearn Registry', nameAr: 'Yearn Registry', type: 'defi' },
 
-  // USDC / USDT / DAI contracts (often interacted with for approvals/transfers)
-  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { name: 'USDC', nameAr: 'USDC', type: 'trade' },
-  '0xdac17f958d2ee523a2206206994597c13d831ec7': { name: 'USDT', nameAr: 'USDT', type: 'trade' },
-  '0x6b175474e89094c44da98b954eedeac495271d0f': { name: 'DAI', nameAr: 'DAI', type: 'trade' },
+  // Bridges (interaction with these contracts is never a pure Send/expense)
+  '0x3154cf16ccdb4c6d922629664174b904d80f2c35': { name: 'Base Bridge', nameAr: 'Base Bridge', type: 'bridge' },
+  '0x49048044d57e1c92a77f79988d21fa8faf74e97f': { name: 'Base Portal', nameAr: 'Base Portal', type: 'bridge' },
+  '0x4dbd4fc535ac27206064b68ffcf827b0a60bab3f': { name: 'Arbitrum Inbox', nameAr: 'Arbitrum Inbox', type: 'bridge' },
+  '0x72ce9c846789fdb6fc1f34ac4ad25dd9ef7031ef': { name: 'Arbitrum Gateway', nameAr: 'Arbitrum Gateway', type: 'bridge' },
+  '0x99c9fc46f92e8a1c0dec1b1747d010903e884be1': { name: 'Optimism Gateway', nameAr: 'Optimism Gateway', type: 'bridge' },
+  '0x0439e60f02a8900a951603950d8d4527f400c3f1': { name: 'MetaMask Bridge', nameAr: 'MetaMask Bridge', type: 'bridge' },
 
   // NFT marketplaces
   '0x7be8076f4ea4a4ad08075c2508e481d6c946d12b': { name: 'OpenSea Seaport', nameAr: 'OpenSea Seaport', type: 'nft' },
@@ -136,13 +139,29 @@ const METHOD_DB: Record<string, MethodInfo> = {
   '0x2e1a7d4d': { name: 'withdraw', type: 'staking' },
   '0x0e15561a': { name: 'getReward', type: 'staking' },
 
-  // Approvals (usually not classified on their own, but useful to know)
+  // Approvals — never expense/outflow
   '0x095ea7b3': { name: 'approve', type: 'trade' },
   '0x2195995c': { name: 'increaseAllowance', type: 'trade' },
+  '0xa22cb465': { name: 'setApprovalForAll', type: 'trade' },
 
-  // Bridge
+  // Pure ERC-20 transfers (direction resolved in refineTransactionType)
+  '0xa9059cbb': { name: 'transfer', type: 'trade' },
+  '0x23b872dd': { name: 'transferFrom', type: 'trade' },
+
+  // MetaMask / aggregator swaps
+  '0x5f575529': { name: 'swap', type: 'trade' }, // MetaMask Swap Router
+
+  // Bridge / L2 messaging
   '0x428d7197': { name: 'deposit', type: 'bridge' }, // Arbitrum bridge
   '0x9ca36928': { name: 'withdraw', type: 'bridge' },
+  '0xe11087d5': { name: 'depositTransaction', type: 'bridge' }, // OP Stack / Base
+  '0xb1a1a882': { name: 'depositETH', type: 'bridge' },
+  '0x2e7ba6ef': { name: 'depositERC20', type: 'bridge' },
+  '0x58a99744': { name: 'bridgeETH', type: 'bridge' },
+  '0x0ad58d2f': { name: 'bridgeERC20', type: 'bridge' },
+  '0xc7c7f36d': { name: 'sendMessage', type: 'bridge' },
+  '0x3dbb202b': { name: 'sendMessage', type: 'bridge' },
+  '0x7b9bb414': { name: 'bridgeAndCall', type: 'bridge' },
 };
 
 // ============================================================

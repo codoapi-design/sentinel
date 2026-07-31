@@ -148,7 +148,7 @@ function flowTotals(transactions: Transaction[]) {
   return { revenue, expense, netFlow: revenue - expense, volume };
 }
 
-/** Asset detail second row: Active Period, Top Activity, Top Network, Top Counterparty, Volume. */
+/** Asset detail second row: Active Period, Top Method, Top Network, Top Counterparty, Volume. */
 export function buildAssetFilterStatsSummary(
   transactions: Transaction[],
   clients: Client[] = [],
@@ -158,7 +158,7 @@ export function buildAssetFilterStatsSummary(
   return [
     { label: 'Active Period', value: `${duration} · ${dateRange}` },
     {
-      label: 'Top Activity',
+      label: 'Top Method',
       value: modeLabel(
         findMode(transactions.map(tx => tx.activity || 'Transfer')),
       ),
@@ -198,7 +198,7 @@ export function buildClientFilterStatsSummary(
       { label: 'Transactions', value: '0' },
       { label: 'Top Token', value: EMPTY },
       { label: 'Active Period', value: EMPTY },
-      { label: 'Top Activity', value: EMPTY },
+      { label: 'Top Method', value: EMPTY },
       { label: 'Top Network', value: EMPTY },
       { label: 'Avg Value (USD)', value: EMPTY },
     ];
@@ -221,7 +221,7 @@ export function buildClientFilterStatsSummary(
     },
     { label: 'Active Period', value: `${duration} · ${dateRange}` },
     {
-      label: 'Top Activity',
+      label: 'Top Method',
       value: modeLabel(
         findMode(transactions.map(tx => tx.activity || 'Transfer')),
       ),
@@ -252,7 +252,7 @@ export function buildNetworkFilterStatsSummary(
       { label: 'Transactions', value: '0' },
       { label: 'Top Token', value: EMPTY },
       { label: 'Active Period', value: EMPTY },
-      { label: 'Top Activity', value: EMPTY },
+      { label: 'Top Method', value: EMPTY },
       { label: 'Top Counterparty', value: EMPTY },
       { label: 'Avg Value (USD)', value: EMPTY },
     ];
@@ -275,7 +275,7 @@ export function buildNetworkFilterStatsSummary(
     },
     { label: 'Active Period', value: `${duration} · ${dateRange}` },
     {
-      label: 'Top Activity',
+      label: 'Top Method',
       value: modeLabel(
         findMode(transactions.map(tx => tx.activity || 'Transfer')),
       ),

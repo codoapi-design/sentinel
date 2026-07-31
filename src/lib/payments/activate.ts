@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildPeriodEnd, toWalletPlanId } from '@/lib/plans/entitlements';
+import { buildPeriodEnd, toPricingTierId } from '@/lib/plans/entitlements';
+import { syncProfilePlanFromSubscription } from '@/lib/plans/resolve-plan';
 import { processReferralPaidConversion } from '@/lib/referrals/core';
 import type { Database } from '@/lib/supabase/types';
 
@@ -14,14 +15,10 @@ export async function activatePaidSubscription(args: {
   paymentChain: number;
 }): Promise<{ startDate: string; endDate: string }> {
   const startDate = new Date();
-  const endDate = buildPeriodEnd(startDate, args.planId, args.billingPeriod);
+  const pricingPlanId = toPricingTierId(args.planId);
+  const endDate = buildPeriodEnd(startDate, pricingPlanId, args.billingPeriod);
   const startIso = startDate.toISOString();
   const endIso = endDate.toISOString();
-
-  await args.supabase
-    .from('user_profiles')
-    .update({ plan: toWalletPlanId(args.planId), updated_at: new Date().toISOString() })
-    .eq('user_id', args.userId);
 
   const { data: existing } = await args.supabase
     .from('subscriptions')
@@ -33,11 +30,10 @@ export async function activatePaidSubscription(args: {
 
   const row = {
     user_id: args.userId,
-    plan: args.planId,
+    plan: pricingPlanId,
     status: 'active',
     current_period_start: startIso,
     current_period_end: endIso,
-    cancel_at_period_end: false,
     updated_at: new Date().toISOString(),
   };
 
@@ -47,11 +43,13 @@ export async function activatePaidSubscription(args: {
     await args.supabase.from('subscriptions').insert(row);
   }
 
+  await syncProfilePlanFromSubscription(args.supabase, args.userId, pricingPlanId);
+
   try {
     await processReferralPaidConversion({
       supabase: args.supabase,
       payerUserId: args.userId,
-      planId: args.planId,
+      planId: pricingPlanId,
       priceUsd: args.priceUsd,
       billingPeriod: args.billingPeriod,
     });

@@ -1418,7 +1418,7 @@ export function buildTransactionsReportPayload(
         title: 'Transactions',
         headers: [
           'Date',
-          'Activity',
+          'Method',
           'Classification',
           'Token',
           'Quantity',

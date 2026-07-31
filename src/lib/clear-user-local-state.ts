@@ -6,6 +6,8 @@
 import { useWalletStore } from '@/stores/wallet-store';
 import { useUiPreferencesStore, UI_PREFERENCES_STORAGE_KEY } from '@/stores/ui-preferences-store';
 import { useProfileStore } from '@/stores/profile-store';
+import { useSubscriptionStore } from '@/stores/subscription-store';
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt-store';
 
 /** Zustand persist keys + legacy keys that hold user-scoped data */
 export const USER_SCOPED_STORAGE_KEYS = [
@@ -31,6 +33,21 @@ export function clearUserLocalState(nextUserId: string | null = null): void {
   useWalletStore.getState().reset();
   if (nextUserId) {
     useWalletStore.setState({ ownerUserId: nextUserId });
+  }
+
+  try {
+    // Critical: wipe in-memory subscription too, otherwise an expired plan from a
+    // previous account is re-persisted and immediately triggers the upgrade modal.
+    useSubscriptionStore.getState().clearSubscription();
+    useSubscriptionStore.setState({ freeTrialClaimed: false, serverHydrated: false });
+  } catch {
+    // ignore
+  }
+
+  try {
+    useUpgradePromptStore.setState({ open: false, reason: null });
+  } catch {
+    // ignore
   }
 
   try {

@@ -141,6 +141,8 @@ export interface WalletTransaction {
   valueEth: number;        // native value as number
   gasFee: string;          // total gas in wei
   gasFeeEth: number;
+  /** Units of gas used (from receipt); 0 if unknown */
+  gasUsed?: number;
   timestamp: number;
   date: string;
   type: TransactionType;

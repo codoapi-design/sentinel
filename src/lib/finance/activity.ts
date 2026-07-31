@@ -83,6 +83,17 @@ export function resolveOnChainActivity(input: OnChainActivityInput): string {
     return direction === 'in' ? 'Receive' : 'Transfer';
   }
   if (methodId === '0x095ea7b3') return 'Approve';
+  if (methodId === '0x5f575529') return 'Swap';
+
+  // Non-empty unknown selector → contract interaction (not a wallet Send Transfer)
+  if (methodId && methodId !== '0x') {
+    if (type === 'trade') return 'Swap';
+    if (type === 'bridge') return 'Bridge';
+    if (type === 'staking') return 'Claim';
+    if (type === 'nft') return 'NFT';
+    if (type === 'defi') return 'Contract Interaction';
+    return 'Contract Interaction';
+  }
 
   // Fall back by accounting type / direction (still explorer-like wording)
   if (type === 'trade') return 'Swap';

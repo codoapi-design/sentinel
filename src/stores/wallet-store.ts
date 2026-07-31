@@ -125,6 +125,8 @@ interface WalletActions {
   loadWalletsFromDB: () => Promise<void>;
   /** Load transactions for a wallet from Supabase into the local store (UI source of truth). */
   loadTransactionsFromDB: (walletId: string) => Promise<Transaction[]>;
+  /** Poll DB while a server-side Alchemy sync is in progress (new wallet add). */
+  watchBackgroundSync: (walletId: string) => Promise<void>;
   /** Bind cache to auth user; clears local data when the user changes. */
   bindOwner: (userId: string | null) => void;
 
@@ -258,6 +260,8 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         try {
           let walletId: string | null = null;
           let created: Partial<WalletInfo> | null = null;
+          let hydratedFromCache = false;
+          let clonedTxCount = 0;
 
           try {
             const response = await fetch('/api/wallets', {
@@ -278,7 +282,12 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               const result = await response.json();
               walletId = result.data?.id || null;
               created = result.data;
-              console.log('[WalletStore] Wallet created in DB with ID:', walletId);
+              hydratedFromCache = result.hydratedFromCache === true;
+              clonedTxCount = result.clone?.transactionsCopied || 0;
+              console.log('[WalletStore] Wallet created in DB with ID:', walletId, {
+                hydratedFromCache,
+                clonedTxCount,
+              });
             } else {
               const errData = await response.json().catch(() => ({}));
               console.error('[WalletStore] Failed to add wallet to DB:', errData.error);
@@ -318,18 +327,33 @@ export const useWalletStore = create<WalletState & WalletActions>()(
               tron ||
               btc,
             label,
-            lastSyncedAt: null,
-            isSyncing: false,
-            transactionCount: 0,
+            lastSyncedAt: created?.lastSyncedAt ?? null,
+            isSyncing: true,
+            transactionCount: clonedTxCount,
           };
 
           set(state => ({
             wallets: [...state.wallets, newWallet],
             activeWalletId: state.activeWalletId || walletId,
             isAddingWallet: false,
+            isSyncing: { ...state.isSyncing, [walletId]: true },
+            lastSyncAt: hydratedFromCache
+              ? { ...state.lastSyncAt, [walletId]: Date.now() }
+              : state.lastSyncAt,
           }));
 
-          get().syncWallet(walletId, 'full');
+          // Cloned addresses already have DB history — hydrate UI immediately,
+          // then follow the background incremental Alchemy sync.
+          if (hydratedFromCache) {
+            try {
+              await get().loadTransactionsFromDB(walletId);
+            } catch {
+              /* watchBackgroundSync will retry */
+            }
+          }
+
+          // Server started full or incremental sync in the background.
+          void get().watchBackgroundSync(walletId);
         } catch (error) {
           set({
             isAddingWallet: false,
@@ -409,27 +433,46 @@ export const useWalletStore = create<WalletState & WalletActions>()(
             if (subRes.ok) {
               const subJson = await subRes.json();
               const { useSubscriptionStore } = await import('@/stores/subscription-store');
-              const { toWalletPlanId } = await import('@/lib/plans/entitlements');
+              const { toPricingTierId, toWalletPlanId } = await import(
+                '@/lib/plans/entitlements'
+              );
               if (subJson.subscription) {
                 const existing = useSubscriptionStore.getState().subscription;
                 const serverEnd = subJson.subscription.endDate;
-                const serverPlan = subJson.subscription.planId;
                 const entitled = Boolean(subJson.entitled);
+                const pricingPlanId = toPricingTierId(subJson.subscription.planId);
+                const planName =
+                  subJson.subscription.planName ||
+                  existing?.planName ||
+                  pricingPlanId;
                 useSubscriptionStore.getState().setSubscription({
-                  planId: serverPlan,
-                  planName: existing?.planName || serverPlan,
+                  planId: pricingPlanId,
+                  planName,
                   billingPeriod: existing?.billingPeriod || 'monthly',
                   price: existing?.price ?? 0,
-                  startDate: subJson.subscription.startDate || existing?.startDate || new Date().toISOString(),
+                  startDate:
+                    subJson.subscription.startDate ||
+                    existing?.startDate ||
+                    new Date().toISOString(),
                   endDate: serverEnd,
-                  txHash: existing?.txHash || 'server',
-                  paymentToken: existing?.paymentToken || 'USDC',
-                  paymentChain: existing?.paymentChain ?? 8453,
+                  txHash:
+                    pricingPlanId === 'free'
+                      ? 'free-trial'
+                      : existing?.txHash || 'server',
+                  paymentToken:
+                    pricingPlanId === 'free' ? 'FREE' : existing?.paymentToken || 'USDC',
+                  paymentChain:
+                    pricingPlanId === 'free' ? 0 : existing?.paymentChain ?? 8453,
                   status: entitled ? 'active' : 'expired',
                   aiRequestsUsed: existing?.aiRequestsUsed ?? 0,
-                  syncPausedAt: entitled ? null : existing?.syncPausedAt ?? new Date().toISOString(),
+                  syncPausedAt: entitled
+                    ? null
+                    : existing?.syncPausedAt ?? new Date().toISOString(),
                 });
-                set({ currentPlan: toWalletPlanId(serverPlan) });
+                set({ currentPlan: toWalletPlanId(pricingPlanId) });
+              } else {
+                useSubscriptionStore.getState().clearSubscription();
+                useSubscriptionStore.getState().markServerHydrated();
               }
             }
           } catch {
@@ -439,7 +482,13 @@ export const useWalletStore = create<WalletState & WalletActions>()(
           const response = await fetch('/api/wallets');
           if (response.ok) {
             const result = await response.json();
-            if (result.plan) {
+            // Subscription is authoritative. wallets.plan is only a fallback.
+            const { useSubscriptionStore } = await import('@/stores/subscription-store');
+            const subPlan = useSubscriptionStore.getState().subscription?.planId;
+            if (subPlan) {
+              const { toWalletPlanId } = await import('@/lib/plans/entitlements');
+              set({ currentPlan: toWalletPlanId(subPlan) });
+            } else if (result.plan) {
               set({ currentPlan: result.plan });
             }
 
@@ -511,40 +560,125 @@ export const useWalletStore = create<WalletState & WalletActions>()(
 
       /**
        * Load transactions from Supabase into Zustand.
-       * This is the ONLY source the UI should display — never live provider APIs.
+       * Pages through the full plan-allowed history (no hard 500 cap for Business/Pro).
        */
       loadTransactionsFromDB: async (walletId: string) => {
         try {
-          const response = await fetch(`/api/wallets/${walletId}/transactions`);
-          if (!response.ok) {
-            console.warn('[WalletStore] DB transactions fetch failed:', response.status);
-            // Clear stale cache — never show another account's txs
-            set(state => {
-              const transactionsMap = { ...state.transactionsMap };
-              const clientsMap = { ...state.clientsMap };
-              delete transactionsMap[walletId];
-              delete clientsMap[walletId];
-              return { transactionsMap, clientsMap };
-            });
-            return [];
+          const all: Transaction[] = [];
+          let offset = 0;
+          const pageSize = 1000;
+          let guard = 0;
+
+          while (guard++ < 100) {
+            const response = await fetch(
+              `/api/wallets/${walletId}/transactions?limit=${pageSize}&offset=${offset}`,
+            );
+            if (!response.ok) {
+              console.warn('[WalletStore] DB transactions fetch failed:', response.status);
+              if (offset === 0) {
+                set(state => {
+                  const transactionsMap = { ...state.transactionsMap };
+                  const clientsMap = { ...state.clientsMap };
+                  delete transactionsMap[walletId];
+                  delete clientsMap[walletId];
+                  return { transactionsMap, clientsMap };
+                });
+                return [];
+              }
+              break;
+            }
+            const result = await response.json();
+            const batch: Transaction[] = result.data || [];
+            all.push(...batch);
+
+            const planLimit =
+              typeof result.planLimit === 'number' && Number.isFinite(result.planLimit)
+                ? result.planLimit
+                : null;
+            if (planLimit != null && all.length >= planLimit) {
+              all.length = planLimit;
+              break;
+            }
+            if (!result.hasMore || batch.length === 0) break;
+            offset += pageSize;
           }
-          const result = await response.json();
-          const transactions: Transaction[] = result.data || [];
-          get().setTransactions(walletId, transactions);
+
+          get().setTransactions(walletId, all);
 
           set(state => ({
             wallets: state.wallets.map(w =>
               w.id === walletId
-                ? { ...w, transactionCount: transactions.length }
+                ? { ...w, transactionCount: all.length }
                 : w
             ),
           }));
 
-          return transactions;
+          return all;
         } catch (err) {
           console.warn('[WalletStore] DB transactions fetch error:', err);
           return [];
         }
+      },
+
+      /**
+       * Follow a server-started Alchemy fullSync without issuing a second sync.
+       * Reloads wallets + transactions from DB so the UI fills in as data lands.
+       */
+      watchBackgroundSync: async (walletId: string) => {
+        const started = Date.now();
+        const maxMs = 5 * 60 * 1000;
+        let sawSyncing = false;
+        let lastTxCount = 0;
+
+        set(state => ({
+          isSyncing: { ...state.isSyncing, [walletId]: true },
+          wallets: state.wallets.map(w =>
+            w.id === walletId ? { ...w, isSyncing: true } : w,
+          ),
+        }));
+
+        while (Date.now() - started < maxMs) {
+          await new Promise(r => setTimeout(r, 2000));
+          try {
+            await get().loadWalletsFromDB();
+            await get().loadTransactionsFromDB(walletId);
+          } catch {
+            /* keep polling */
+          }
+
+          const wallet = get().wallets.find(w => w.id === walletId);
+          if (!wallet) break;
+          if (wallet.isSyncing) sawSyncing = true;
+
+          // Nudge portfolio hooks whenever new rows land in the DB.
+          const txCount = wallet.transactionCount || 0;
+          if (txCount !== lastTxCount) {
+            lastTxCount = txCount;
+            set(state => ({
+              lastSyncAt: { ...state.lastSyncAt, [walletId]: Date.now() },
+            }));
+          }
+
+          if (sawSyncing && !wallet.isSyncing) break;
+          if (!wallet.isSyncing && (txCount > 0 || wallet.lastSyncedAt)) {
+            if (Date.now() - started > 8_000) break;
+          }
+        }
+
+        try {
+          await get().loadWalletsFromDB();
+          await get().loadTransactionsFromDB(walletId);
+        } catch {
+          /* ignore */
+        }
+
+        set(state => ({
+          isSyncing: { ...state.isSyncing, [walletId]: false },
+          wallets: state.wallets.map(w =>
+            w.id === walletId ? { ...w, isSyncing: false } : w,
+          ),
+          lastSyncAt: { ...state.lastSyncAt, [walletId]: Date.now() },
+        }));
       },
 
       /**
@@ -636,7 +770,7 @@ export const useWalletStore = create<WalletState & WalletActions>()(
         };
 
         try {
-          // 1) Providers → DB (only path that talks to Etherscan/CoinGecko)
+          // 1) Alchemy → DB (balances + transfers); CoinGecko fills historical price gaps
           const syncResponse = await fetch(`/api/wallets/${walletId}/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

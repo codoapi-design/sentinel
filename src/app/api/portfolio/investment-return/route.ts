@@ -2,12 +2,16 @@
  * GET /api/portfolio/investment-return?walletId=
  *
  * Full investment-return detail: summary, per-asset breakdown, chart history.
+ * Pass summary=1 for a lightweight summary-only payload (dashboard card).
  * Cookie auth. Soft-fails gracefully when schema is missing.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
-import { computeInvestmentReturnDetail } from '@/lib/finance/investment-return';
+import {
+  computeInvestmentReturn,
+  computeInvestmentReturnDetail,
+} from '@/lib/finance/investment-return';
 
 export async function GET(request: NextRequest) {
   try {
@@ -49,6 +53,15 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'No wallets found' }, { status: 404 });
       }
       wallet = data;
+    }
+
+    const summaryOnly = searchParams.get('summary') === '1' || searchParams.get('summary') === 'true';
+    if (summaryOnly) {
+      const summary = await computeInvestmentReturn(wallet.id);
+      return NextResponse.json({
+        success: true,
+        data: summary,
+      });
     }
 
     const detail = await computeInvestmentReturnDetail(wallet.id);

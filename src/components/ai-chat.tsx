@@ -235,7 +235,7 @@ export function AIChat({ pageContext }: AIChatProps) {
 
       {isOpen && (
         <div
-          className="fixed bottom-6 left-6 z-[100] w-[420px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-6rem)] bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up"
+          className="fixed bottom-24 left-6 z-[100] w-[420px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-8rem)] bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up"
           role="dialog"
           aria-label="Radareum AI chat"
           data-testid="ai-chat-panel"

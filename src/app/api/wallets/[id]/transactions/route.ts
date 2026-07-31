@@ -7,10 +7,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createCookieServerClient, createServerClient } from '@/lib/supabase/server';
+import { refineTransactionType, resolveTypeLabel } from '@/lib/finance/summary';
 import { resolveOnChainActivity } from '@/lib/finance/activity';
-import { resolveTypeLabel } from '@/lib/finance/summary';
+import { isTrustedTransaction } from '@/lib/finance/token-trust';
+import { getTransactionLimit } from '@/lib/plans/limits';
+import { resolveAuthoritativePlan } from '@/lib/plans/resolve-plan';
 import { type Transaction } from '@/lib/mock-data';
+import { getPricingService } from '@/lib/pricing/service';
 
+/** Hard ceiling so a runaway client cannot request millions of rows at once. */
+const ABSOLUTE_MAX_PAGE = 2000;
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -75,8 +81,8 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type');
     const network = searchParams.get('network');
-    const limit = parseInt(searchParams.get('limit') || '500');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10) || 0);
+    const requestedLimit = parseInt(searchParams.get('limit') || '', 10);
 
     // Authenticate user
     const cookieClient = await createCookieServerClient();
@@ -102,17 +108,40 @@ export async function GET(
       );
     }
 
+    const plan = await resolveAuthoritativePlan(supabase, user.id, { syncProfile: false });
+    const planCap = getTransactionLimit(plan?.pricingPlanId || plan?.walletPlanId || 'starter');
+    // Unlimited plans: no artificial 500 cap — page size defaults to 1000.
+    const defaultPage = Number.isFinite(planCap) ? Math.min(planCap, 1000) : 1000;
+    const limit = Math.min(
+      ABSOLUTE_MAX_PAGE,
+      Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultPage,
+    );
+    // Enforce plan retention window on the offset window.
+    const maxOffset = Number.isFinite(planCap) ? Math.max(0, planCap - 1) : Number.MAX_SAFE_INTEGER;
+    if (offset > maxOffset) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        total: 0,
+        planLimit: Number.isFinite(planCap) ? planCap : null,
+        hasMore: false,
+      });
+    }
+    const effectiveLimit = Number.isFinite(planCap)
+      ? Math.min(limit, Math.max(0, planCap - offset))
+      : limit;
+
     let query = supabase
       .from('transactions')
       .select('*')
       .eq('wallet_id', resolvedId)
       .order('timestamp', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + Math.max(effectiveLimit, 1) - 1);
 
     if (type) query = query.eq('type', type);
     if (network) query = query.eq('network', network);
 
-    const { data, error, count } = await query;
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching transactions:', error);
@@ -153,10 +182,38 @@ export async function GET(
       bridge: 'Bridge',
     };
 
-    // Convert DB rows to app Transaction format with proper fallbacks
-    const transactions: Transaction[] = (data || []).map((row, i) => {
+    // Convert DB rows to app Transaction format — verified / non-spam assets only.
+    let ethPriceUsd = 0;
+    try {
+      ethPriceUsd = await getPricingService().getCurrentNativePriceUsd(1);
+    } catch {
+      ethPriceUsd = 0;
+    }
+
+    const transactions: Transaction[] = (data || [])
+      .filter(row =>
+        isTrustedTransaction({
+          token_symbol: row.token_symbol,
+          token_name: row.token_name,
+          token_address: row.token_address,
+          price_usd: row.price_usd,
+          value_usd: row.value_usd,
+          value_eth: row.value_eth,
+          network: row.network,
+        }),
+      )
+      .map((row, i) => {
       const network = row.network || 'ethereum';
-      const txType = (row.type || 'income') as Transaction['type'];
+      const refinedType = refineTransactionType({
+        type: row.type,
+        methodId: row.method_id,
+        methodName: row.method_name,
+        protocol: row.protocol,
+        to: row.to_addr,
+        direction: row.direction,
+        statusFailed: row.status === false,
+      });
+      const txType = refinedType as Transaction['type'];
       const counterparty = row.counterparty || row.from_addr || '';
 
       // Prefer English protocol / shortened address — never Arabic protocol_ar in UI
@@ -189,6 +246,16 @@ export async function GET(
         statusFailed: row.status === false,
       });
 
+      const gasFeeEth =
+        typeof row.gas_fee_eth === 'number' && Number.isFinite(row.gas_fee_eth) && row.gas_fee_eth > 0
+          ? row.gas_fee_eth
+          : 0;
+      const gasUsed =
+        typeof row.gas_used === 'number' && Number.isFinite(row.gas_used) && row.gas_used > 0
+          ? row.gas_used
+          : 0;
+      const gasFeeUsd = gasFeeEth > 0 && ethPriceUsd > 0 ? gasFeeEth * ethPriceUsd : 0;
+
       return {
         id: row.id || `tx-${i}`,
         date: row.date || '',
@@ -208,13 +275,25 @@ export async function GET(
         txHash: row.tx_hash || '',
         counterparty,
         counterpartyLabel,
+        gasUsed,
+        gasFeeEth,
+        gasFeeUsd,
       };
     });
+
+    const pageLen = (data || []).length;
+    const hasMore =
+      pageLen >= effectiveLimit &&
+      (Number.isFinite(planCap) ? offset + pageLen < planCap : true);
 
     return NextResponse.json({
       success: true,
       data: transactions,
-      total: count || transactions.length,
+      total: transactions.length,
+      offset,
+      limit: effectiveLimit,
+      planLimit: Number.isFinite(planCap) ? planCap : null,
+      hasMore,
     });
   } catch (error) {
     console.error('Wallet Transactions GET error:', error);

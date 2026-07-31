@@ -101,9 +101,25 @@ export function resolveTypeLabelAr(type: string | null | undefined): string {
   return resolveTypeLabel(type);
 }
 
+/** ERC-20 transfer / transferFrom — pure wallet send/receive, not DeFi. */
+const PURE_TRANSFER_SELECTORS = new Set(['0xa9059cbb', '0x23b872dd']);
+
+function isPureTransferMethod(methodId: string, methodName: string): boolean {
+  if (PURE_TRANSFER_SELECTORS.has(methodId)) return true;
+  return methodName === 'transfer' || methodName === 'transferfrom';
+}
+
+function isNativeSend(methodId: string, methodName: string): boolean {
+  return (!methodId || methodId === '0x') && !methodName;
+}
+
 /**
  * Upgrade a coarse income/expense type using method id, protocol address, or name hints.
  * Safe to run on read (existing DB rows) and on write (sync).
+ *
+ * Accounting rules:
+ * - Expense / Outflow = pure Transfer (wallet Send) or native ETH send only
+ * - Bridge / Approve / Swap / DeFi = trade (or staking/defi/nft) — never expense
  */
 export function refineTransactionType(input: {
   type?: string | null;
@@ -121,25 +137,52 @@ export function refineTransactionType(input: {
   const methodId = (input.methodId || '').toLowerCase();
   const methodName = (input.methodName || '').toLowerCase();
   const to = (input.to || '').toLowerCase();
+  const direction = (input.direction || '').toLowerCase();
 
   if (input.hasSwapLegs) return 'trade';
 
+  // Pure wallet send/receive must win over protocol DB (token contracts used to
+  // mis-label USDC transfers as "trade").
+  if (isPureTransferMethod(methodId, methodName) || isNativeSend(methodId, methodName)) {
+    if (direction === 'in') return 'income';
+    if (direction === 'out') return 'expense';
+  }
+
   const method = methodId ? getMethodInfo(methodId) : null;
-  if (method?.type) return method.type as TransactionType;
+  if (method?.type) {
+    // Bridges are market/capital moves, not cash leaving the wallet forever.
+    // User-facing Classification groups them with Trade (excluded from Outflow).
+    if (method.type === 'bridge') return 'trade';
+    return method.type as TransactionType;
+  }
 
   const protocol = to ? getProtocolInfo(to) : null;
-  if (protocol?.type) return protocol.type as TransactionType;
+  if (protocol?.type) {
+    if (protocol.type === 'bridge') return 'trade';
+    return protocol.type as TransactionType;
+  }
 
   if (
     methodName.includes('swap') ||
     methodName.includes('exactinput') ||
     methodName.includes('exactoutput') ||
-    methodName.includes('fillorder')
+    methodName.includes('fillorder') ||
+    methodName.includes('approve')
   ) {
     return 'trade';
   }
   if (methodName.includes('stake') || methodName.includes('claimreward') || methodName.includes('getreward')) {
     return 'staking';
+  }
+  if (
+    methodName.includes('bridge') ||
+    methodName.includes('sendmessage') ||
+    methodName.includes('depositeth') ||
+    methodName.includes('deposittransaction') ||
+    methodName.includes('finalize') ||
+    methodName.includes('relay')
+  ) {
+    return 'trade';
   }
   if (
     methodName.includes('deposit') ||
@@ -150,26 +193,29 @@ export function refineTransactionType(input: {
   ) {
     return 'defi';
   }
-  if (methodName.includes('bridge') || methodName.includes('sendmessage')) {
-    return 'bridge';
+
+  // Unknown contract call (has a method selector) is never a pure wallet Send.
+  // Only transfer / native send count as Expense / Outflow.
+  if (methodId && methodId !== '0x') {
+    return 'trade';
   }
 
   const existing = (input.type || '').toLowerCase();
+  if (existing === 'bridge') return 'trade';
   if (
     existing === 'trade' ||
     existing === 'defi' ||
     existing === 'staking' ||
     existing === 'gas' ||
     existing === 'nft' ||
-    existing === 'bridge' ||
     existing === 'income' ||
     existing === 'expense'
   ) {
     return existing as TransactionType;
   }
 
-  if (input.direction === 'in') return 'income';
-  if (input.direction === 'out') return 'expense';
+  if (direction === 'in') return 'income';
+  if (direction === 'out') return 'expense';
   return 'income';
 }
 
