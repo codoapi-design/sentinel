@@ -36,6 +36,7 @@ import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
 import { useUiPreferencesStore } from '@/stores/ui-preferences-store';
 import { ClientsPageFilterStats } from '@/components/clients-filter-stats';
 import { useWalletReadModels } from '@/hooks/use-wallet-read-models';
+import { AIAnalysisSection } from '@/components/ai-analysis-section';
 
 const clientColors = [
   '#ff007a', '#0052ff', '#0ecb81', '#f6465d', '#f7931a',
@@ -125,7 +126,22 @@ export function ClientsTab({
 
   const handleFilteredDataChange = useCallback((data: CounterpartyStats[]) => {
     setFiltersReady(true);
-    setFilteredData(data);
+    setFilteredData(prev => {
+      if (
+        prev.length === data.length &&
+        prev.every(
+          (row, i) =>
+            row.address === data[i]?.address &&
+            row.txCount === data[i]?.txCount &&
+            row.totalVolume === data[i]?.totalVolume &&
+            row.label === data[i]?.label &&
+            row.isDefined === data[i]?.isDefined,
+        )
+      ) {
+        return prev;
+      }
+      return data;
+    });
   }, []);
 
   const statsClients = filtersReady ? filteredData : [];
@@ -153,6 +169,13 @@ export function ClientsTab({
         defineAddress={defineAddress}
         onDefineConsumed={onDefineConsumed}
         onFilteredDataChange={handleFilteredDataChange}
+      />
+      <AIAnalysisSection
+        transactions={visibleTransactions}
+        clients={clients}
+        sectionTitle="Clients"
+        sectionType="clients"
+        page="clients"
       />
     </div>
   );

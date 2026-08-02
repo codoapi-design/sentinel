@@ -21,6 +21,8 @@ import type {
   Confidence,
   DataQuality,
   Evidence,
+  Insight,
+  InsightSourceRef,
   IntelligenceInput,
   IntelligenceTransaction,
   PeriodComparison,
@@ -945,3 +947,83 @@ export function compactEvidence(
 }
 
 type EvidenceInputValue = string | number | null | undefined;
+
+export const ENGINE_SEMVER: Record<string, string> = {
+  performance: '2.0.0',
+  flow: '2.0.0',
+  portfolio: '2.0.0',
+  asset: '2.0.0',
+  risk: '2.0.0',
+  trading: '2.0.0',
+  network: '2.0.0',
+  counterparty: '2.0.0',
+};
+
+/** Attach native source references to engine findings. */
+export function withNativeSourceRefs(
+  insights: Insight[],
+  engine: keyof typeof ENGINE_SEMVER | string,
+  refsFor: (insight: Insight) => InsightSourceRef[],
+): Insight[] {
+  const version = ENGINE_SEMVER[engine] ?? '2.0.0';
+  return insights.map(insight => ({
+    ...insight,
+    engineVersion: insight.engineVersion ?? version,
+    sourceRefs:
+      insight.sourceRefs && insight.sourceRefs.length > 0
+        ? insight.sourceRefs
+        : refsFor(insight),
+  }));
+}
+
+export function calculationRef(engine: string, formulaId?: string): InsightSourceRef {
+  return {
+    type: 'calculation',
+    table: engine,
+    id: formulaId,
+  };
+}
+
+export function aggregateRef(queryId: string, table = 'transactions'): InsightSourceRef {
+  return {
+    type: 'aggregate',
+    table,
+    queryId,
+    id: queryId,
+  };
+}
+
+export function positionRef(symbol: string, network?: string): InsightSourceRef {
+  return {
+    type: 'asset_position',
+    table: 'asset_positions',
+    id: network ? `${symbol}:${network}` : symbol,
+  };
+}
+
+export function snapshotRef(date: string): InsightSourceRef {
+  return {
+    type: 'portfolio_snapshot',
+    table: 'portfolio_snapshots',
+    id: date,
+    timestamp: date,
+  };
+}
+
+export function counterpartyRef(key: string): InsightSourceRef {
+  return {
+    type: 'counterparty',
+    table: 'transactions',
+    id: key,
+  };
+}
+
+export function transactionRef(id?: string, hash?: string, timestamp?: string): InsightSourceRef {
+  return {
+    type: 'transaction',
+    table: 'transactions',
+    id,
+    hash,
+    timestamp,
+  };
+}

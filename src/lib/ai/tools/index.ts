@@ -42,6 +42,8 @@ import { humanizeKey } from '@/lib/ai/llm/render';
 import {
   isAllTimeUiPeriod,
   loadWalletContext,
+  applyScreenSnapshot,
+  parsePeriodDays,
   type WalletContext,
   type WalletProfile,
 } from './context';
@@ -54,6 +56,46 @@ import {
   type ToolName,
 } from './registry';
 import { MAX_TOOLS_PER_QUESTION, planTools, type AnalysisMode, type PageContext, type ToolPlan } from './planner';
+import type { AiScreenSnapshot } from '@/lib/ai-screen-snapshot';
+import {
+  AiRequestTracer,
+  PIPELINE_VERSION,
+  RESPONSE_SCHEMA_VERSION,
+  ENGINE_VERSIONS,
+  buildAnalysisScope,
+  buildDataRequirementsPlan,
+  collectApprovedNumerics,
+  deriveCompletionStatus,
+  evaluateEligibility,
+  filterProhibitedFindings,
+  normalizeAllFindings,
+  verifyScreenAgainstServer,
+  splitScreenSnapshot,
+  resolveAiHistoryEntitlement,
+  intersectPeriodWithEntitlement,
+  periodBounds,
+  type AnalysisCompletionStatus,
+  type AnalysisScope,
+  type DomainStatus,
+  type EvidenceItem,
+  type GroundingReport,
+  type NarrativeValidationReport,
+  type NormalizedFinding,
+  type StructuredNarrative,
+  type AiVersions,
+  type DataRequirementsPlan,
+} from '@/lib/ai/trust';
+import { createAiAnalysisJob } from '@/lib/ai/jobs';
+import {
+  runIntelligenceQuality,
+  serializeForLlm,
+  toPublicReasonedIntelligence,
+  resolvePolicyContext,
+  type PublicReasonedIntelligence,
+  type ReasoningDiagnostics,
+} from '@/lib/ai/intelligence-quality';
+import { RADAREUM_PROMPT_VERSION } from '@/lib/ai/llm/prompts';
+import { SubscriptionEntitlementError } from './usage';
 
 export * from './bundles';
 export * from './context';
@@ -97,6 +139,11 @@ export interface RunAnalysisArgs {
   user?: { plan?: string | null; locale?: string | null; timezone?: string | null };
   /** Already-loaded context, to avoid reading the same wallet twice. */
   context?: WalletContext;
+  /**
+   * On-screen rows from the Analyze button. When set, those slices replace the
+   * matching DB data. Chat must omit this so the agent searches the full wallet.
+   */
+  screenSnapshot?: AiScreenSnapshot | null;
 }
 
 export interface AnalysisMetric {
@@ -136,6 +183,7 @@ export interface AnalysisDataQuality {
   lastSyncedAt: string | null;
   /** Neutral statements about what limits this analysis. */
   notes: string[];
+  isFullEntitledHistory?: boolean;
 }
 
 export interface RunAnalysisResult {
@@ -165,6 +213,25 @@ export interface RunAnalysisResult {
   };
   /** The loaded context, so a caller can reuse it without a second read. */
   context: WalletContext;
+  /** Package 1 additive fields */
+  completionStatus: AnalysisCompletionStatus;
+  structuredNarrative?: StructuredNarrative;
+  scope: AnalysisScope;
+  domainStatuses: DomainStatus[];
+  grounding: GroundingReport;
+  evidence: EvidenceItem[];
+  normalizedFindings: NormalizedFinding[];
+  validation?: NarrativeValidationReport;
+  traceId: string;
+  versions: AiVersions;
+  dataRequirementsPlan: DataRequirementsPlan;
+  /** Present when heavy full-history work was deferred to a durable job. */
+  jobId?: string;
+  entitlementLimitations?: string[];
+  /** Package 2 reasoned intelligence (public subset). */
+  reasonedIntelligence?: PublicReasonedIntelligence;
+  /** Package 2 diagnostics — only when explicitly enabled. */
+  reasoningDiagnostics?: ReasoningDiagnostics;
 }
 
 const MAX_INSIGHTS = 15;
@@ -198,15 +265,237 @@ const ENGINE_TITLES: Record<string, string> = {
  * @throws {WalletContextError} when the wallet does not belong to the user.
  */
 export async function runAnalysis(args: RunAnalysisArgs): Promise<RunAnalysisResult> {
+  const tracer = new AiRequestTracer();
   const section = args.sectionContext ?? {};
   const question = typeof args.question === 'string' ? args.question.trim() : '';
   const investmentReturnFocus = isInvestmentReturnSection(section);
+  const now = args.now ?? Date.now();
+  const periodDaysHint = parsePeriodDays(section.period ?? null);
 
+  const entitlement = resolveAiHistoryEntitlement({
+    plan: args.user?.plan,
+    now,
+  });
+  const requestedBounds = periodBounds(periodDaysHint, now);
+  const periodIntersection = intersectPeriodWithEntitlement(requestedBounds, entitlement);
+  if (periodIntersection.denied) {
+    throw new SubscriptionEntitlementError(
+      periodIntersection.reason ?? 'Requested period is outside subscription entitlement.',
+    );
+  }
+
+  tracer.markStart('plannerMs');
   // Planned twice on purpose: the first pass is free and decides which heavy
   // sources are worth loading; the second refines entity extraction with the
   // symbols and networks the wallet actually has.
   const provisionalPlan = planTools(question, toPageContext(section));
+  let dataRequirementsPlan = buildDataRequirementsPlan({
+    plan: provisionalPlan,
+    question,
+    periodDays: periodDaysHint,
+    now,
+    entity: {
+      asset: section.asset,
+      network: section.network,
+      counterparty: section.counterparty,
+    },
+  });
 
+  // Enforce entitlement: full-history async only when plan allows.
+  if (
+    dataRequirementsPlan.transactions.mode === 'full_entitled_history' &&
+    !entitlement.asyncFullHistoryAvailable
+  ) {
+    dataRequirementsPlan = {
+      ...dataRequirementsPlan,
+      transactions: {
+        mode: 'aggregate',
+        metrics: ['tx_count', 'inflow_usd', 'outflow_usd', 'net_flow_usd'],
+        from: periodIntersection.from,
+        to: periodIntersection.to,
+      },
+    };
+  }
+  tracer.markEnd('plannerMs');
+
+  // Heavy full-history row processing → durable job (never fake complete).
+  let jobId: string | undefined;
+  if (
+    dataRequirementsPlan.transactions.mode === 'full_entitled_history' &&
+    entitlement.asyncFullHistoryAvailable
+  ) {
+    const job = await createAiAnalysisJob({
+      userId: args.userId,
+      walletId: args.walletId,
+      jobType: 'full_history_analysis',
+      requestedScope: {
+        from: periodIntersection.from,
+        to: periodIntersection.to,
+        asset: section.asset ?? undefined,
+        network: section.network ?? undefined,
+      },
+      entitlementScope: {
+        allowedFrom: entitlement.allowedFrom,
+        allowedTo: entitlement.allowedTo,
+        plan: entitlement.plan,
+        limitations: entitlement.limitations,
+      },
+      traceId: tracer.traceId,
+    });
+    jobId = job.id;
+
+    const versions: AiVersions = {
+      pipelineVersion: PIPELINE_VERSION,
+      responseSchemaVersion: RESPONSE_SCHEMA_VERSION,
+      promptVersion: RADAREUM_PROMPT_VERSION,
+      engineVersions: ENGINE_VERSIONS,
+    };
+    const scope = buildAnalysisScope({
+      walletId: args.walletId,
+      periodPreset: section.period,
+      periodDays: periodDaysHint,
+      now,
+      plan: entitlement.plan,
+      source: 'server_aggregate',
+      truncated: true,
+      isFullEntitledHistory: false,
+      truncationReason: 'Full entitled history requires durable job processing',
+      entitlementLimitations: [
+        ...entitlement.limitations,
+        ...(periodIntersection.clipped ? [periodIntersection.reason ?? 'Period clipped.'] : []),
+        `Analysis job ${job.id} queued for exact full-history processing.`,
+      ],
+    });
+
+    return {
+      narrative:
+        'Full entitled history analysis is processing asynchronously. Poll the job status endpoint for exact completion coverage.',
+      source: 'deterministic',
+      intelligence: [],
+      insights: [],
+      metrics: [],
+      patterns: [],
+      toolsUsed: [],
+      plan: provisionalPlan,
+      analysisMode: provisionalPlan.mode,
+      confidence: 'low',
+      dataQuality: {
+        transactionCount: 0,
+        pricedCount: 0,
+        unpricedCount: 0,
+        completeness: 0,
+        truncated: true,
+        transactionCap: 0,
+        loadedTransactionCount: 0,
+        totalTransactionCount: null,
+        syncStatus: 'never',
+        lastSyncedAt: null,
+        notes: [`Pending job ${job.id}`],
+        isFullEntitledHistory: false,
+      },
+      wallet: {
+        id: args.walletId,
+        label: 'Wallet',
+        addressMasked: null,
+        addresses: [],
+        networks: [],
+        connectedAt: null,
+        lastSyncedAt: null,
+        isSyncing: false,
+        syncStatus: 'never',
+      },
+      periodDays: periodDaysHint,
+      periodLabel: formatPeriodLabel(periodDaysHint),
+      generatedAt: now,
+      llm: { providerId: 'none', violations: [] },
+      context: (args.context ?? ({
+        wallet: {
+          id: args.walletId,
+          label: 'Wallet',
+          addressMasked: null,
+          addresses: [],
+          networks: [],
+          connectedAt: null,
+          lastSyncedAt: null,
+          isSyncing: false,
+          syncStatus: 'never',
+        },
+        transactions: [],
+        visibleTransactions: [],
+        assets: [],
+        clients: [],
+        snapshots: [],
+        portfolioValueUsd: 0,
+        financialSummary: {
+          totalRevenue: 0,
+          totalExpenses: 0,
+          netFlow: 0,
+          gasFees: 0,
+          tradingVolume: 0,
+          transactionCount: 0,
+          pricedCashflowCount: 0,
+          unpricedCount: 0,
+          excludedActivityCount: 0,
+          methodology: 'pending_job',
+        },
+        investmentReturn: null,
+        tradingVolume: null,
+        ethPriceUsd: null,
+        periodDays: periodDaysHint,
+        periodLabel: formatPeriodLabel(periodDaysHint),
+        includeHidden: false,
+        now,
+        coverage: {
+          loadedTransactionCount: 0,
+          totalTransactionCount: null,
+          visibleTransactionCount: 0,
+          transactionCap: 0,
+          truncated: true,
+          isFullEntitledHistory: false,
+          hasSnapshots: false,
+          hasHoldings: false,
+          notes: [`Pending job ${job.id}`],
+        },
+        intelligenceInput: {
+          transactions: [],
+          assets: [],
+          clients: [],
+          now,
+          periodDays: periodDaysHint,
+        },
+        domainStatuses: [],
+      } satisfies WalletContext)),
+      completionStatus: 'pending',
+      structuredNarrative: {
+        schemaVersion: '2.0.0',
+        headline: 'Analysis pending',
+        summary: `Full-history job ${job.id} is queued.`,
+        selectedFindingIds: [],
+        interpretation: '',
+        monitoringPoints: ['Poll /api/ai/jobs for progress based on processed records.'],
+        limitations: entitlement.limitations,
+        language: 'en',
+      },
+      scope,
+      domainStatuses: [],
+      grounding: {
+        primarySource: 'server_database',
+        screenContextUsed: false,
+        screenValuesVerified: true,
+        discrepancies: [],
+      },
+      evidence: [],
+      normalizedFindings: [],
+      validation: { valid: true, checkedClaims: 0, matchedClaims: 0, unmatchedClaims: [], correctionsApplied: [] },
+      traceId: tracer.traceId,
+      versions,
+      dataRequirementsPlan,
+      jobId,
+      entitlementLimitations: entitlement.limitations,
+    };
+  }
+
+  tracer.markStart('contextMs');
   let context =
     args.context ??
     (await loadWalletContext({
@@ -217,21 +506,158 @@ export async function runAnalysis(args: RunAnalysisArgs): Promise<RunAnalysisRes
       now: args.now,
       scope: resolveScope(provisionalPlan.tools),
       analysisFocus: investmentReturnFocus ? 'investment_return' : undefined,
+      dataRequirements: dataRequirementsPlan,
     }));
+
+  let grounding: GroundingReport = {
+    primarySource: 'server_database',
+    screenContextUsed: false,
+    screenValuesVerified: true,
+    discrepancies: [],
+  };
+
+  // Analyze button only: presentation context + verification; server authoritative.
+  if (args.screenSnapshot) {
+    const { presentation, clientValues } = splitScreenSnapshot(args.screenSnapshot);
+    grounding = verifyScreenAgainstServer(context, clientValues, presentation);
+    context = applyScreenSnapshot(context, args.screenSnapshot);
+  }
+  tracer.markEnd('contextMs');
 
   context = applyInvestmentReturnFocus(context, section);
 
+  tracer.markStart('plannerMs');
   const plan = planTools(question, toPageContext(section, context));
+  tracer.markEnd('plannerMs');
+
+  const domainStatuses: DomainStatus[] = context.domainStatuses ?? [];
+  const eligibility = evaluateEligibility(domainStatuses);
+
+  // Drop tools that require prohibited domains
+  let tools = [...plan.tools];
+  if (!eligibility.allowFlow) {
+    tools = tools.filter(
+      t =>
+        t !== 'get_flow_analysis' &&
+        t !== 'get_counterparty_intelligence' &&
+        t !== 'get_trading_intelligence',
+    );
+  }
+  if (!eligibility.allowHoldings) {
+    tools = tools.filter(
+      t =>
+        t !== 'get_portfolio_overview' &&
+        t !== 'get_asset_intelligence' &&
+        t !== 'get_risk_intelligence',
+    );
+  }
+  if (tools.length === 0 && eligibility.allowHoldings) {
+    tools = ['get_portfolio_overview'];
+  }
+
+  tracer.markStart('enginesMs');
   const toolContext = createToolContext(context);
-  const toolArgs = toToolArgs(plan, section);
-  const envelopes = runTools(plan.tools, toolArgs, toolContext);
+  const toolArgs = toToolArgs({ ...plan, tools }, section);
+  const envelopes = runTools(tools, toolArgs, toolContext);
+  tracer.markEnd('enginesMs');
 
   const periodLabel = context.periodLabel || formatPeriodLabel(context.periodDays);
   const sectionLabel = resolveSectionLabel(section, plan);
 
-  const narrativeModules = envelopes.map(envelope => toNarrativeIntelligence(envelope, periodLabel));
+  const scope = buildAnalysisScope({
+    walletId: args.walletId,
+    periodPreset: section.period,
+    periodDays: context.periodDays,
+    now: context.now,
+    plan: args.user?.plan,
+    entity: {
+      asset: plan.entities.asset ?? section.asset,
+      network: plan.entities.network ?? section.network,
+      counterparty: plan.entities.counterparty ?? section.counterparty,
+      transactionType: section.typeId,
+    },
+    filters: section.filters,
+    source: grounding.primarySource,
+    processedRecords: context.coverage.loadedTransactionCount,
+    matchingRecords: context.coverage.totalTransactionCount,
+    truncated: context.coverage.truncated,
+    truncationReason: context.coverage.truncationReason,
+    isFullEntitledHistory: context.coverage.isFullEntitledHistory === true,
+    asOf: {
+      holdings: context.wallet.lastSyncedAt ?? undefined,
+      transactions: context.transactionAggregates?.asOf,
+      pricing: context.wallet.lastSyncedAt ?? undefined,
+    },
+    entitlementLimitations: eligibility.limitations,
+  });
 
-  const usesFullReport = plan.tools.includes('generate_intelligence_report');
+  const rawInsights = collectInsights(envelopes).map(i => ({
+    ...i,
+    engine: envelopes.find(e => e.findings.some(f => f.id === i.id))?.engine,
+  }));
+  const allowedInsights = filterProhibitedFindings(rawInsights, eligibility);
+  const { evidence, findings: normalizedFindings } = normalizeAllFindings(
+    allowedInsights.map(i => ({
+      id: i.id,
+      type: i.type,
+      title: i.title,
+      description: i.description,
+      severity: i.severity,
+      confidence: i.confidence,
+      category: i.category ?? undefined,
+      evidence: i.evidence,
+      impact: i.impact ?? undefined,
+      impactUsd: i.impactUsd ?? undefined,
+      relatedEntities: i.relatedEntities,
+      engine: i.engine,
+    })) as Parameters<typeof normalizeAllFindings>[0],
+    scope,
+  );
+
+  const metrics = collectMetrics(envelopes);
+  const narrativeModules = envelopes.map(envelope => toNarrativeIntelligence(envelope, periodLabel));
+  const approvedNumerics = collectApprovedNumerics({
+    metrics: metrics.map(m => ({
+      value: m.value,
+      key: m.key,
+      label: m.label,
+      unit: String(m.unit),
+    })),
+    evidenceValues: evidence.map(e => e.value),
+    portfolioValueUsd: context.portfolioValueUsd,
+  });
+
+  // Package 2 — deterministic reasoning / ranking before LLM
+  tracer.markStart('reasoningMs');
+  const relevanceContext =
+    args.mode === 'chat'
+      ? 'chat'
+      : tools.includes('generate_intelligence_report')
+        ? 'report'
+        : resolvePolicyContext(section.sectionType ?? section.page);
+  const includeDiagnostics =
+    process.env.AI_REASONING_DIAGNOSTICS === '1' || process.env.NODE_ENV === 'test';
+  const reasonedPackage = runIntelligenceQuality({
+    envelopes,
+    scope,
+    domainStatuses,
+    evidence,
+    portfolioValueUsd: context.portfolioValueUsd,
+    periodDays: context.periodDays,
+    context: relevanceContext,
+    includeDiagnostics,
+    focusAsset: plan.entities.asset ?? section.asset ?? null,
+    userQuestion: question.length > 0 ? question : null,
+    analysisLevelLabel: 'wallet',
+  });
+  const llmReasoning = serializeForLlm(reasonedPackage);
+  const publicReasoned = toPublicReasonedIntelligence(reasonedPackage, {
+    includeDiagnostics,
+  });
+  tracer.markEnd('reasoningMs');
+
+  const usesFullReport = tools.includes('generate_intelligence_report');
+  tracer.markStart('llmMs');
   const narrative = await generateNarrative({
     mode: args.mode,
     runtimeContext: buildRuntimeContext(args, context, section),
@@ -242,23 +668,98 @@ export async function runAnalysis(args: RunAnalysisArgs): Promise<RunAnalysisRes
     period: periodLabel,
     signal: args.signal,
     preferDeterministic: args.preferDeterministic,
-    // Full executive reports use AI_MODEL_REPORT (gpt-4o); everything else uses AI_MODEL.
     purpose: usesFullReport ? 'report' : 'default',
     now: new Date(context.now),
+    // LLM may only cite Package 2 selected / approved insight IDs (legacy ids).
+    allowedFindingIds:
+      llmReasoning.allowedFindingIds.length > 0
+        ? llmReasoning.allowedFindingIds
+        : normalizedFindings.map(f => f.id),
+    approvedNumerics,
+    reasonedSummary: {
+      whatMatters: llmReasoning.whatMatters,
+      selectedInsights: llmReasoning.selectedInsights,
+      attributionSummary: llmReasoning.attributionSummary,
+      limitations: llmReasoning.limitations,
+      monitoringPoints: llmReasoning.monitoringPoints.map(m => m.explanation),
+    },
+  });
+  tracer.markEnd('llmMs');
+
+  const completionStatus = deriveCompletionStatus({
+    domainStatuses,
+    pending:
+      dataRequirementsPlan.transactions.mode === 'full_entitled_history' &&
+      context.coverage.isFullEntitledHistory !== true &&
+      context.coverage.truncated,
+  });
+
+  const versions: AiVersions = {
+    pipelineVersion: PIPELINE_VERSION,
+    responseSchemaVersion: RESPONSE_SCHEMA_VERSION,
+    promptVersion: RADAREUM_PROMPT_VERSION,
+    engineVersions: ENGINE_VERSIONS,
+  };
+
+  // Primary insights = Package 2 selected approved set (legacy shape for compatibility).
+  const selectedApproved = reasonedPackage.approvedInsights.filter(a =>
+    reasonedPackage.selectedInsightIds.includes(a.id),
+  );
+  const insightsFromReasoning: AnalysisInsight[] = selectedApproved.map(a => {
+    const legacy = allowedInsights.find(i => i.id === a.legacyFindingId);
+    return {
+      id: a.legacyFindingId ?? a.id,
+      type: a.type,
+      title: a.title,
+      description: a.proposedMeaning || a.description,
+      severity: legacy?.severity ?? (a.priority.level === 'critical' ? 'critical' : a.priority.level === 'high' ? 'high' : 'medium'),
+      confidence: legacy?.confidence ?? 'medium',
+      category: (legacy?.category ?? a.category) as AnalysisInsight['category'],
+      evidence: legacy?.evidence ?? {},
+      impact: a.userMeaning.general ?? a.proposedMeaning,
+      impactUsd: a.impactUsd ?? null,
+      relatedEntities: a.entityIds,
+    };
+  });
+  const insights: AnalysisInsight[] =
+    insightsFromReasoning.length > 0
+      ? insightsFromReasoning
+      : allowedInsights.map(i => ({
+          id: i.id,
+          type: i.type,
+          title: i.title,
+          description: i.description,
+          severity: i.severity,
+          confidence: i.confidence,
+          category: i.category ?? null,
+          evidence: i.evidence,
+          impact: i.impact ?? null,
+          impactUsd: i.impactUsd ?? null,
+          relatedEntities: i.relatedEntities,
+        }));
+
+  tracer.log('analysis_complete', {
+    completionStatus,
+    tools: tools,
+    fallback: narrative.fallbackReason,
   });
 
   return {
     narrative: narrative.text,
     source: narrative.source,
     intelligence: envelopes,
-    insights: collectInsights(envelopes),
-    metrics: collectMetrics(envelopes),
+    insights,
+    metrics,
     patterns: collectPatterns(envelopes),
     toolsUsed: envelopes.map(envelope => envelope.tool),
-    plan,
+    plan: { ...plan, tools },
     analysisMode: plan.mode,
-    confidence: mergeConfidence(envelopes),
-    dataQuality: buildDataQuality(envelopes, context),
+    confidence: mergeConfidence(envelopes, context),
+    dataQuality: {
+      ...buildDataQuality(envelopes, context),
+      isFullEntitledHistory: context.coverage.isFullEntitledHistory === true,
+      notes: [...buildDataQuality(envelopes, context).notes, ...eligibility.limitations],
+    },
     wallet: context.wallet,
     periodDays: context.periodDays,
     periodLabel,
@@ -271,6 +772,19 @@ export async function runAnalysis(args: RunAnalysisArgs): Promise<RunAnalysisRes
       violations: narrative.violations,
     },
     context,
+    completionStatus,
+    structuredNarrative: narrative.structuredNarrative,
+    scope,
+    domainStatuses,
+    grounding,
+    evidence,
+    normalizedFindings,
+    validation: narrative.validation,
+    traceId: tracer.traceId,
+    versions,
+    dataRequirementsPlan,
+    reasonedIntelligence: publicReasoned,
+    reasoningDiagnostics: includeDiagnostics ? reasonedPackage.diagnostics : undefined,
   };
 }
 
@@ -578,9 +1092,19 @@ function inferUnit(key: string, value: number | string | boolean): MetricUnit | 
   return Number.isInteger(value) ? 'count' : 'score';
 }
 
-function mergeConfidence(envelopes: EngineOutput[]): Confidence {
+function mergeConfidence(envelopes: EngineOutput[], context: WalletContext): Confidence {
   if (envelopes.length === 0) return 'low';
-  return lowestConfidence(...envelopes.map(envelope => envelope.confidence));
+  // Screen Analyze is about what the user sees now. History-reconstruction
+  // modules (performance / risk) must not force Low when holdings are priced.
+  let list = envelopes;
+  if (context.intelligenceInput.dataGrounding === 'screen') {
+    const focused = envelopes.filter(
+      envelope =>
+        envelope.tool !== 'get_performance_analysis' && envelope.tool !== 'get_risk_intelligence',
+    );
+    if (focused.length > 0) list = focused;
+  }
+  return lowestConfidence(...list.map(envelope => envelope.confidence));
 }
 
 function buildDataQuality(envelopes: EngineOutput[], context: WalletContext): AnalysisDataQuality {

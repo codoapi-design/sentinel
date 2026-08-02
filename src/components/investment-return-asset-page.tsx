@@ -625,6 +625,25 @@ export function InvestmentReturnAssetPage({
         network={asset.network}
         period={activePeriod === 0 ? 'all' : `${activePeriod}d`}
         filters={isCustomActive ? { to: effectiveTo } : undefined}
+        investmentReturn={filtered ?? detail ?? undefined}
+        assets={
+          asset
+            ? [
+                {
+                  symbol: asset.tokenSymbol,
+                  name: asset.tokenSymbol,
+                  valueUsd: asset.marketValueOpenUsd ?? 0,
+                  network: asset.network,
+                  tokenAddress: asset.tokenAddress,
+                  quantity: asset.quantityOpen ?? null,
+                  priceUsd:
+                    asset.quantityOpen > 0 && asset.marketValueOpenUsd > 0
+                      ? asset.marketValueOpenUsd / asset.quantityOpen
+                      : null,
+                },
+              ]
+            : undefined
+        }
       />
     </div>
   );

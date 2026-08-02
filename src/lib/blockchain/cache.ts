@@ -32,7 +32,9 @@ import type {
   PnLData,
   NFTAsset,
 } from './types';
-import type { Json } from '@/lib/supabase/types';
+import type { Database, Json } from '@/lib/supabase/types';
+
+type TransactionInsert = Database['public']['Tables']['transactions']['Insert'];
 
 // ────────────────────────────────────────────────────────────
 // TTL Configuration (milliseconds)
@@ -329,7 +331,7 @@ export class BlockchainCache {
     try {
       const supabase = createServerClient();
 
-      const rows = [];
+      const rows: TransactionInsert[] = [];
       for (const tx of transactions) {
         const classified = classifySyncedTransaction(tx);
         const topTransfer = classified.tokenTransfers?.[0];

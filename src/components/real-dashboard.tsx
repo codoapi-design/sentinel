@@ -3,10 +3,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from './sidebar';
-import { PortfolioOverview } from './portfolio-overview';
-import { PortfolioChart } from './portfolio-chart';
-import { AssetsTable, AssetsTab } from './assets-table';
-import { TransactionsTable, TransactionsTab } from './transactions-table';
+import { AssetsTab } from './assets-table';
+import { TransactionsTab } from './transactions-table';
 import { TelegramSettings } from './telegram-settings';
 import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
@@ -17,12 +15,13 @@ import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
 import type { InvestmentReturnAssetParams } from '@/hooks/use-investment-return-asset';
 import { TradingVolumePage } from './trading-volume-page';
+import { DashboardHome, type DashboardPanelId } from './dashboard-home';
 import { AssetDetailPage } from './asset-detail-page';
-import { ClientsSection, ClientsTab } from './clients-section';
+import { ClientsTab } from './clients-section';
 import { ClientDetailPage } from './client-detail-page';
-import { NetworksSection, NetworksTab } from './networks-section';
+import { NetworksTab } from './networks-section';
 import { NetworkDetailPage } from './network-detail-page';
-import { TypesSection, TypesTab } from './types-section';
+import { TypesTab } from './types-section';
 import { TypeDetailPage } from './type-detail-page';
 import { WalletBar } from './wallet-bar';
 import { AIAnalysisSection } from './ai-analysis-section';
@@ -53,6 +52,7 @@ import { FREE_PLAN_EXPIRED_MESSAGE } from '@/lib/plans/entitlements';
  */
 export function RealDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [dashboardPanel, setDashboardPanel] = useState<DashboardPanelId>('overview');
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [investmentReturnAsset, setInvestmentReturnAsset] =
     useState<InvestmentReturnAssetParams | null>(null);
@@ -158,7 +158,12 @@ export function RealDashboard() {
       if (cancelled) return;
 
       const wallet = useWalletStore.getState().wallets.find(w => w.id === activeWalletId);
-      if (wallet && !wallet.lastSyncedAt) {
+      if (
+        wallet &&
+        !wallet.lastSyncedAt &&
+        !wallet.isSyncing &&
+        !useWalletStore.getState().isSyncing[activeWalletId]
+      ) {
         // First-time ingest into the database
         await syncWallet(activeWalletId, 'full');
       }
@@ -174,6 +179,7 @@ export function RealDashboard() {
     () =>
       resolveDashboardChatContext({
         activeTab,
+        dashboardPanel: activeTab === 'dashboard' ? dashboardPanel : null,
         activeSection,
         activeAsset,
         activeClient,
@@ -181,7 +187,16 @@ export function RealDashboard() {
         activeType,
         investmentReturnAsset,
       }),
-    [activeTab, activeSection, activeAsset, activeClient, activeNetwork, activeType, investmentReturnAsset]
+    [
+      activeTab,
+      dashboardPanel,
+      activeSection,
+      activeAsset,
+      activeClient,
+      activeNetwork,
+      activeType,
+      investmentReturnAsset,
+    ],
   );
 
   const handleLogout = async () => {
@@ -191,6 +206,11 @@ export function RealDashboard() {
   };
 
   const handleSectionClick = (section: string) => {
+    // Same destinations as the new sidebar tabs — keep nav highlight in sync.
+    if (section === 'investment-return' || section === 'trading-volume') {
+      handleTabChange(section);
+      return;
+    }
     setActiveSection(section);
     setInvestmentReturnAsset(null);
     setActiveAsset(null);
@@ -250,7 +270,8 @@ export function RealDashboard() {
   };
   const handleBackFromInvestmentReturnAsset = () => {
     setInvestmentReturnAsset(null);
-    setActiveSection('investment-return');
+    setActiveSection(null);
+    setActiveTab('investment-return');
   };
   const handleBackFromAsset = () => setActiveAsset(null);
   const handleBackFromClient = () => setActiveClient(null);
@@ -265,6 +286,9 @@ export function RealDashboard() {
     setActiveClient(null);
     setActiveNetwork(null);
     setActiveType(null);
+    if (tab === 'dashboard') {
+      setDashboardPanel('overview');
+    }
   };
 
   const handleDefineClient = (address: string) => {
@@ -318,6 +342,8 @@ export function RealDashboard() {
       case 'clients': return 'Clients';
       case 'networks': return 'Networks';
       case 'types': return 'Types';
+      case 'investment-return': return 'Investment Return';
+      case 'trading-volume': return 'Trading Volume';
       case 'settings': return 'Settings';
       case 'subscription': return 'Subscription';
       case 'referral': return 'Referral Program';
@@ -444,19 +470,6 @@ export function RealDashboard() {
       );
     }
 
-    if (activeSection === 'investment-return') {
-      return (
-        <InvestmentReturnPage
-          onBack={handleBackFromSection}
-          onAssetClick={handleInvestmentReturnAssetClick}
-        />
-      );
-    }
-
-    if (activeSection === 'trading-volume') {
-      return <TradingVolumePage onBack={handleBackFromSection} clients={displayClients} />;
-    }
-
     if (activeSection === 'gas') {
       return <GasFeesPage onBack={handleBackFromSection} clients={displayClients} />;
     }
@@ -474,25 +487,39 @@ export function RealDashboard() {
     switch (activeTab) {
       case 'dashboard':
         return (
-          <div className="space-y-6">
-            <PortfolioOverview onSectionClick={handleSectionClick} />
-            <PortfolioChart />
-            <AssetsTable onAssetClick={handleAssetClick} />
-            <ClientsSection
-              clients={displayClients}
-              transactions={displayTransactions}
-              onClientClick={handleClientClick}
-            />
-            <NetworksSection
-              transactions={displayTransactions}
-              onNetworkClick={handleNetworkClick}
-            />
-            <TypesSection
-              transactions={displayTransactions}
-              onTypeClick={handleTypeClick}
-            />
-            <TransactionsTable clients={displayClients} transactions={displayTransactions} />
-          </div>
+          <DashboardHome
+            panel={dashboardPanel}
+            onPanelChange={setDashboardPanel}
+            clients={displayClients}
+            transactions={displayTransactions}
+            onSectionClick={handleSectionClick}
+            onAssetClick={handleAssetClick}
+            onNetworkClick={handleNetworkClick}
+            onClientClick={handleClientClick}
+            onDefineClient={handleDefineClient}
+            onClientsChange={(newClients) => {
+              if (activeWalletId) {
+                useWalletStore.getState().setClients(activeWalletId, newClients);
+              }
+            }}
+            defineAddress={defineAddressTrigger}
+            onDefineConsumed={handleDefineConsumed}
+            onInvestmentReturnAssetClick={handleInvestmentReturnAssetClick}
+          />
+        );
+      case 'investment-return':
+        return (
+          <InvestmentReturnPage
+            onBack={() => handleTabChange('dashboard')}
+            onAssetClick={handleInvestmentReturnAssetClick}
+          />
+        );
+      case 'trading-volume':
+        return (
+          <TradingVolumePage
+            onBack={() => handleTabChange('dashboard')}
+            clients={displayClients}
+          />
         );
       case 'transactions':
         return (
@@ -501,20 +528,12 @@ export function RealDashboard() {
               clients={displayClients}
               transactions={displayTransactions}
             />
-            <AIAnalysisSection
-              transactions={displayTransactions}
-              clients={displayClients}
-              sectionTitle="Transactions"
-              sectionType="transactions"
-              page="transactions"
-            />
           </div>
         );
       case 'assets':
         return (
           <div className="space-y-6">
             <AssetsTab onAssetClick={handleAssetClick} />
-            <AIAnalysisSection sectionTitle="Assets" sectionType="assets" page="assets" />
           </div>
         );
       case 'clients':
@@ -533,13 +552,6 @@ export function RealDashboard() {
               defineAddress={defineAddressTrigger}
               onDefineConsumed={handleDefineConsumed}
             />
-            <AIAnalysisSection
-              transactions={displayTransactions}
-              clients={displayClients}
-              sectionTitle="Clients"
-              sectionType="clients"
-              page="clients"
-            />
           </div>
         );
       case 'networks':
@@ -548,12 +560,6 @@ export function RealDashboard() {
             <NetworksTab
               transactions={displayTransactions}
               onNetworkClick={handleNetworkClick}
-            />
-            <AIAnalysisSection
-              transactions={displayTransactions}
-              sectionTitle="Networks"
-              sectionType="networks"
-              page="networks"
             />
           </div>
         );

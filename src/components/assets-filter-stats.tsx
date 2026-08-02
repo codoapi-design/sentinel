@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   CircleDollarSign,
@@ -13,6 +13,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import type { PortfolioToken } from '@/hooks/use-portfolio';
+import { useWalletStore } from '@/stores/wallet-store';
 import { isStablecoinSymbol } from '@/lib/finance/stablecoins';
 import { cn } from '@/lib/utils';
 
@@ -85,6 +86,47 @@ interface AssetsPageFilterStatsProps {
  * Row 2: Networks · 24h Change · Avg Value · Stablecoins %
  */
 export function AssetsPageFilterStats({ assets }: AssetsPageFilterStatsProps) {
+  const activeWalletId = useWalletStore(s => s.activeWalletId);
+  const lastSyncAt = useWalletStore(s =>
+    activeWalletId ? s.lastSyncAt[activeWalletId] || 0 : 0,
+  );
+  const [historyChange, setHistoryChange] = useState<{
+    usd: number;
+    pct: number;
+  } | null>(null);
+
+  // Fallback when per-token change_24h is missing (Alchemy sync used to store null).
+  useEffect(() => {
+    if (!activeWalletId) {
+      setHistoryChange(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/portfolio/history?walletId=${encodeURIComponent(activeWalletId)}&days=1`,
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        const points = (json?.data?.points || []) as Array<{ value?: number }>;
+        if (cancelled || !Array.isArray(points) || points.length < 2) return;
+        const start = Number(points[0]?.value);
+        const end = Number(points[points.length - 1]?.value);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0) return;
+        setHistoryChange({
+          usd: Math.round((end - start) * 100) / 100,
+          pct: Math.round(((end - start) / start) * 10000) / 100,
+        });
+      } catch {
+        if (!cancelled) setHistoryChange(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWalletId, lastSyncAt]);
+
   const stats = useMemo(() => {
     if (assets.length === 0) {
       return {
@@ -94,6 +136,7 @@ export function AssetsPageFilterStats({ assets }: AssetsPageFilterStatsProps) {
         topNetwork: null as { label: string; valueUsd: number; count: number } | null,
         networkCount: 0,
         change24hUsd: null as number | null,
+        change24hPct: null as number | null,
         avgValue: 0,
         stablecoinsPct: null as number | null,
       };
@@ -101,6 +144,7 @@ export function AssetsPageFilterStats({ assets }: AssetsPageFilterStatsProps) {
 
     let totalValue = 0;
     let change24hUsd = 0;
+    let changeWeightedValue = 0;
     let hasChangeData = false;
     let stableValue = 0;
     let topAsset: { symbol: string; valueUsd: number } | null = null;
@@ -126,6 +170,7 @@ export function AssetsPageFilterStats({ assets }: AssetsPageFilterStatsProps) {
       if (asset.change24h !== null && asset.change24h !== undefined) {
         hasChangeData = true;
         change24hUsd += (value * asset.change24h) / 100;
+        changeWeightedValue += value;
       }
 
       if (isStablecoinSymbol(asset.symbol)) {
@@ -134,7 +179,7 @@ export function AssetsPageFilterStats({ assets }: AssetsPageFilterStatsProps) {
     }
 
     let topNetwork: { label: string; valueUsd: number; count: number } | null = null;
-    const allZeroValue = [...networkTotals.values()].every((n) => n.valueUsd === 0);
+    const allZeroValue = [...networkTotals.values()].every(n => n.valueUsd === 0);
     for (const [key, entry] of networkTotals) {
       const candidate = {
         label: key,
@@ -152,20 +197,34 @@ export function AssetsPageFilterStats({ assets }: AssetsPageFilterStatsProps) {
       }
     }
 
+    const tokenChangePct =
+      hasChangeData && changeWeightedValue > 0
+        ? Math.round((change24hUsd / changeWeightedValue) * 10000) / 100
+        : null;
+
     return {
       totalValue,
       assetCount: assets.length,
       topAsset,
       topNetwork,
       networkCount: networkTotals.size,
-      change24hUsd: hasChangeData ? change24hUsd : null,
+      change24hUsd: hasChangeData
+        ? change24hUsd
+        : historyChange
+          ? historyChange.usd
+          : null,
+      change24hPct: hasChangeData
+        ? tokenChangePct
+        : historyChange
+          ? historyChange.pct
+          : null,
       avgValue: assets.length > 0 ? totalValue / assets.length : 0,
       stablecoinsPct: totalValue > 0 ? (stableValue / totalValue) * 100 : null,
     };
-  }, [assets]);
+  }, [assets, historyChange]);
 
   const empty = assets.length === 0;
-  const changePositive = (stats.change24hUsd ?? 0) >= 0;
+  const changePositive = (stats.change24hPct ?? stats.change24hUsd ?? 0) >= 0;
 
   return (
     <div className="space-y-2">
@@ -246,7 +305,7 @@ export function AssetsPageFilterStats({ assets }: AssetsPageFilterStatsProps) {
 
         <StatCard
           icon={
-            stats.change24hUsd === null ? (
+            stats.change24hPct === null ? (
               <TrendingUp className="h-3 w-3 shrink-0 text-[#8a8f98]" />
             ) : changePositive ? (
               <TrendingUp className="h-3 w-3 shrink-0 text-[#0ecb81]" />
@@ -256,27 +315,35 @@ export function AssetsPageFilterStats({ assets }: AssetsPageFilterStatsProps) {
           }
           label="24h Change"
           glow={
-            stats.change24hUsd === null
+            stats.change24hPct === null
               ? undefined
               : changePositive
                 ? 'rgba(14, 203, 129, 0.06)'
                 : 'rgba(246, 70, 93, 0.06)'
           }
         >
-          <p
-            className={cn(
-              'text-xs sm:text-sm font-semibold font-mono-num leading-tight truncate',
-              stats.change24hUsd === null
-                ? 'text-[#8a8f98]'
-                : changePositive
-                  ? 'text-[#0ecb81]'
-                  : 'text-[#f6465d]',
-            )}
-          >
-            {stats.change24hUsd === null
-              ? EMPTY
-              : `${changePositive ? '+' : ''}$${formatUsd(stats.change24hUsd)}`}
-          </p>
+          {stats.change24hPct === null ? (
+            <p className="text-xs sm:text-sm font-semibold font-mono-num text-[#8a8f98] leading-tight truncate">
+              {EMPTY}
+            </p>
+          ) : (
+            <>
+              <p
+                className={cn(
+                  'text-xs sm:text-sm font-semibold font-mono-num leading-tight truncate',
+                  changePositive ? 'text-[#0ecb81]' : 'text-[#f6465d]',
+                )}
+              >
+                {changePositive ? '+' : ''}
+                {stats.change24hPct.toFixed(2)}%
+              </p>
+              {stats.change24hUsd !== null && (
+                <p className="text-[9px] sm:text-[10px] text-[#8a8f98] mt-0.5 font-mono-num truncate">
+                  {changePositive ? '+' : '−'}${formatCompactUsd(Math.abs(stats.change24hUsd))}
+                </p>
+              )}
+            </>
+          )}
         </StatCard>
 
         <StatCard

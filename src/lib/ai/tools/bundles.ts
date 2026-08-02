@@ -80,7 +80,8 @@ const SECTION_TOOLS: Record<string, ToolName[]> = {
   home: BUNDLES.dashboard.tools,
 
   assets: ['get_asset_intelligence', 'get_portfolio_overview', 'get_performance_analysis'],
-  asset: ['get_asset_intelligence', 'get_performance_analysis', 'get_risk_intelligence'],
+  // Asset detail: composition + activity on the visible rows (no history/risk drag).
+  asset: ['get_asset_intelligence', 'get_flow_analysis'],
   holdings: ['get_asset_intelligence', 'get_portfolio_overview', 'get_performance_analysis'],
 
   networks: BUNDLES.network.tools,

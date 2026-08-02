@@ -3,7 +3,7 @@
  *
  * GET  - List all wallets for a user
  * POST - Add a new wallet (multi-address: EVM / Solana / Tron / Bitcoin)
- * PATCH - Update wallet label
+ * PATCH - Update label and/or attach remaining address families (locked addresses never replaced)
  * DELETE - Remove a wallet
  */
 
@@ -313,6 +313,9 @@ export async function POST(request: NextRequest) {
 
 /**
  * PATCH /api/wallets
+ *
+ * Update wallet label and/or attach remaining address families (Solana / Tron / Bitcoin).
+ * Existing addresses (including EVM) are never replaced — only empty slots may be filled.
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -324,28 +327,200 @@ export async function PATCH(request: NextRequest) {
     const userId = user.id;
     const supabase = createServerClient();
 
-    const body = await request.json();
-    const { id, label } = body;
+    try {
+      await assertServerEntitlement(userId);
+    } catch (err) {
+      if (err instanceof SubscriptionEntitlementError) {
+        return NextResponse.json({ error: err.message }, { status: 402 });
+      }
+      throw err;
+    }
 
-    if (!id || !label) {
+    const body = await request.json();
+    const { id, label: rawLabel } = body as {
+      id?: string;
+      label?: string;
+      solanaAddress?: string;
+      tronAddress?: string;
+      bitcoinAddress?: string;
+    };
+
+    if (!id) {
+      return NextResponse.json({ error: 'Wallet ID is required' }, { status: 400 });
+    }
+
+    const { data: existing, error: fetchErr } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ error: 'Wallet not found' }, { status: 404 });
+    }
+
+    const plan = normalizePlanId(await resolveUserPlan(supabase, userId));
+    const label =
+      typeof rawLabel === 'string' && rawLabel.trim()
+        ? rawLabel.trim().slice(0, 30)
+        : existing.label;
+
+    if (!label) {
+      return NextResponse.json({ error: 'Wallet name is required' }, { status: 400 });
+    }
+
+    // Only fill empty non-EVM slots — never overwrite an existing address.
+    let sol = (existing.solana_address as string | null) || '';
+    let tron = (existing.tron_address as string | null) || '';
+    let btc = (existing.bitcoin_address as string | null) || '';
+    let addedFamilies: string[] = [];
+
+    const incomingSol =
+      typeof body.solanaAddress === 'string' ? body.solanaAddress.trim() : '';
+    const incomingTron =
+      typeof body.tronAddress === 'string' ? body.tronAddress.trim() : '';
+    const incomingBtc =
+      typeof body.bitcoinAddress === 'string' ? body.bitcoinAddress.trim() : '';
+
+    if (incomingSol) {
+      if (sol && sol !== incomingSol) {
+        return NextResponse.json(
+          { error: 'Solana address is already set and cannot be replaced' },
+          { status: 400 },
+        );
+      }
+      if (!sol) {
+        sol = incomingSol;
+        addedFamilies.push('solana');
+      }
+    }
+    if (incomingTron) {
+      if (tron && tron !== incomingTron) {
+        return NextResponse.json(
+          { error: 'Tron address is already set and cannot be replaced' },
+          { status: 400 },
+        );
+      }
+      if (!tron) {
+        tron = incomingTron;
+        addedFamilies.push('tron');
+      }
+    }
+    if (incomingBtc) {
+      if (btc && btc !== incomingBtc) {
+        return NextResponse.json(
+          { error: 'Bitcoin address is already set and cannot be replaced' },
+          { status: 400 },
+        );
+      }
+      if (!btc) {
+        btc = incomingBtc;
+        addedFamilies.push('bitcoin');
+      }
+    }
+
+    const filtered = filterAddressesByPlan(plan, {
+      evmAddress: existing.address || undefined,
+      solanaAddress: sol || undefined,
+      tronAddress: tron || undefined,
+      bitcoinAddress: btc || undefined,
+    });
+
+    // Drop families the plan does not allow (keep existing locked values if plan still allows)
+    if (!filtered.solanaAddress && addedFamilies.includes('solana')) {
       return NextResponse.json(
-        { error: 'Wallet ID and label are required' },
-        { status: 400 },
+        { error: 'Your plan does not allow Solana addresses' },
+        { status: 403 },
+      );
+    }
+    if (!filtered.tronAddress && addedFamilies.includes('tron')) {
+      return NextResponse.json(
+        { error: 'Your plan does not allow Tron addresses' },
+        { status: 403 },
+      );
+    }
+    if (!filtered.bitcoinAddress && addedFamilies.includes('bitcoin')) {
+      return NextResponse.json(
+        { error: 'Your plan does not allow Bitcoin addresses' },
+        { status: 403 },
       );
     }
 
-    const { error } = await supabase
-      .from('wallets')
-      .update({ label })
-      .eq('id', id)
-      .eq('user_id', userId);
+    sol = filtered.solanaAddress || (existing.solana_address as string | null) || '';
+    tron = filtered.tronAddress || (existing.tron_address as string | null) || '';
+    btc = filtered.bitcoinAddress || (existing.bitcoin_address as string | null) || '';
 
-    if (error) {
+    // Validate merged address set (label required by helper)
+    if (addedFamilies.length > 0) {
+      const validated = validateWalletAddresses({
+        label,
+        evmAddress: (existing.address as string | null) || undefined,
+        solanaAddress: sol || undefined,
+        tronAddress: tron || undefined,
+        bitcoinAddress: btc || undefined,
+      });
+      if (!validated.ok) {
+        return NextResponse.json({ error: validated.error }, { status: 400 });
+      }
+    }
+
+    // Uniqueness across other wallets for newly added addresses
+    for (const fam of addedFamilies) {
+      const col =
+        fam === 'solana'
+          ? 'solana_address'
+          : fam === 'tron'
+            ? 'tron_address'
+            : 'bitcoin_address';
+      const value = fam === 'solana' ? sol : fam === 'tron' ? tron : btc;
+      const { data: clash } = await supabase
+        .from('wallets')
+        .select('id')
+        .eq('user_id', userId)
+        .eq(col, value)
+        .neq('id', id)
+        .maybeSingle();
+      if (clash) {
+        return NextResponse.json(
+          { error: `This ${fam} address is already linked to another wallet` },
+          { status: 409 },
+        );
+      }
+    }
+
+    const { data: updated, error } = await supabase
+      .from('wallets')
+      .update({
+        label,
+        solana_address: sol || null,
+        tron_address: tron || null,
+        bitcoin_address: btc || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (error || !updated) {
       console.error('Error updating wallet:', error);
       return NextResponse.json({ error: 'Failed to update wallet' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    // Sync newly attached non-EVM families in the background
+    if (addedFamilies.length > 0) {
+      const syncEngine = getSyncEngine();
+      void syncEngine.incrementalSync(id).catch(err => {
+        console.warn('[Wallets PATCH] post-update sync skipped:', err);
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: mapWalletRow(updated),
+      addedFamilies,
+    });
   } catch (error) {
     console.error('Wallets PATCH error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

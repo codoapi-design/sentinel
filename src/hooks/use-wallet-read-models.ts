@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWalletStore } from '@/stores/wallet-store';
 
 export type ReadModelDimension = {
@@ -94,18 +94,34 @@ export function useWalletReadModels() {
     void fetchModels({ silent: true });
   }, [activeWalletId, lastSyncAt, fetchModels]);
 
-  const byDimension = useCallback(
-    (dimension: string) => (data?.dimensions || []).filter(d => d.dimension === dimension),
-    [data],
+  // Memoize per-dimension slices — returning a fresh .filter() every render
+  // invalidates downstream useMemos and can cause max-update-depth loops
+  // (e.g. ClientsTab onFilteredDataChange → setState → re-render → new array).
+  const dimensions = data?.dimensions;
+  const clients = useMemo(
+    () => (dimensions || []).filter(d => d.dimension === 'client'),
+    [dimensions],
+  );
+  const networks = useMemo(
+    () => (dimensions || []).filter(d => d.dimension === 'network'),
+    [dimensions],
+  );
+  const types = useMemo(
+    () => (dimensions || []).filter(d => d.dimension === 'type'),
+    [dimensions],
+  );
+  const assets = useMemo(
+    () => (dimensions || []).filter(d => d.dimension === 'asset'),
+    [dimensions],
   );
 
   return {
     data,
     summary: data?.summary ?? null,
-    clients: byDimension('client'),
-    networks: byDimension('network'),
-    types: byDimension('type'),
-    assets: byDimension('asset'),
+    clients,
+    networks,
+    types,
+    assets,
     isLoading,
     error,
     refetch: fetchModels,

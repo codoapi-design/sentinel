@@ -41,6 +41,23 @@ export type EvidenceValue = string | number;
 
 export type Evidence = Record<string, EvidenceValue>;
 
+/** Native source reference emitted by engines (Package 1 closure). */
+export interface InsightSourceRef {
+  type:
+    | 'transaction'
+    | 'asset_position'
+    | 'portfolio_snapshot'
+    | 'price_point'
+    | 'counterparty'
+    | 'aggregate'
+    | 'calculation';
+  id?: string;
+  hash?: string;
+  table?: string;
+  timestamp?: string;
+  queryId?: string;
+}
+
 /**
  * A single explainable finding. Shape follows the Insight Object defined in
  * Spec §5.7 / §5.23 / §5.41 / §5.57 / §5.74 / §5.91 / §5.108 / §5.126.
@@ -55,6 +72,10 @@ export interface Insight {
   severity: Severity;
   confidence: Confidence;
   evidence: Evidence;
+  /** Native engine source refs — preferred over post-hoc normalization only. */
+  sourceRefs?: InsightSourceRef[];
+  /** Engine semver for this finding. */
+  engineVersion?: string;
   category?: IntelligenceCategory;
   /** Consequence statement — mandatory for Risk insights (Spec §5.74). */
   impact?: string;
@@ -261,4 +282,9 @@ export interface IntelligenceInput {
   walletAddresses?: string[];
   /** Used to convert gas from ETH when a USD fee is not stored on the row. */
   ethPriceUsd?: number | null;
+  /**
+   * `screen` = Analyze button grounded on rows currently shown in the UI.
+   * `database` (default) = Chat / full wallet load from persisted sources.
+   */
+  dataGrounding?: 'screen' | 'database';
 }

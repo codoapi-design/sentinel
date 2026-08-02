@@ -44,6 +44,8 @@ export interface LlmRequest {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  /** Prefer JSON object responses when the gateway supports OpenAI response_format. */
+  responseFormat?: 'json_object' | 'text';
 }
 
 export interface LlmUsage {
@@ -364,6 +366,9 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         function: { name: tool.name, description: tool.description, parameters: tool.parameters },
       }));
       body.tool_choice = 'auto';
+    }
+    if (req.responseFormat === 'json_object') {
+      body.response_format = { type: 'json_object' };
     }
 
     const timeout = withTimeout(this.config.timeoutMs, req.signal);

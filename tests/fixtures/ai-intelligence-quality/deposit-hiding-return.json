@@ -1,0 +1,12 @@
+{
+  "id": "deposit-hiding-return-v1",
+  "version": "1.0.0",
+  "description": "Large deposit hiding poor investment return",
+  "portfolioChangeUsd": 8000,
+  "externalInflowUsd": 9000,
+  "investmentReturnUsd": -1000,
+  "expectations": {
+    "separateDepositFromReturn": true,
+    "noPositivePerformanceClaimFromBalanceAlone": true
+  }
+}

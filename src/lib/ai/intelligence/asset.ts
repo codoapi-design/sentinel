@@ -191,14 +191,27 @@ export function analyzeAssets(input: IntelligenceInput): AssetIntelligence {
     reconstructedValueSharePct: sharePct(reconstructedValueUsd, ledger.totalValueUsd),
   };
 
-  const confidence = lowestConfidence(
-    deriveConfidence(dataQuality, { minSampleForHigh: 10, minSampleForMedium: 2 }),
-    assets.length === 0 ? 'low' : 'high',
-    metrics.reconstructedValueSharePct >= 70
+  const pricedHeldCount = heldAssets.filter(a => a.priceUsd != null && a.priceUsd > 0).length;
+  const pricedHeldShare =
+    heldAssets.length > 0 ? sharePct(pricedHeldCount, heldAssets.length) : 0;
+  // Screen-grounded Analyze uses the visible holdings as truth — do not force
+  // Low confidence solely because start-of-period reconstruction is missing.
+  const sampleConfidence =
+    input.dataGrounding === 'screen' && heldAssets.length > 0 && pricedHeldShare >= 80
       ? 'high'
-      : metrics.reconstructedValueSharePct >= 30
-        ? 'medium'
-        : 'low',
+      : deriveConfidence(dataQuality, { minSampleForHigh: 10, minSampleForMedium: 2 });
+  const reconstructionConfidence =
+    input.dataGrounding === 'screen' && pricedHeldShare >= 80 && heldAssets.length > 0
+      ? 'high'
+      : metrics.reconstructedValueSharePct >= 70
+        ? 'high'
+        : metrics.reconstructedValueSharePct >= 30
+          ? 'medium'
+          : 'low';
+  const confidence = lowestConfidence(
+    sampleConfidence,
+    assets.length === 0 ? 'low' : 'high',
+    reconstructionConfidence,
   );
 
   const patterns = detectPatterns(metrics, period, confidence);
@@ -377,7 +390,11 @@ function computeAssetHealth(entry: AssetLedgerEntry): AssetHealthScore {
 
 function resolveAssetConfidence(entry: AssetLedgerEntry): Confidence {
   if (entry.priceUsd == null) return 'low';
-  if (entry.valueStartUsd == null) return 'low';
+  // Spot price is known — missing start-of-period reconstruction must not brand
+  // a clearly priced holding as low-confidence (common on asset detail pages).
+  if (entry.valueStartUsd == null) {
+    return entry.held ? 'medium' : 'low';
+  }
   if (entry.pricedTxCount >= 5) return 'high';
   if (entry.pricedTxCount >= 1) return 'medium';
   return 'medium';

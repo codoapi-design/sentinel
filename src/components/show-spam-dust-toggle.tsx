@@ -19,22 +19,31 @@ export function ShowSpamDustToggle({ className, compact }: ShowSpamDustTogglePro
   const setShowSpamAndDust = useUiPreferencesStore((s) => s.setShowSpamAndDust);
 
   return (
-    <label
+    <div
       className={cn(
         'inline-flex items-center gap-2 cursor-pointer select-none',
         compact ? 'text-[11px]' : 'text-xs',
         className,
       )}
+      onClick={() => setShowSpamAndDust(!showSpamAndDust)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setShowSpamAndDust(!showSpamAndDust);
+        }
+      }}
+      role="group"
     >
       <Switch
         checked={showSpamAndDust}
         onCheckedChange={setShowSpamAndDust}
+        onClick={e => e.stopPropagation()}
         className="data-[state=checked]:bg-[#0052ff] data-[state=unchecked]:bg-white/10"
         aria-label="Show spam and zero-dollar items"
       />
       <span className={cn(showSpamAndDust ? 'text-[#d0d6e0]' : 'text-[#8a8f98]')}>
         Show spam & $0
       </span>
-    </label>
+    </div>
   );
 }

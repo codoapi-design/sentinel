@@ -76,6 +76,7 @@ import {
 import { ON_CHAIN_ACTIVITY_LABELS } from '@/lib/finance/activity';
 import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
 import { TransactionsPageFilterStats } from '@/components/transaction-filter-stats';
+import { AIAnalysisSection } from '@/components/ai-analysis-section';
 
 const typeColors: Record<string, string> = {
   income: 'bg-[#0ecb81]/10 text-[#0ecb81] border-[#0ecb81]/20',
@@ -679,6 +680,13 @@ export function TransactionsTab({
         clients={clients}
         transactions={transactions}
         onFilteredDataChange={handleFilteredDataChange}
+      />
+      <AIAnalysisSection
+        transactions={statsTransactions}
+        clients={clients}
+        sectionTitle="Transactions"
+        sectionType="transactions"
+        page="transactions"
       />
     </div>
   );

@@ -18,6 +18,7 @@ import {
   computeFinancialSummary,
 } from '@/lib/finance/summary';
 import {
+  filterVisibleAssets,
   filterVisibleTransactions,
   isHiddenSpamOrDustTx,
 } from '@/lib/finance/visibility';
@@ -30,6 +31,8 @@ import {
   type NetworkFilterStatRow,
 } from '@/components/networks-filter-stats';
 import { useWalletReadModels } from '@/hooks/use-wallet-read-models';
+import { usePortfolio } from '@/hooks/use-portfolio';
+import { AIAnalysisSection } from '@/components/ai-analysis-section';
 
 interface NetworksSectionProps {
   transactions: Transaction[];
@@ -68,6 +71,12 @@ export function NetworksTab({
   const [filteredData, setFilteredData] = useState<NetworkStats[]>([]);
   const [filtersReady, setFiltersReady] = useState(false);
   const { networks: readModelNetworks } = useWalletReadModels();
+  const { portfolio } = usePortfolio();
+  const showSpamAndDust = useUiPreferencesStore(s => s.showSpamAndDust);
+  const screenAssets = useMemo(
+    () => filterVisibleAssets(portfolio?.tokens || [], showSpamAndDust),
+    [portfolio?.tokens, showSpamAndDust],
+  );
 
   const precomputedStats = useMemo((): NetworkStats[] | null => {
     if (!readModelNetworks.length) return null;
@@ -110,6 +119,14 @@ export function NetworksTab({
         precomputedStats={precomputedStats}
         onNetworkClick={onNetworkClick}
         onFilteredDataChange={handleFilteredDataChange}
+      />
+      <AIAnalysisSection
+        transactions={transactions}
+        assets={screenAssets}
+        portfolioValueUsd={screenAssets.reduce((s, t) => s + (t.valueUsd || 0), 0)}
+        sectionTitle="Networks"
+        sectionType="networks"
+        page="networks"
       />
     </div>
   );

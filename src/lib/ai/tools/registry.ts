@@ -31,6 +31,14 @@ import {
   type Pattern,
   type Severity,
 } from '@/lib/ai/intelligence';
+import {
+  aggregateRef,
+  calculationRef,
+  counterpartyRef,
+  positionRef,
+  snapshotRef,
+  withNativeSourceRefs,
+} from '@/lib/ai/intelligence/shared';
 
 import type { WalletContext } from './context';
 
@@ -172,6 +180,14 @@ function asMetrics(metrics: object): EngineMetrics {
 function resolveStatus(ctx: ToolContext, result: Pick<IntelligenceResult<unknown>, 'confidence' | 'dataQuality'>): EngineStatus {
   const { coverage } = ctx.wallet;
   if (result.dataQuality.transactionCount === 0 && !coverage.hasHoldings) return 'insufficient_data';
+
+  // Analyze button grounded on the visible page: do not degrade a priced
+  // holdings/activity view to "partial" just because older txs lack USD.
+  if (ctx.wallet.intelligenceInput.dataGrounding === 'screen') {
+    if (result.confidence === 'low') return 'partial';
+    return 'completed';
+  }
+
   if (result.confidence === 'low') return 'partial';
   if (coverage.truncated) return 'partial';
   if (result.dataQuality.completeness < PARTIAL_COMPLETENESS_PCT) return 'partial';
@@ -200,12 +216,39 @@ interface EnvelopeOptions {
   patterns?: Pattern[];
   findings?: Insight[];
   evidence?: Evidence;
+  confidence?: Confidence;
   followup: string[];
+}
+
+function attachEngineSourceRefs(engine: string, findings: Insight[]): Insight[] {
+  return withNativeSourceRefs(findings, engine, insight => {
+    const refs = [calculationRef(engine, insight.type)];
+    const entity = insight.relatedEntities?.[0];
+    if (engine === 'asset' || engine === 'portfolio') {
+      if (entity) refs.push(positionRef(entity));
+      refs.push(aggregateRef(`${engine}:holdings`, 'asset_positions'));
+    } else if (engine === 'flow' || engine === 'trading' || engine === 'network') {
+      refs.push(aggregateRef(`${engine}:transactions`, 'transactions'));
+    } else if (engine === 'counterparty') {
+      if (entity) refs.push(counterpartyRef(entity));
+      refs.push(aggregateRef('counterparty:volume', 'transactions'));
+    } else if (engine === 'performance') {
+      refs.push(aggregateRef('performance:snapshots', 'portfolio_snapshots'));
+      if (typeof insight.evidence?.period_start === 'string') {
+        refs.push(snapshotRef(String(insight.evidence.period_start)));
+      }
+    } else if (engine === 'risk') {
+      refs.push(positionRef(entity ?? 'portfolio'));
+      refs.push(aggregateRef('risk:structure', 'asset_positions'));
+    }
+    return refs;
+  });
 }
 
 function buildEnvelope(options: EnvelopeOptions): EngineOutput {
   const { ctx, result } = options;
   const followup = [...options.followup];
+  const confidence = options.confidence ?? result.confidence;
 
   if (ctx.wallet.coverage.truncated) {
     followup.push('narrow the period so the analysis fits inside the loaded history');
@@ -214,16 +257,19 @@ function buildEnvelope(options: EnvelopeOptions): EngineOutput {
     followup.push('synchronize the wallet to build daily value history');
   }
 
+  const rawFindings = options.findings ?? result.insights;
+  const findings = attachEngineSourceRefs(options.engine, rawFindings);
+
   return {
     engine: options.engine,
     tool: options.tool,
-    status: resolveStatus(ctx, result),
+    status: resolveStatus(ctx, { ...result, confidence }),
     summary: options.summary ?? result.summary,
     metrics: options.metrics ?? asMetrics(result.metrics),
     patterns: options.patterns ?? result.patterns,
-    findings: options.findings ?? result.insights,
+    findings,
     evidence: options.evidence ?? result.evidence,
-    confidence: result.confidence,
+    confidence,
     dataQuality: toEngineDataQuality(ctx, result),
     recommendedFollowup: dedupe(followup),
     periodDays: ctx.wallet.periodDays,
@@ -361,7 +407,15 @@ const getAssetIntelligence: ToolDefinition = {
       });
     }
 
-    const profile = assets.metrics.assets.find(asset => asset.symbol.toUpperCase() === symbol.toUpperCase());
+    // Prefer the priced / held row when several ledger entries share a symbol.
+    const matches = assets.metrics.assets.filter(
+      asset => asset.symbol.toUpperCase() === symbol.toUpperCase(),
+    );
+    const profile =
+      matches.find(asset => asset.held && asset.priceUsd != null && asset.valueUsd > 0) ??
+      matches.find(asset => asset.held && asset.valueUsd > 0) ??
+      matches.find(asset => asset.valueUsd > 0) ??
+      matches[0];
 
     if (!profile) {
       return buildEnvelope({
@@ -383,18 +437,27 @@ const getAssetIntelligence: ToolDefinition = {
     }
 
     const related = matchesEntity(profile.symbol);
+    const screenGrounded = ctx.wallet.intelligenceInput.dataGrounding === 'screen';
+    const focusConfidence =
+      screenGrounded && profile.priceUsd != null && profile.priceUsd > 0
+        ? 'high'
+        : screenGrounded && profile.held
+          ? 'medium'
+          : assets.confidence;
 
     return buildEnvelope({
       engine: 'asset',
       tool: 'get_asset_intelligence',
       ctx,
       result: assets,
-      summary: `${profile.symbol} holds ${formatCompactUsd(profile.valueUsd)} — ${profile.allocationPct.toFixed(1)}% of portfolio value — and is classified as ${profile.classification.replace(/_/g, ' ')} in the ${profile.lifecycle} stage.`,
+      summary: `${profile.symbol} holds ${formatCompactUsd(profile.valueUsd)} — ${profile.allocationPct.toFixed(1)}% of the ${formatCompactUsd(assets.metrics.portfolioValueUsd)} portfolio — and is classified as ${profile.classification.replace(/_/g, ' ')} in the ${profile.lifecycle} stage.`,
       metrics: {
         requestedAsset: profile.symbol,
         matched: true,
         periodDays: assets.metrics.periodDays,
         portfolioValueUsd: assets.metrics.portfolioValueUsd,
+        assetValueUsd: profile.valueUsd,
+        allocationPct: profile.allocationPct,
         ...asMetrics(profile),
       },
       patterns: assets.patterns.filter(pattern => evidenceMentions(pattern.evidence, related)),
@@ -405,8 +468,10 @@ const getAssetIntelligence: ToolDefinition = {
         asset: profile.symbol,
         value_usd: profile.valueUsd,
         allocation_pct: profile.allocationPct,
+        ...(profile.priceUsd != null ? { price_usd: profile.priceUsd } : {}),
         transactions: profile.periodTxCount,
       },
+      confidence: focusConfidence,
       followup: [
         'compare this asset against the rest of the portfolio',
         'review the counterparties involved in this asset\u2019s transfers',

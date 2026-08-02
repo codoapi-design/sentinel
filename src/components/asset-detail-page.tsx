@@ -62,23 +62,68 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
 
   // Build the asset view from REAL portfolio holdings (aggregated across chains
   // for the same symbol). assetId is the token symbol passed from AssetsTable.
+  const matchingTokens = useMemo(
+    () => (portfolio?.tokens || []).filter(t => t.symbol === assetId),
+    [portfolio, assetId],
+  );
+
   const asset = useMemo(() => {
-    const matching = (portfolio?.tokens || []).filter(t => t.symbol === assetId);
-    if (matching.length === 0) return undefined;
-    const quantity = matching.reduce((s, t) => s + t.balance, 0);
-    const value = matching.reduce((s, t) => s + t.valueUsd, 0);
+    if (matchingTokens.length === 0) return undefined;
+    const quantity = matchingTokens.reduce((s, t) => s + t.balance, 0);
+    const value = matchingTokens.reduce((s, t) => s + t.valueUsd, 0);
+    const priced = matchingTokens.find(t => t.priceUsd > 0);
+    const price =
+      priced?.priceUsd ??
+      (quantity > 0 && value > 0 ? value / quantity : matchingTokens[0].priceUsd);
     return {
       id: assetId,
       symbol: assetId,
-      name: matching[0].name || assetId,
+      name: matchingTokens[0].name || assetId,
       quantity,
       value,
-      price: matching[0].priceUsd,
-      change24h: matching[0].change24h ?? 0,
+      price,
+      change24h: matchingTokens[0].change24h ?? 0,
       icon: assetId.slice(0, 2).toUpperCase(),
       color: colorFromSymbol(assetId),
     };
-  }, [portfolio, assetId]);
+  }, [matchingTokens, assetId]);
+
+  /**
+   * Full portfolio holdings from the same source as the Assets table, with the
+   * focused token's on-screen price/qty overlaid — so SOL % of net worth is real.
+   */
+  const screenAssets = useMemo(() => {
+    const all = portfolio?.tokens || [];
+    return all.map(t => {
+      const focused = matchingTokens.find(
+        m =>
+          m.address === t.address &&
+          m.chain === t.chain &&
+          m.symbol === t.symbol,
+      );
+      const row = focused || t;
+      return {
+        symbol: row.symbol,
+        name: row.name,
+        quantity: row.balance,
+        priceUsd:
+          row.priceUsd > 0
+            ? row.priceUsd
+            : row.balance > 0 && row.valueUsd > 0
+              ? row.valueUsd / row.balance
+              : null,
+        valueUsd: row.valueUsd,
+        network: row.chain,
+        tokenAddress: row.address,
+        isSpam: row.isSpam,
+      };
+    });
+  }, [portfolio?.tokens, matchingTokens]);
+
+  const netWorthUsd = useMemo(
+    () => (portfolio?.tokens || []).reduce((sum, t) => sum + (t.valueUsd || 0), 0) + (portfolio?.defiValueUsd || 0),
+    [portfolio],
+  );
 
   const assetTransactions = useMemo(() => {
     if (!asset) return [];
@@ -419,6 +464,10 @@ export function AssetDetailPage({ assetId, onBack, clients = [] }: AssetDetailPa
       <AIAnalysisSection
         transactions={statsTransactions}
         clients={clients}
+        assets={screenAssets}
+        portfolioValueUsd={netWorthUsd > 0 ? netWorthUsd : portfolio?.totalValueUsd ?? asset.value}
+        assetsMode="merge"
+        transactionsMode="replace"
         sectionTitle={`${asset.symbol} activity`}
         sectionColor={asset.color}
         sectionType="asset"

@@ -1,13 +1,13 @@
 /**
  * useInvestmentReturnDetail
  *
- * Fetches full investment-return detail (summary + assets + history)
- * from GET /api/portfolio/investment-return.
+ * Hydrate-first: module cache shows last payload immediately; refreshes silently
+ * after sync / wallet change (same pattern as usePortfolio).
  */
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWalletStore } from '@/stores/wallet-store';
 import type {
   InvestmentReturnAsset,
@@ -28,74 +28,137 @@ interface UseInvestmentReturnDetailReturn {
   refetch: () => Promise<void>;
 }
 
-export function useInvestmentReturnDetail(): UseInvestmentReturnDetailReturn {
-  const [detail, setDetail] = useState<InvestmentReturnDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fetchGen = useRef(0);
-  const hasLoadedOnce = useRef(false);
+type CacheEntry = {
+  detail: InvestmentReturnDetail | null;
+  error: string | null;
+  isLoading: boolean;
+  hasLoadedOnce: boolean;
+  inflight: Promise<void> | null;
+  lastSyncSeen: number;
+};
 
-  const activeWalletId = useWalletStore(s => s.activeWalletId);
-  const wallets = useWalletStore(s => s.wallets);
-  const lastSyncAt = useWalletStore(s =>
-    activeWalletId ? s.lastSyncAt[activeWalletId] || 0 : 0,
-  );
+const cache = new Map<string, CacheEntry>();
+const listeners = new Set<() => void>();
 
-  const fetchDetail = useCallback(async () => {
-    const activeWallet = wallets.find(w => w.id === activeWalletId);
-    if (!activeWallet) {
-      setDetail(null);
-      hasLoadedOnce.current = false;
-      return;
-    }
+function emit() {
+  for (const l of listeners) l();
+}
 
-    const gen = ++fetchGen.current;
-    if (!hasLoadedOnce.current) setIsLoading(true);
-    setError(null);
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
+function getEntry(walletId: string): CacheEntry {
+  let entry = cache.get(walletId);
+  if (!entry) {
+    entry = {
+      detail: null,
+      error: null,
+      isLoading: false,
+      hasLoadedOnce: false,
+      inflight: null,
+      lastSyncSeen: 0,
+    };
+    cache.set(walletId, entry);
+  }
+  return entry;
+}
+
+async function loadDetail(walletId: string, opts?: { force?: boolean }): Promise<void> {
+  const entry = getEntry(walletId);
+  const force = Boolean(opts?.force);
+  if (entry.inflight && !force) return entry.inflight;
+
+  const showSpinner = !entry.hasLoadedOnce || force;
+  if (showSpinner) {
+    entry.isLoading = true;
+    entry.error = null;
+    emit();
+  }
+
+  const run = (async () => {
     try {
-      const params = new URLSearchParams({ walletId: activeWallet.id });
+      const params = new URLSearchParams({ walletId });
       const response = await fetch(`/api/portfolio/investment-return?${params}`);
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: 'Failed to load' }));
         throw new Error(errData.error || `HTTP ${response.status}`);
       }
       const result = await response.json();
-      if (gen !== fetchGen.current) return;
       if (result.success && result.data) {
-        setDetail(result.data as InvestmentReturnDetail);
-        hasLoadedOnce.current = true;
+        entry.detail = result.data as InvestmentReturnDetail;
+        entry.hasLoadedOnce = true;
+        entry.error = null;
       } else {
         throw new Error(result.error || 'No data returned');
       }
     } catch (err) {
-      if (gen !== fetchGen.current) return;
       console.error('[useInvestmentReturnDetail] Error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load investment return');
+      // Keep last good detail on silent refresh failures.
+      if (!entry.hasLoadedOnce) {
+        entry.error =
+          err instanceof Error ? err.message : 'Failed to load investment return';
+      }
     } finally {
-      if (gen === fetchGen.current) setIsLoading(false);
+      entry.isLoading = false;
+      entry.inflight = null;
+      emit();
     }
-  }, [activeWalletId, wallets]);
+  })();
+
+  entry.inflight = run;
+  return run;
+}
+
+/** Soft prefetch so opening the tab rarely waits on a cold compute. */
+export function prefetchInvestmentReturnDetail(walletId: string | null | undefined) {
+  if (!walletId) return;
+  void loadDetail(walletId, { force: false });
+}
+
+export function useInvestmentReturnDetail(): UseInvestmentReturnDetailReturn {
+  const activeWalletId = useWalletStore(s => s.activeWalletId);
+  const lastSyncAt = useWalletStore(s =>
+    activeWalletId ? s.lastSyncAt[activeWalletId] || 0 : 0,
+  );
+  const [, bump] = useState(0);
+
+  useEffect(() => subscribe(() => bump(n => n + 1)), []);
 
   useEffect(() => {
-    hasLoadedOnce.current = false;
-    fetchDetail();
-  }, [activeWalletId, fetchDetail]);
+    if (!activeWalletId) return;
+    void loadDetail(activeWalletId, { force: false });
+  }, [activeWalletId]);
 
-  const prevSyncAt = useRef(0);
   useEffect(() => {
     if (!activeWalletId || !lastSyncAt) return;
-    if (lastSyncAt === prevSyncAt.current) return;
-    prevSyncAt.current = lastSyncAt;
-    if (hasLoadedOnce.current) {
-      fetchDetail();
+    const entry = getEntry(activeWalletId);
+    if (lastSyncAt === entry.lastSyncSeen) return;
+    if (!entry.hasLoadedOnce) {
+      entry.lastSyncSeen = lastSyncAt;
+      return;
     }
-  }, [lastSyncAt, activeWalletId, fetchDetail]);
+    entry.lastSyncSeen = lastSyncAt;
+    void loadDetail(activeWalletId, { force: false });
+  }, [activeWalletId, lastSyncAt]);
 
+  const refetch = useCallback(async () => {
+    if (!activeWalletId) return;
+    await loadDetail(activeWalletId, { force: true });
+  }, [activeWalletId]);
+
+  if (!activeWalletId) {
+    return { detail: null, isLoading: false, error: null, refetch };
+  }
+
+  const entry = getEntry(activeWalletId);
   return {
-    detail,
-    isLoading,
-    error,
-    refetch: fetchDetail,
+    detail: entry.detail,
+    isLoading: entry.isLoading && !entry.detail,
+    error: entry.error,
+    refetch,
   };
 }

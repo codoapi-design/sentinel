@@ -20,6 +20,7 @@ import {
   CONFIDENCE_LABELS,
   SEVERITY_LABELS,
   SEVERITY_STYLES,
+  buildScreenSnapshot,
   copyText,
   describeAiError,
   formatEvidenceValue,
@@ -32,14 +33,26 @@ import {
   type AiErrorKind,
   type AiInsight,
   type AiNarrativeSection,
+  type AiScreenSnapshot,
 } from '@/lib/ai-client';
 import { cn } from '@/lib/utils';
 import { useAiAnalysisStore } from '@/stores/ai-analysis-store';
 
 interface AIAnalysisSectionProps {
-  /** Rows currently visible in the page table — used for context, not for analysis input. */
+  /** Rows currently visible in the page table — primary Analyze ground truth. */
   transactions?: unknown[];
   clients?: unknown[];
+  /** Holdings currently visible on the Assets page / panel. */
+  assets?: unknown[];
+  portfolioValueUsd?: number | null;
+  /** Prebuilt snapshot; when omitted, built from the props above. */
+  screenSnapshot?: AiScreenSnapshot;
+  /** Default merge — use replace only for a full Assets-tab inventory. */
+  assetsMode?: 'merge' | 'replace';
+  /** Default merge — use replace for scoped activity tables (asset/network). */
+  transactionsMode?: 'merge' | 'replace';
+  investmentReturn?: unknown;
+  tradingVolume?: unknown;
   sectionTitle?: string;
   sectionColor?: string;
   sectionType?: string;
@@ -68,6 +81,14 @@ const VISIBLE_METRICS = 8;
 
 export function AIAnalysisSection({
   transactions,
+  clients,
+  assets,
+  portfolioValueUsd,
+  screenSnapshot: screenSnapshotProp,
+  assetsMode,
+  transactionsMode,
+  investmentReturn,
+  tradingVolume,
   sectionTitle,
   sectionColor = '#0052ff',
   sectionType,
@@ -102,6 +123,32 @@ export function AIAnalysisSection({
   const analysis = externalAnalysis ?? result;
   const isLoading = externalLoading ?? isRunning;
 
+  const resolvedSnapshot = useMemo(
+    () =>
+      screenSnapshotProp ??
+      buildScreenSnapshot({
+        assets,
+        transactions,
+        clients,
+        portfolioValueUsd,
+        investmentReturn,
+        tradingVolume,
+        assetsMode,
+        transactionsMode,
+      }),
+    [
+      screenSnapshotProp,
+      assets,
+      transactions,
+      clients,
+      portfolioValueUsd,
+      investmentReturn,
+      tradingVolume,
+      assetsMode,
+      transactionsMode,
+    ],
+  );
+
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
@@ -124,22 +171,21 @@ export function AIAnalysisSection({
     setShowAllMetrics(false);
 
     try {
-      const data = await requestAnalysis(
-        {
-          walletId: resolvedWalletId,
-          sectionType,
-          sectionTitle,
-          page,
-          asset,
-          network,
-          counterparty,
-          typeId,
-          period,
-          filters: buildFilters(filters, transactions),
-          includeHidden,
-        },
-        controller.signal
-      );
+      const requestBody = {
+        walletId: resolvedWalletId,
+        sectionType,
+        sectionTitle,
+        page,
+        asset,
+        network,
+        counterparty,
+        typeId,
+        period,
+        filters: buildFilters(filters, transactions),
+        includeHidden,
+        screenSnapshot: resolvedSnapshot,
+      };
+      const data = await requestAnalysis(requestBody, controller.signal);
       if (controller.signal.aborted) return;
       setResult(data);
       publishAnalysis(
@@ -182,6 +228,7 @@ export function AIAnalysisSection({
     filters,
     transactions,
     includeHidden,
+    resolvedSnapshot,
     publishAnalysis,
   ]);
 
@@ -352,6 +399,14 @@ function AnalysisResult({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {(analysis.completionStatus === 'partial' || analysis.dataQuality?.truncated) && (
+            <span
+              className="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-medium text-amber-300"
+              data-testid="ai-analysis-limitation-badge"
+            >
+              Partial
+            </span>
+          )}
           <ConfidenceBadge analysis={analysis} />
           <Button
             variant="ghost"
@@ -379,6 +434,139 @@ function AnalysisResult({
       </div>
 
       <div className="px-5 py-4 space-y-5">
+        {analysis.reasonedIntelligence?.whatMatters && (
+          <Block title="What Actually Matters">
+            <div className="space-y-2" data-testid="ai-what-matters">
+              <p className="text-sm font-medium text-[#f7f8f8]">
+                {analysis.reasonedIntelligence.whatMatters.headline}
+              </p>
+              <p className="text-sm leading-relaxed text-[#d0d6e0]">
+                {analysis.reasonedIntelligence.whatMatters.whatChanged}
+              </p>
+              <p className="text-xs leading-relaxed text-[#8a8f98]">
+                {analysis.reasonedIntelligence.whatMatters.whyItMatters}
+              </p>
+              {analysis.reasonedIntelligence.whatMatters.mainCause && (
+                <p className="text-xs text-[#8a8f98]" data-testid="ai-main-cause">
+                  Cause: {analysis.reasonedIntelligence.whatMatters.mainCause}
+                </p>
+              )}
+              {analysis.reasonedIntelligence.whatMatters.mainOffset && (
+                <p className="text-xs text-[#8a8f98]" data-testid="ai-main-offset">
+                  Offset: {analysis.reasonedIntelligence.whatMatters.mainOffset}
+                </p>
+              )}
+            </div>
+          </Block>
+        )}
+
+        {analysis.reasonedIntelligence?.approvedInsights &&
+          analysis.reasonedIntelligence.approvedInsights.length > 0 && (
+            <Block title="Reasoned Insights">
+              <div className="space-y-3" data-testid="ai-reasoned-insights">
+                {analysis.reasonedIntelligence.selectedInsightIds.map((id, index) => {
+                  const insight = analysis.reasonedIntelligence?.approvedInsights?.find(
+                    a => a.id === id,
+                  );
+                  if (!insight) return null;
+                  const isPrimary = index === 0;
+                  return (
+                    <div
+                      key={insight.id}
+                      className="rounded-lg border border-white/5 bg-[#191a1b] px-3 py-2.5 space-y-1"
+                      data-testid={isPrimary ? 'ai-primary-insight' : 'ai-supporting-insight'}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-[#f7f8f8]">{insight.title}</p>
+                        {isPrimary && (
+                          <span className="text-[10px] uppercase tracking-wide text-[#8a8f98]">
+                            Primary
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#d0d6e0]">
+                        {insight.proposedMeaning ?? insight.description}
+                      </p>
+                      <div className="flex flex-wrap gap-3 text-[10px] text-[#8a8f98]">
+                        {insight.priority && (
+                          <span data-testid="ai-insight-priority">
+                            Priority: {insight.priority.level} ({insight.priority.score.toFixed(2)})
+                          </span>
+                        )}
+                        {insight.materiality && (
+                          <span data-testid="ai-insight-materiality">
+                            Materiality: {insight.materiality.level}
+                          </span>
+                        )}
+                        {insight.reasoningConfidence?.interpretationConfidence && (
+                          <span data-testid="ai-insight-confidence">
+                            Confidence:{' '}
+                            {insight.reasoningConfidence.interpretationConfidence.score.toFixed(0)}
+                          </span>
+                        )}
+                        {insight.reasoning?.summary && (
+                          <span data-testid="ai-insight-cause">
+                            Root cause: {insight.reasoning.summary}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Block>
+          )}
+
+        {analysis.reasonedIntelligence?.attribution?.portfolio?.contributors &&
+          analysis.reasonedIntelligence.attribution.portfolio.contributors.length > 0 && (
+            <Block title="Attribution">
+              <ul className="space-y-1 text-xs text-[#d0d6e0]" data-testid="ai-attribution">
+                {analysis.reasonedIntelligence.attribution.portfolio.contributors
+                  .slice(0, 6)
+                  .map(c => (
+                    <li key={`${c.entityId}:${c.contributionUsd}`}>
+                      {c.entityId}: {c.contributionUsd.toFixed(2)} USD
+                      {c.direction ? ` (${c.direction})` : ''}
+                    </li>
+                  ))}
+              </ul>
+            </Block>
+          )}
+
+        {analysis.reasonedIntelligence?.monitoringPoints &&
+          analysis.reasonedIntelligence.monitoringPoints.length > 0 && (
+            <Block title="Monitoring Points">
+              <ul className="space-y-1 text-xs text-[#d0d6e0]" data-testid="ai-monitoring-points">
+                {analysis.reasonedIntelligence.monitoringPoints.map(m => (
+                  <li key={m.id}>{m.explanation}</li>
+                ))}
+              </ul>
+            </Block>
+          )}
+
+        {analysis.reasonedIntelligence?.limitations &&
+          analysis.reasonedIntelligence.limitations.length > 0 && (
+            <Block title="Analysis Limitations">
+              <ul className="space-y-1 text-xs text-[#8a8f98]" data-testid="ai-limitations">
+                {analysis.reasonedIntelligence.limitations.slice(0, 8).map(l => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </Block>
+          )}
+
+        {process.env.NEXT_PUBLIC_AI_DEBUG === '1' &&
+          analysis.reasonedIntelligence?.diagnostics && (
+            <Block title="Suppressed Finding Diagnostics (debug)">
+              <pre
+                className="text-[10px] text-[#8a8f98] overflow-auto"
+                data-testid="ai-suppressed-diagnostics"
+              >
+                {JSON.stringify(analysis.reasonedIntelligence.diagnostics, null, 2)}
+              </pre>
+            </Block>
+          )}
+
         {/* Summary */}
         {summary && (summary.paragraphs.length > 0 || summary.bullets.length > 0) && (
           <Block title="Summary">
@@ -497,6 +685,14 @@ function AnalysisResult({
           <span>{formatGeneratedAt(analysis.generatedAt)}</span>
           <span>·</span>
           <span>{analysis.source === 'llm' ? 'Radareum AI' : 'Radareum engine'}</span>
+          {analysis.traceId && (
+            <>
+              <span>·</span>
+              <span data-testid="ai-analysis-trace-id" title={analysis.traceId}>
+                Trace {analysis.traceId.slice(0, 8)}
+              </span>
+            </>
+          )}
         </div>
         {qualityNote && <p className="text-[11px] text-[#8a8f98]/80 leading-relaxed">{qualityNote}</p>}
       </div>

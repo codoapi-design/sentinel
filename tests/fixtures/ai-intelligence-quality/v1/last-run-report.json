@@ -1,0 +1,1520 @@
+{
+  "version": "v1",
+  "results": [
+    {
+      "fixtureId": "port-dominant-asset",
+      "expectedApproved": [
+        "extreme_concentration",
+        "continuous_growth"
+      ],
+      "actualApproved": [
+        "extreme_concentration",
+        "continuous_growth"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "extreme_concentration",
+        "continuous_growth"
+      ],
+      "actualTop3": [
+        "extreme_concentration",
+        "continuous_growth"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-balanced",
+      "expectedApproved": [
+        "continuous_growth",
+        "portfolio_structure"
+      ],
+      "actualApproved": [
+        "portfolio_structure",
+        "continuous_growth"
+      ],
+      "expectedSuppressed": [
+        "extreme_concentration"
+      ],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "continuous_growth"
+      ],
+      "actualTop3": [
+        "portfolio_structure",
+        "continuous_growth"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-positive-one-negative",
+      "expectedApproved": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "actualApproved": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "actualTop3": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-negative-one-positive",
+      "expectedApproved": [
+        "concentrated_loss",
+        "concentrated_growth"
+      ],
+      "actualApproved": [
+        "concentrated_loss",
+        "concentrated_growth"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "concentrated_loss",
+        "concentrated_growth"
+      ],
+      "actualTop3": [
+        "concentrated_loss",
+        "concentrated_growth"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-deposit-hiding-return",
+      "expectedApproved": [
+        "deposit_driven_growth",
+        "investment_return",
+        "capital_accumulation"
+      ],
+      "actualApproved": [
+        "deposit_driven_growth",
+        "capital_accumulation",
+        "investment_return"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "deposit_driven_growth",
+        "capital_accumulation"
+      ],
+      "actualTop3": [
+        "deposit_driven_growth",
+        "capital_accumulation",
+        "investment_return"
+      ],
+      "expectedCauses": [
+        "external_inflow"
+      ],
+      "actualCauses": [
+        "external_inflow",
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-internal-transfer-wallet",
+      "expectedApproved": [
+        "net_capital_movement"
+      ],
+      "actualApproved": [
+        "net_capital_movement"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "net_capital_movement"
+      ],
+      "actualTop3": [
+        "net_capital_movement"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "external_outflow"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-near-zero-offsets",
+      "expectedApproved": [
+        "concentrated_loss",
+        "concentrated_growth"
+      ],
+      "actualApproved": [
+        "concentrated_loss",
+        "concentrated_growth"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "concentrated_loss",
+        "concentrated_growth"
+      ],
+      "actualTop3": [
+        "concentrated_loss",
+        "concentrated_growth"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "attributionReconciliationErrorUsd": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-growth-new-capital",
+      "expectedApproved": [
+        "deposit_driven_growth"
+      ],
+      "actualApproved": [
+        "deposit_driven_growth"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "deposit_driven_growth"
+      ],
+      "actualTop3": [
+        "deposit_driven_growth"
+      ],
+      "expectedCauses": [
+        "external_inflow"
+      ],
+      "actualCauses": [
+        "external_inflow"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-growth-market-return",
+      "expectedApproved": [
+        "investment_return"
+      ],
+      "actualApproved": [
+        "investment_return"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "investment_return"
+      ],
+      "actualTop3": [
+        "investment_return"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "port-partial-pricing",
+      "expectedApproved": [
+        "unpriced_value_share"
+      ],
+      "actualApproved": [
+        "unpriced_value_share"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "unpriced_value_share"
+      ],
+      "actualTop3": [
+        "unpriced_value_share"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-price-driven",
+      "expectedApproved": [
+        "performance_leader"
+      ],
+      "actualApproved": [
+        "performance_leader"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "performance_leader"
+      ],
+      "actualTop3": [
+        "performance_leader"
+      ],
+      "expectedCauses": [
+        "price_effect"
+      ],
+      "actualCauses": [
+        "price_effect"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-qty-driven",
+      "expectedApproved": [
+        "dominant_asset",
+        "capital_accumulation"
+      ],
+      "actualApproved": [
+        "dominant_asset",
+        "capital_accumulation"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "dominant_asset",
+        "capital_accumulation"
+      ],
+      "actualTop3": [
+        "dominant_asset",
+        "capital_accumulation"
+      ],
+      "expectedCauses": [
+        "quantity_effect"
+      ],
+      "actualCauses": [
+        "quantity_effect"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-mixed-price-qty",
+      "expectedApproved": [
+        "performance_leader"
+      ],
+      "actualApproved": [
+        "performance_leader"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "performance_leader"
+      ],
+      "actualTop3": [
+        "performance_leader"
+      ],
+      "expectedCauses": [
+        "price_effect",
+        "quantity_effect"
+      ],
+      "actualCauses": [
+        "quantity_effect"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "attributionReconciliationErrorUsd": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-drift-other-growth",
+      "expectedApproved": [
+        "allocation_drift",
+        "concentrated_growth"
+      ],
+      "actualApproved": [
+        "allocation_drift",
+        "concentrated_growth"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "concentrated_growth",
+        "allocation_drift"
+      ],
+      "actualTop3": [
+        "allocation_drift",
+        "concentrated_growth"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-drift-outflow",
+      "expectedApproved": [
+        "allocation_drift",
+        "distribution"
+      ],
+      "actualApproved": [
+        "allocation_drift",
+        "distribution"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "distribution",
+        "allocation_drift"
+      ],
+      "actualTop3": [
+        "allocation_drift",
+        "distribution"
+      ],
+      "expectedCauses": [
+        "external_outflow"
+      ],
+      "actualCauses": [
+        "unknown",
+        "external_outflow"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-neg-in-positive-port",
+      "expectedApproved": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "actualApproved": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "continuous_growth"
+      ],
+      "actualTop3": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-dormant",
+      "expectedApproved": [
+        "dormant_asset"
+      ],
+      "actualApproved": [
+        "dormant_asset"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "dormant_asset"
+      ],
+      "actualTop3": [
+        "dormant_asset"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-unpriced",
+      "expectedApproved": [
+        "unclassified_assets"
+      ],
+      "actualApproved": [
+        "unclassified_assets"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "unclassified_assets"
+      ],
+      "actualTop3": [
+        "unclassified_assets"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-newly-dominant",
+      "expectedApproved": [
+        "dominant_asset"
+      ],
+      "actualApproved": [
+        "dominant_asset"
+      ],
+      "expectedSuppressed": [
+        "concentration_increase"
+      ],
+      "actualSuppressed": [
+        "concentration_increase"
+      ],
+      "expectedTop3": [
+        "dominant_asset"
+      ],
+      "actualTop3": [
+        "dominant_asset"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 1,
+      "duplicateGroupsActual": 1,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "asset-persistent-concentration",
+      "expectedApproved": [
+        "high_asset_dependency"
+      ],
+      "actualApproved": [
+        "high_asset_dependency"
+      ],
+      "expectedSuppressed": [
+        "extreme_concentration"
+      ],
+      "actualSuppressed": [
+        "extreme_concentration"
+      ],
+      "expectedTop3": [
+        "high_asset_dependency"
+      ],
+      "actualTop3": [
+        "high_asset_dependency"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 1,
+      "duplicateGroupsActual": 1,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-one-immaterial",
+      "expectedApproved": [],
+      "actualApproved": [],
+      "expectedSuppressed": [
+        "concentrated_inflow_source",
+        "one_time_material_event"
+      ],
+      "actualSuppressed": [
+        "concentrated_inflow_source"
+      ],
+      "expectedTop3": [],
+      "actualTop3": [],
+      "expectedCauses": [],
+      "actualCauses": [],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-one-material",
+      "expectedApproved": [
+        "one_time_material_event"
+      ],
+      "actualApproved": [
+        "one_time_material_event"
+      ],
+      "expectedSuppressed": [
+        "concentrated_inflow_source"
+      ],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "one_time_material_event"
+      ],
+      "actualTop3": [
+        "one_time_material_event"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-repeated",
+      "expectedApproved": [
+        "major_capital_destination"
+      ],
+      "actualApproved": [
+        "major_capital_destination"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "major_capital_destination"
+      ],
+      "actualTop3": [
+        "major_capital_destination"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-exchange",
+      "expectedApproved": [
+        "frequent_exchange_interaction"
+      ],
+      "actualApproved": [
+        "frequent_exchange_interaction"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "frequent_exchange_interaction"
+      ],
+      "actualTop3": [
+        "frequent_exchange_interaction"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-new-unknown",
+      "expectedApproved": [
+        "unknown_high_value_interaction"
+      ],
+      "actualApproved": [
+        "unknown_high_value_interaction"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "unknown_high_value_interaction"
+      ],
+      "actualTop3": [
+        "unknown_high_value_interaction"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-internal-wallet",
+      "expectedApproved": [
+        "net_capital_movement"
+      ],
+      "actualApproved": [
+        "net_capital_movement"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "net_capital_movement"
+      ],
+      "actualTop3": [
+        "net_capital_movement"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-small-immaterial",
+      "expectedApproved": [],
+      "actualApproved": [],
+      "expectedSuppressed": [
+        "established_relationship"
+      ],
+      "actualSuppressed": [
+        "established_relationship"
+      ],
+      "expectedTop3": [],
+      "actualTop3": [],
+      "expectedCauses": [],
+      "actualCauses": [],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-diverse",
+      "expectedApproved": [],
+      "actualApproved": [],
+      "expectedSuppressed": [
+        "no_counterparties"
+      ],
+      "actualSuppressed": [
+        "no_counterparties"
+      ],
+      "expectedTop3": [],
+      "actualTop3": [],
+      "expectedCauses": [],
+      "actualCauses": [],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "cp-decayed",
+      "expectedApproved": [
+        "relationship_decay"
+      ],
+      "actualApproved": [
+        "relationship_decay"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "relationship_decay"
+      ],
+      "actualTop3": [
+        "relationship_decay"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "tr-high-fees",
+      "expectedApproved": [
+        "high_turnover_behavior",
+        "result_attribution"
+      ],
+      "actualApproved": [
+        "high_turnover_behavior",
+        "result_attribution"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "high_turnover_behavior",
+        "result_attribution"
+      ],
+      "actualTop3": [
+        "high_turnover_behavior",
+        "result_attribution"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "tr-increased-count-volume",
+      "expectedApproved": [
+        "increasing_trading_activity"
+      ],
+      "actualApproved": [
+        "increasing_trading_activity"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "increasing_trading_activity"
+      ],
+      "actualTop3": [
+        "increasing_trading_activity"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "tr-lower-count-higher-volume",
+      "expectedApproved": [
+        "high_turnover_behavior",
+        "trading_dormancy"
+      ],
+      "actualApproved": [
+        "high_turnover_behavior",
+        "trading_dormancy"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "high_turnover_behavior"
+      ],
+      "actualTop3": [
+        "high_turnover_behavior",
+        "trading_dormancy"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "tr-insufficient",
+      "expectedApproved": [],
+      "actualApproved": [],
+      "expectedSuppressed": [
+        "increasing_trading_activity"
+      ],
+      "actualSuppressed": [
+        "increasing_trading_activity"
+      ],
+      "expectedTop3": [],
+      "actualTop3": [],
+      "expectedCauses": [],
+      "actualCauses": [],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "tr-rotation",
+      "expectedApproved": [
+        "asset_rotation_behavior"
+      ],
+      "actualApproved": [
+        "asset_rotation_behavior"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "asset_rotation_behavior"
+      ],
+      "actualTop3": [
+        "asset_rotation_behavior"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "tr-high-turnover-weak-perf",
+      "expectedApproved": [
+        "high_turnover_behavior",
+        "concentrated_loss"
+      ],
+      "actualApproved": [
+        "high_turnover_behavior",
+        "concentrated_loss"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "high_turnover_behavior",
+        "concentrated_loss"
+      ],
+      "actualTop3": [
+        "high_turnover_behavior",
+        "concentrated_loss"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "tr-low-turnover-holder",
+      "expectedApproved": [],
+      "actualApproved": [],
+      "expectedSuppressed": [
+        "trading_dormancy"
+      ],
+      "actualSuppressed": [
+        "trading_dormancy"
+      ],
+      "expectedTop3": [],
+      "actualTop3": [],
+      "expectedCauses": [],
+      "actualCauses": [],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-critical-asset",
+      "expectedApproved": [
+        "high_asset_dependency"
+      ],
+      "actualApproved": [
+        "high_asset_dependency"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "high_asset_dependency"
+      ],
+      "actualTop3": [
+        "high_asset_dependency"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-network",
+      "expectedApproved": [
+        "single_network_dependency"
+      ],
+      "actualApproved": [
+        "single_network_dependency"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "single_network_dependency"
+      ],
+      "actualTop3": [
+        "single_network_dependency"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-partial-pricing",
+      "expectedApproved": [
+        "unknown_asset_exposure"
+      ],
+      "actualApproved": [
+        "unknown_asset_exposure"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "unknown_asset_exposure"
+      ],
+      "actualTop3": [
+        "unknown_asset_exposure"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-low-with-local",
+      "expectedApproved": [
+        "extreme_concentration"
+      ],
+      "actualApproved": [
+        "extreme_concentration"
+      ],
+      "expectedSuppressed": [
+        "exposure_profile"
+      ],
+      "actualSuppressed": [
+        "exposure_profile"
+      ],
+      "expectedTop3": [
+        "extreme_concentration"
+      ],
+      "actualTop3": [
+        "extreme_concentration"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-contradictory",
+      "expectedApproved": [
+        "high_asset_dependency"
+      ],
+      "actualApproved": [
+        "high_asset_dependency"
+      ],
+      "expectedSuppressed": [
+        "exposure_profile"
+      ],
+      "actualSuppressed": [
+        "exposure_profile"
+      ],
+      "expectedTop3": [
+        "high_asset_dependency"
+      ],
+      "actualTop3": [
+        "high_asset_dependency"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-persistent",
+      "expectedApproved": [
+        "high_asset_dependency"
+      ],
+      "actualApproved": [
+        "high_asset_dependency"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "high_asset_dependency"
+      ],
+      "actualTop3": [
+        "high_asset_dependency"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-resolved",
+      "expectedApproved": [
+        "relationship_decay"
+      ],
+      "actualApproved": [
+        "relationship_decay"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "relationship_decay"
+      ],
+      "actualTop3": [
+        "relationship_decay"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-increasing",
+      "expectedApproved": [
+        "increasing_risk_exposure"
+      ],
+      "actualApproved": [
+        "increasing_risk_exposure"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "increasing_risk_exposure"
+      ],
+      "actualTop3": [
+        "increasing_risk_exposure"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "risk-decreasing",
+      "expectedApproved": [
+        "exposure_profile"
+      ],
+      "actualApproved": [
+        "exposure_profile"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "exposure_profile"
+      ],
+      "actualTop3": [
+        "exposure_profile"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "snap-insufficient-drift",
+      "expectedApproved": [
+        "allocation_drift"
+      ],
+      "actualApproved": [
+        "allocation_drift"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "allocation_drift"
+      ],
+      "actualTop3": [
+        "allocation_drift"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "intent-overrides-page",
+      "expectedApproved": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "actualApproved": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "expectedSuppressed": [],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "continuous_growth"
+      ],
+      "actualTop3": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "fixtureId": "sol-historical-closure",
+      "expectedApproved": [
+        "continuous_growth",
+        "concentrated_loss",
+        "one_time_material_event"
+      ],
+      "actualApproved": [
+        "continuous_growth",
+        "one_time_material_event",
+        "concentrated_loss"
+      ],
+      "expectedSuppressed": [
+        "concentrated_inflow_source"
+      ],
+      "actualSuppressed": [],
+      "expectedTop3": [
+        "continuous_growth",
+        "concentrated_loss"
+      ],
+      "actualTop3": [
+        "continuous_growth",
+        "one_time_material_event",
+        "concentrated_loss"
+      ],
+      "expectedCauses": [
+        "unknown"
+      ],
+      "actualCauses": [
+        "unknown",
+        "external_outflow"
+      ],
+      "forbiddenClaimsDetected": [],
+      "duplicateGroupsExpected": 0,
+      "duplicateGroupsActual": 0,
+      "unresolvedContradictions": 0,
+      "passed": true,
+      "failures": []
+    }
+  ],
+  "metrics": {
+    "fixtureCount": 48,
+    "candidateCount": 70,
+    "approvedCount": 60,
+    "suppressedCount": 9,
+    "truePositives": 60,
+    "falsePositives": 0,
+    "falseNegatives": 0,
+    "precision": 1,
+    "recall": 1,
+    "falsePositivePrimaryInsightRate": 0,
+    "duplicatePrimaryInsightRate": 0,
+    "unresolvedContradictionRate": 0,
+    "unsupportedCausalClaimRate": 0,
+    "forbiddenClaimRate": 0,
+    "top1RelevanceAccuracy": 0.8333333333333334,
+    "top3RelevanceAccuracy": 1,
+    "meanRankingAgreement": 0.9444444444444445,
+    "attributionReconciliationPassRate": 1,
+    "limitationComplianceRate": 1,
+    "oneEventDependencyFalsePositiveRate": 0,
+    "passedFixtures": 48,
+    "failedFixtures": 0
+  },
+  "gates": {
+    "falsePositivePrimaryInsightRate": {
+      "target": 0.05,
+      "result": 0,
+      "pass": true
+    },
+    "duplicatePrimaryInsightRate": {
+      "target": 0.03,
+      "result": 0,
+      "pass": true
+    },
+    "unresolvedContradictionRate": {
+      "target": 0,
+      "result": 0,
+      "pass": true
+    },
+    "unsupportedCausalClaimRate": {
+      "target": 0,
+      "result": 0,
+      "pass": true
+    },
+    "forbiddenClaimRate": {
+      "target": 0,
+      "result": 0,
+      "pass": true
+    },
+    "top3RelevanceAccuracy": {
+      "target": 0.9,
+      "result": 1,
+      "pass": true
+    },
+    "attributionReconciliationPassRate": {
+      "target": 1,
+      "result": 1,
+      "pass": true
+    },
+    "limitationComplianceRate": {
+      "target": 1,
+      "result": 1,
+      "pass": true
+    },
+    "oneEventDependencyFalsePositiveRate": {
+      "target": 0,
+      "result": 0,
+      "pass": true
+    }
+  },
+  "allGatesPassed": true
+}

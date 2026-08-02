@@ -270,9 +270,17 @@ export function analyzeTrading(input: IntelligenceInput): TradingIntelligence {
   };
 
   const confidence = lowestConfidence(
-    deriveConfidence(dataQuality, { minSampleForHigh: 20, minSampleForMedium: 5 }),
+    input.dataGrounding === 'screen' && dataQuality.completeness >= 50
+      ? 'high'
+      : deriveConfidence(dataQuality, { minSampleForHigh: 20, minSampleForMedium: 5 }),
     current.length === 0 ? 'low' : current.length >= 5 ? 'high' : 'medium',
-    metrics.unpricedTradeCount > metrics.pricedTradeCount ? 'low' : 'high',
+    input.dataGrounding === 'screen'
+      ? metrics.unpricedTradeCount > metrics.pricedTradeCount
+        ? 'medium'
+        : 'high'
+      : metrics.unpricedTradeCount > metrics.pricedTradeCount
+        ? 'low'
+        : 'high',
   );
 
   const patterns = detectPatterns(metrics, period, confidence);

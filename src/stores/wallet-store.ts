@@ -60,6 +60,14 @@ export interface AddWalletInput {
   bitcoinAddress?: string;
 }
 
+/** Update label and/or fill empty address slots (never replaces existing addresses). */
+export interface UpdateWalletInput {
+  label: string;
+  solanaAddress?: string;
+  tronAddress?: string;
+  bitcoinAddress?: string;
+}
+
 // Plan limits — aligned with pricing tiers (shared canonical source)
 export const PLAN_LIMITS = {
   free: SHARED_PLAN_LIMITS.free,
@@ -114,6 +122,7 @@ interface WalletActions {
   removeWallet: (walletId: string) => Promise<void>;
   setActiveWallet: (walletId: string) => void;
   updateWalletLabel: (walletId: string, label: string) => Promise<void>;
+  updateWallet: (walletId: string, input: UpdateWalletInput) => Promise<void>;
 
   // Data operations
   /** Sync providers → DB. mode 'auto' = full if never synced, else incremental. */
@@ -405,21 +414,109 @@ export const useWalletStore = create<WalletState & WalletActions>()(
       },
 
       updateWalletLabel: async (walletId: string, label: string) => {
-        try {
-          await fetch('/api/wallets', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: walletId, label }),
-          });
-        } catch {
-          // Local only
+        await get().updateWallet(walletId, { label });
+      },
+
+      updateWallet: async (walletId: string, input: UpdateWalletInput) => {
+        const label = input.label.trim();
+        if (!label) {
+          set({ error: 'Please enter a wallet name' });
+          return;
         }
 
-        set(state => ({
-          wallets: state.wallets.map(w =>
-            w.id === walletId ? { ...w, label } : w
-          ),
-        }));
+        const existing = get().wallets.find(w => w.id === walletId);
+        if (!existing) {
+          set({ error: 'Wallet not found' });
+          return;
+        }
+
+        // Only send families that are currently empty (server also enforces this).
+        const sol =
+          !existing.solanaAddress && input.solanaAddress?.trim()
+            ? input.solanaAddress.trim()
+            : undefined;
+        const tron =
+          !existing.tronAddress && input.tronAddress?.trim()
+            ? input.tronAddress.trim()
+            : undefined;
+        const btc =
+          !existing.bitcoinAddress && input.bitcoinAddress?.trim()
+            ? input.bitcoinAddress.trim()
+            : undefined;
+
+        if (sol || tron || btc) {
+          const planCheck = assertAddressesAllowedForPlan(get().currentPlan, {
+            solanaAddress: sol,
+            tronAddress: tron,
+            bitcoinAddress: btc,
+          });
+          if (!planCheck.ok) {
+            set({ error: planCheck.error });
+            return;
+          }
+        }
+
+        set({ isAddingWallet: true, error: null });
+
+        try {
+          const response = await fetch('/api/wallets', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: walletId,
+              label,
+              solanaAddress: sol,
+              tronAddress: tron,
+              bitcoinAddress: btc,
+            }),
+          });
+
+          const json = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            set({
+              isAddingWallet: false,
+              error: json.error || 'Failed to update wallet',
+            });
+            return;
+          }
+
+          const data = json.data as Partial<WalletInfo> | undefined;
+          const addedFamilies: string[] = Array.isArray(json.addedFamilies)
+            ? json.addedFamilies
+            : [];
+
+          set(state => ({
+            isAddingWallet: false,
+            wallets: state.wallets.map(w => {
+              if (w.id !== walletId) return w;
+              return {
+                ...w,
+                label: data?.label ?? label,
+                solanaAddress:
+                  (data?.solanaAddress as string | null | undefined) ??
+                  (sol ? sol : w.solanaAddress),
+                tronAddress:
+                  (data?.tronAddress as string | null | undefined) ??
+                  (tron ? tron : w.tronAddress),
+                bitcoinAddress:
+                  (data?.bitcoinAddress as string | null | undefined) ??
+                  (btc ? btc : w.bitcoinAddress),
+                displayAddress:
+                  (data?.displayAddress as string | undefined) ||
+                  w.displayAddress,
+              };
+            }),
+          }));
+
+          if (addedFamilies.length > 0) {
+            void get().watchBackgroundSync(walletId);
+          }
+        } catch (err) {
+          set({
+            isAddingWallet: false,
+            error: err instanceof Error ? err.message : 'Failed to update wallet',
+          });
+        }
       },
 
       // ====== Load wallets from DB ======
@@ -779,6 +876,13 @@ export const useWalletStore = create<WalletState & WalletActions>()(
 
           const syncResult = await syncResponse.json().catch(() => ({} as Record<string, unknown>));
 
+      if (syncResponse.status === 409) {
+            // Server already syncing — keep UI lock until background watch, don't treat as hard error.
+            clearSyncing();
+            void get().watchBackgroundSync(walletId);
+            return { success: false, error: 'Wallet is already syncing. Please wait for it to finish.' };
+          }
+
           if (!syncResponse.ok) {
             const rawError =
               (typeof syncResult.error === 'string' && syncResult.error) ||
@@ -788,8 +892,6 @@ export const useWalletStore = create<WalletState & WalletActions>()(
                 ? 'Provider rate limit reached. Please wait a minute and try again.'
                 : syncResponse.status === 402
                   ? rawError
-                : syncResponse.status === 409
-                  ? 'Wallet is already syncing. Please wait for it to finish.'
                   : rawError;
 
             console.warn('[WalletStore] Sync endpoint returned:', syncResponse.status, errorMessage);

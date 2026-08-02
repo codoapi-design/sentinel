@@ -247,10 +247,25 @@ export function analyzePortfolio(input: IntelligenceInput): PortfolioIntelligenc
     transactionCount: txs.length,
   };
 
+  const pricedShareConfidence =
+    ledger.pricedValueSharePct >= 90
+      ? 'high'
+      : ledger.pricedValueSharePct >= 60
+        ? 'medium'
+        : 'low';
+  // Analyze button with on-screen holdings: priced composition is enough for High.
+  const groundingConfidence =
+    input.dataGrounding === 'screen' && allocations.length > 0 && ledger.pricedValueSharePct >= 80
+      ? 'high'
+      : pricedShareConfidence;
+  const sampleConfidence =
+    input.dataGrounding === 'screen' && allocations.length > 0 && ledger.pricedValueSharePct >= 80
+      ? 'high'
+      : deriveConfidence(dataQuality, { minSampleForHigh: 10, minSampleForMedium: 2 });
   const confidence = lowestConfidence(
-    deriveConfidence(dataQuality, { minSampleForHigh: 10, minSampleForMedium: 2 }),
+    sampleConfidence,
     allocations.length === 0 ? 'low' : 'high',
-    ledger.pricedValueSharePct >= 90 ? 'high' : ledger.pricedValueSharePct >= 60 ? 'medium' : 'low',
+    groundingConfidence,
   );
 
   const patterns = detectPatterns(metrics, period, confidence);

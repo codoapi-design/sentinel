@@ -18,6 +18,8 @@ import {
   AlertCircle,
   Link2,
   Copy,
+  Lock,
+  Pencil,
 } from 'lucide-react';
 import { useWalletStore, PLAN_WALLET_LIMITS, type WalletInfo } from '@/stores/wallet-store';
 import { toast } from 'sonner';
@@ -50,6 +52,7 @@ export function WalletBar() {
     activeWalletId,
     setActiveWallet,
     addWallet,
+    updateWallet,
     canAddWallet,
     currentPlan,
     isAddingWallet,
@@ -59,7 +62,8 @@ export function WalletBar() {
   } = useWalletStore();
 
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editingWalletId, setEditingWalletId] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [evmAddress, setEvmAddress] = useState('');
   const [solanaAddress, setSolanaAddress] = useState('');
@@ -70,6 +74,16 @@ export function WalletBar() {
   const barRef = useRef<HTMLDivElement>(null);
 
   const activeWallet = wallets.find(w => w.id === activeWalletId);
+  const editingWallet = editingWalletId
+    ? wallets.find(w => w.id === editingWalletId)
+    : null;
+  const isEditMode = !!editingWallet;
+
+  // Locked = already saved on the wallet (cannot be replaced)
+  const evmLocked = isEditMode && !!editingWallet?.address;
+  const solLocked = isEditMode && !!editingWallet?.solanaAddress;
+  const tronLocked = isEditMode && !!editingWallet?.tronAddress;
+  const btcLocked = isEditMode && !!editingWallet?.bitcoinAddress;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -87,11 +101,37 @@ export function WalletBar() {
   }, []);
 
   const resetForm = () => {
+    setEditingWalletId(null);
     setNewLabel('');
     setEvmAddress('');
     setSolanaAddress('');
     setTronAddress('');
     setBitcoinAddress('');
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setError(null);
+    setShowModal(true);
+  };
+
+  const openEditModal = (wallet: WalletInfo) => {
+    setEditingWalletId(wallet.id);
+    setNewLabel(wallet.label || '');
+    setEvmAddress(wallet.address || '');
+    setSolanaAddress(wallet.solanaAddress || '');
+    setTronAddress(wallet.tronAddress || '');
+    setBitcoinAddress(wallet.bitcoinAddress || '');
+    setError(null);
+    setShowDropdown(false);
+    setActiveWallet(wallet.id);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    resetForm();
+    setError(null);
   };
 
   const walletLimit = PLAN_WALLET_LIMITS[currentPlan] ?? 1;
@@ -104,27 +144,77 @@ export function WalletBar() {
   const networkChips = networkChipsForPlan(currentPlan);
   const isStarter = allowedFamilies.length === 1 && allowedFamilies[0] === 'evm';
 
-  const hasRequiredAddresses = isStarter
-    ? !!evmAddress.trim()
-    : !!(
-        (allowEvm && evmAddress.trim()) ||
-        (allowSolana && solanaAddress.trim()) ||
-        (allowTron && tronAddress.trim()) ||
-        (allowBitcoin && bitcoinAddress.trim())
-      );
+  // Show a family field if plan allows it, OR (edit) it already exists on the wallet
+  const showEvm = allowEvm || !!editingWallet?.address;
+  const showSolana = allowSolana || !!editingWallet?.solanaAddress;
+  const showTron = allowTron || !!editingWallet?.tronAddress;
+  const showBitcoin = allowBitcoin || !!editingWallet?.bitcoinAddress;
+
+  const hasRequiredAddresses = isEditMode
+    ? true
+    : isStarter
+      ? !!evmAddress.trim()
+      : !!(
+          (allowEvm && evmAddress.trim()) ||
+          (allowSolana && solanaAddress.trim()) ||
+          (allowTron && tronAddress.trim()) ||
+          (allowBitcoin && bitcoinAddress.trim())
+        );
 
   const addressesValid =
-    (!evmAddress.trim() || isValidEvmAddress(evmAddress.trim())) &&
-    (!solanaAddress.trim() || isValidSolanaAddress(solanaAddress.trim())) &&
-    (!tronAddress.trim() || isValidTronAddress(tronAddress.trim())) &&
-    (!bitcoinAddress.trim() || isValidBitcoinAddress(bitcoinAddress.trim()));
+    (evmLocked || !evmAddress.trim() || isValidEvmAddress(evmAddress.trim())) &&
+    (solLocked || !solanaAddress.trim() || isValidSolanaAddress(solanaAddress.trim())) &&
+    (tronLocked || !tronAddress.trim() || isValidTronAddress(tronAddress.trim())) &&
+    (btcLocked || !bitcoinAddress.trim() || isValidBitcoinAddress(bitcoinAddress.trim()));
 
-  const handleAddWallet = async () => {
+  const hasEditChanges = (() => {
+    if (!editingWallet) return false;
+    if (newLabel.trim() !== (editingWallet.label || '')) return true;
+    if (!solLocked && allowSolana && solanaAddress.trim()) return true;
+    if (!tronLocked && allowTron && tronAddress.trim()) return true;
+    if (!btcLocked && allowBitcoin && bitcoinAddress.trim()) return true;
+    return false;
+  })();
+
+  const handleSubmit = async () => {
     const label = newLabel.trim();
     if (!label) {
       toast.error('Please enter a wallet name');
       return;
     }
+
+    if (isEditMode && editingWallet) {
+      if (!hasEditChanges) {
+        toast.message('No changes to save');
+        return;
+      }
+      if (!addressesValid) {
+        toast.error('One or more addresses have an invalid format');
+        return;
+      }
+
+      await updateWallet(editingWallet.id, {
+        label,
+        solanaAddress:
+          !solLocked && allowSolana ? solanaAddress.trim() || undefined : undefined,
+        tronAddress:
+          !tronLocked && allowTron ? tronAddress.trim() || undefined : undefined,
+        bitcoinAddress:
+          !btcLocked && allowBitcoin ? bitcoinAddress.trim() || undefined : undefined,
+      });
+
+      const state = useWalletStore.getState();
+      if (state.error) {
+        toast.error(state.error);
+        setError(null);
+        return;
+      }
+
+      closeModal();
+      toast.success(`Wallet "${label}" updated`);
+      return;
+    }
+
     if (!hasRequiredAddresses) {
       toast.error(
         isStarter
@@ -153,8 +243,7 @@ export function WalletBar() {
       return;
     }
 
-    setShowAddModal(false);
-    resetForm();
+    closeModal();
     toast.success(`Wallet "${label}" added successfully`);
   };
 
@@ -166,14 +255,10 @@ export function WalletBar() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleWalletSwitch = (walletId: string) => {
-    setActiveWallet(walletId);
-    setShowDropdown(false);
-    const wallet = wallets.find(w => w.id === walletId);
-    if (wallet) {
-      toast.success(`Switched to ${wallet.label}`);
-    }
-  };
+  const lockedFieldClass =
+    'bg-[#191a1b]/60 border-white/5 text-[#8a8f98] placeholder-[#8a8f98] text-sm h-10 font-mono cursor-not-allowed opacity-80';
+  const openFieldClass =
+    'bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono';
 
   return (
     <>
@@ -188,7 +273,7 @@ export function WalletBar() {
               );
               return;
             }
-            setShowAddModal(true);
+            openAddModal();
           }}
         >
           <Plus className="h-4 w-4" />
@@ -258,10 +343,18 @@ export function WalletBar() {
                   const display = wallet.displayAddress || wallet.address || '';
 
                   return (
-                    <button
+                    <div
                       key={wallet.id}
-                      onClick={() => handleWalletSwitch(wallet.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors duration-150 text-left ${
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openEditModal(wallet)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openEditModal(wallet);
+                        }
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors duration-150 text-left cursor-pointer ${
                         isActive
                           ? 'bg-[#0052ff]/10 border-l-2 border-[#0052ff]'
                           : 'hover:bg-white/5'
@@ -299,11 +392,13 @@ export function WalletBar() {
                           </span>
                           {display && (
                             <button
+                              type="button"
                               onClick={e => {
                                 e.stopPropagation();
                                 handleCopyAddress(display, wallet.id);
                               }}
                               className="p-0.5 hover:bg-white/10 rounded transition-colors"
+                              aria-label="Copy address"
                             >
                               {copiedId === wallet.id ? (
                                 <Check className="h-3 w-3 text-[#0ecb81]" />
@@ -323,7 +418,7 @@ export function WalletBar() {
                           })}
                         </span>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -341,7 +436,7 @@ export function WalletBar() {
                       );
                       return;
                     }
-                    setShowAddModal(true);
+                    openAddModal();
                   }}
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -353,15 +448,30 @@ export function WalletBar() {
         </div>
       </div>
 
-      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+      <Dialog
+        open={showModal}
+        onOpenChange={open => {
+          if (!open) closeModal();
+          else setShowModal(true);
+        }}
+      >
         <DialogContent
           className="bg-[#0f1011] border-white/10 text-[#f7f8f8] max-w-lg max-h-[90vh] overflow-y-auto"
           dir="ltr"
         >
           <DialogHeader>
             <DialogTitle className="text-base flex items-center gap-2">
-              <Wallet className="h-5 w-5 text-[#0052ff]" />
-              Add new wallet
+              {isEditMode ? (
+                <>
+                  <Pencil className="h-5 w-5 text-[#0052ff]" />
+                  Edit wallet
+                </>
+              ) : (
+                <>
+                  <Wallet className="h-5 w-5 text-[#0052ff]" />
+                  Add new wallet
+                </>
+              )}
             </DialogTitle>
           </DialogHeader>
 
@@ -380,59 +490,129 @@ export function WalletBar() {
 
             <div className="space-y-3 rounded-lg border border-white/5 bg-[#191a1b]/50 p-3">
               <p className="text-[11px] text-[#8a8f98]">
-                {isStarter
-                  ? 'Starter plan: enter your EVM address. Data is synced across supported EVM networks.'
-                  : `Your ${planName} plan allows: ${allowedFamilies
-                      .map(f => f.toUpperCase())
-                      .join(', ')}. All addresses share this wallet name and dashboard.`}
+                {isEditMode
+                  ? 'You can rename this wallet and add remaining addresses your plan allows. Existing addresses are locked and cannot be replaced.'
+                  : isStarter
+                    ? 'Starter plan: enter your EVM address. Data is synced across supported EVM networks.'
+                    : `Your ${planName} plan allows: ${allowedFamilies
+                        .map(f => f.toUpperCase())
+                        .join(', ')}. All addresses share this wallet name and dashboard.`}
               </p>
 
-              {allowEvm && (
+              {showEvm && (
                 <div className="space-y-1.5">
-                  <label className="text-xs text-[#d0d6e0]">
-                    EVM Address{isStarter ? ' *' : ''}
+                  <label className="text-xs text-[#d0d6e0] flex items-center gap-1.5">
+                    EVM Address{!isEditMode && isStarter ? ' *' : ''}
+                    {evmLocked && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-[#8a8f98] font-normal">
+                        <Lock className="h-3 w-3" />
+                        locked
+                      </span>
+                    )}
                   </label>
                   <Input
                     placeholder="0x… (Ethereum, Base, Arb, OP, Polygon, BSC, Linea…)"
                     value={evmAddress}
                     onChange={e => setEvmAddress(e.target.value)}
-                    className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                    disabled={evmLocked}
+                    readOnly={evmLocked}
+                    className={evmLocked ? lockedFieldClass : openFieldClass}
                   />
                 </div>
               )}
 
-              {allowSolana && (
+              {showSolana && (
                 <div className="space-y-1.5">
-                  <label className="text-xs text-[#d0d6e0]">Solana Address</label>
+                  <label className="text-xs text-[#d0d6e0] flex items-center gap-1.5">
+                    Solana Address
+                    {solLocked && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-[#8a8f98] font-normal">
+                        <Lock className="h-3 w-3" />
+                        locked
+                      </span>
+                    )}
+                  </label>
                   <Input
-                    placeholder="Base58 Solana pubkey"
+                    placeholder={
+                      solLocked
+                        ? undefined
+                        : allowSolana
+                          ? 'Base58 Solana pubkey'
+                          : 'Not available on your plan'
+                    }
                     value={solanaAddress}
                     onChange={e => setSolanaAddress(e.target.value)}
-                    className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                    disabled={solLocked || (isEditMode && !allowSolana)}
+                    readOnly={solLocked}
+                    className={
+                      solLocked || (isEditMode && !allowSolana)
+                        ? lockedFieldClass
+                        : openFieldClass
+                    }
                   />
                 </div>
               )}
 
-              {allowTron && (
+              {showTron && (
                 <div className="space-y-1.5">
-                  <label className="text-xs text-[#d0d6e0]">Tron Address</label>
+                  <label className="text-xs text-[#d0d6e0] flex items-center gap-1.5">
+                    Tron Address
+                    {tronLocked && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-[#8a8f98] font-normal">
+                        <Lock className="h-3 w-3" />
+                        locked
+                      </span>
+                    )}
+                  </label>
                   <Input
-                    placeholder="T… Tron address"
+                    placeholder={
+                      tronLocked
+                        ? undefined
+                        : allowTron
+                          ? 'T… Tron address'
+                          : 'Not available on your plan'
+                    }
                     value={tronAddress}
                     onChange={e => setTronAddress(e.target.value)}
-                    className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                    disabled={tronLocked || (isEditMode && !allowTron)}
+                    readOnly={tronLocked}
+                    className={
+                      tronLocked || (isEditMode && !allowTron)
+                        ? lockedFieldClass
+                        : openFieldClass
+                    }
                   />
                 </div>
               )}
 
-              {allowBitcoin && (
+              {showBitcoin && (
                 <div className="space-y-1.5">
-                  <label className="text-xs text-[#d0d6e0]">Bitcoin Address</label>
+                  <label className="text-xs text-[#d0d6e0] flex items-center gap-1.5">
+                    Bitcoin Address
+                    {btcLocked && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-[#8a8f98] font-normal">
+                        <Lock className="h-3 w-3" />
+                        locked
+                      </span>
+                    )}
+                  </label>
                   <Input
-                    placeholder="bc1… / 1… / 3…"
+                    placeholder={
+                      btcLocked
+                        ? undefined
+                        : allowBitcoin
+                          ? 'bc1… / 1… / 3…'
+                          : 'Not available on your plan'
+                    }
                     value={bitcoinAddress}
                     onChange={e => setBitcoinAddress(e.target.value)}
-                    className="bg-[#191a1b] border-white/10 text-[#d0d6e0] placeholder-[#8a8f98] text-sm h-10 font-mono"
+                    disabled={btcLocked || (isEditMode && !allowBitcoin)}
+                    readOnly={btcLocked}
+                    className={
+                      btcLocked || (isEditMode && !allowBitcoin)
+                        ? lockedFieldClass
+                        : openFieldClass
+                    }
                   />
                 </div>
               )}
@@ -489,15 +669,23 @@ export function WalletBar() {
             <div className="flex items-center gap-2 pt-2">
               <Button
                 className="flex-1 bg-[#0052ff] hover:bg-[#0052ff]/80 text-white"
-                onClick={handleAddWallet}
+                onClick={handleSubmit}
                 disabled={
-                  isAddingWallet || !newLabel.trim() || !hasRequiredAddresses || !addressesValid
+                  isAddingWallet ||
+                  !newLabel.trim() ||
+                  !addressesValid ||
+                  (isEditMode ? !hasEditChanges : !hasRequiredAddresses)
                 }
               >
                 {isAddingWallet ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    Adding & Syncing...
+                    {isEditMode ? 'Saving...' : 'Adding & Syncing...'}
+                  </>
+                ) : isEditMode ? (
+                  <>
+                    <Pencil className="h-4 w-4 mr-1" />
+                    Save changes
                   </>
                 ) : (
                   <>
@@ -509,11 +697,7 @@ export function WalletBar() {
               <Button
                 variant="outline"
                 className="bg-[#191a1b] border-white/10 text-[#d0d6e0] hover:bg-[#28282c] hover:text-[#f7f8f8]"
-                onClick={() => {
-                  setShowAddModal(false);
-                  resetForm();
-                  setError(null);
-                }}
+                onClick={closeModal}
               >
                 Cancel
               </Button>

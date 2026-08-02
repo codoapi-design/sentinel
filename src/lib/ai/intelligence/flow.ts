@@ -21,6 +21,7 @@ import {
   formatUsd,
   isInternalCounterparty,
   isoDay,
+  lowestConfidence,
   makeInsightId,
   makePatternId,
   MATERIAL_USD_THRESHOLD,
@@ -233,11 +234,15 @@ export function analyzeFlow(input: IntelligenceInput): FlowIntelligence {
     events: currentEvents,
   };
 
-  const confidence = deriveConfidence(dataQuality, {
-    minSampleForHigh: 12,
-    minSampleForMedium: 3,
-    cap: currentEvents.length === 0 ? 'low' : 'high',
-  });
+  const confidence = lowestConfidence(
+    input.dataGrounding === 'screen' && dataQuality.completeness >= 50
+      ? 'high'
+      : deriveConfidence(dataQuality, {
+          minSampleForHigh: 12,
+          minSampleForMedium: 3,
+        }),
+    currentEvents.length === 0 ? 'low' : 'high',
+  );
 
   const patterns = detectPatterns(metrics, {
     period,

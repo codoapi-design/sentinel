@@ -37,6 +37,7 @@ import {
 } from '@/lib/finance/visibility';
 import { ShowSpamDustToggle } from '@/components/show-spam-dust-toggle';
 import { AssetsPageFilterStats } from '@/components/assets-filter-stats';
+import { AIAnalysisSection } from '@/components/ai-analysis-section';
 import { cn } from '@/lib/utils';
 
 interface AssetsTableProps {
@@ -280,6 +281,10 @@ export function AssetsTab({ onAssetClick }: AssetsTabProps) {
   }, []);
 
   const statsAssets = filtersReady ? filteredData : visibleTokens;
+  const portfolioValueUsd = useMemo(
+    () => statsAssets.reduce((sum, token) => sum + (token.valueUsd || 0), 0),
+    [statsAssets],
+  );
 
   return (
     <div className="space-y-6">
@@ -293,6 +298,15 @@ export function AssetsTab({ onAssetClick }: AssetsTabProps) {
         isLoading={isLoading}
         onAssetClick={onAssetClick}
         onFilteredDataChange={handleFilteredDataChange}
+      />
+      <AIAnalysisSection
+        assets={statsAssets}
+        portfolioValueUsd={portfolioValueUsd}
+        assetsMode="replace"
+        sectionTitle="Assets"
+        sectionType="assets"
+        page="assets"
+        includeHidden={showSpamAndDust}
       />
     </div>
   );

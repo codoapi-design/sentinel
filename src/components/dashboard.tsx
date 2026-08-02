@@ -2,10 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from './sidebar';
-import { PortfolioOverview } from './portfolio-overview';
-import { PortfolioChart } from './portfolio-chart';
-import { AssetsTable, AssetsTab } from './assets-table';
-import { TransactionsTable, TransactionsTab } from './transactions-table';
+import { AssetsTab } from './assets-table';
+import { TransactionsTab } from './transactions-table';
 import { TelegramSettings } from './telegram-settings';
 import { EmailSettings } from './email-settings';
 import { PricingPage } from './pricing';
@@ -16,12 +14,13 @@ import { InvestmentReturnPage } from './investment-return-page';
 import { InvestmentReturnAssetPage } from './investment-return-asset-page';
 import type { InvestmentReturnAssetParams } from '@/hooks/use-investment-return-asset';
 import { TradingVolumePage } from './trading-volume-page';
+import { DashboardHome, type DashboardPanelId } from './dashboard-home';
 import { AssetDetailPage } from './asset-detail-page';
-import { ClientsSection, ClientsTab } from './clients-section';
+import { ClientsTab } from './clients-section';
 import { ClientDetailPage } from './client-detail-page';
-import { NetworksSection, NetworksTab } from './networks-section';
+import { NetworksTab } from './networks-section';
 import { NetworkDetailPage } from './network-detail-page';
-import { TypesSection, TypesTab } from './types-section';
+import { TypesTab } from './types-section';
 import { TypeDetailPage } from './type-detail-page';
 import { WalletBar } from './wallet-bar';
 import { AIAnalysisSection } from './ai-analysis-section';
@@ -44,6 +43,7 @@ interface DashboardProps {
 
 export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [dashboardPanel, setDashboardPanel] = useState<DashboardPanelId>('overview');
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [investmentReturnAsset, setInvestmentReturnAsset] =
     useState<InvestmentReturnAssetParams | null>(null);
@@ -111,6 +111,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     () =>
       resolveDashboardChatContext({
         activeTab,
+        dashboardPanel: activeTab === 'dashboard' ? dashboardPanel : null,
         activeSection,
         activeAsset,
         activeClient,
@@ -118,7 +119,16 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
         activeType,
         investmentReturnAsset,
       }),
-    [activeTab, activeSection, activeAsset, activeClient, activeNetwork, activeType, investmentReturnAsset]
+    [
+      activeTab,
+      dashboardPanel,
+      activeSection,
+      activeAsset,
+      activeClient,
+      activeNetwork,
+      activeType,
+      investmentReturnAsset,
+    ],
   );
 
   const handleLogout = () => {
@@ -127,6 +137,10 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   };
 
   const handleSectionClick = (section: string) => {
+    if (section === 'investment-return' || section === 'trading-volume') {
+      handleTabChange(section);
+      return;
+    }
     setActiveSection(section);
     setInvestmentReturnAsset(null);
     setActiveAsset(null);
@@ -186,7 +200,8 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
   };
   const handleBackFromInvestmentReturnAsset = () => {
     setInvestmentReturnAsset(null);
-    setActiveSection('investment-return');
+    setActiveSection(null);
+    setActiveTab('investment-return');
   };
   const handleBackFromAsset = () => setActiveAsset(null);
   const handleBackFromClient = () => setActiveClient(null);
@@ -201,6 +216,9 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     setActiveClient(null);
     setActiveNetwork(null);
     setActiveType(null);
+    if (tab === 'dashboard') {
+      setDashboardPanel('overview');
+    }
   };
 
   const handleDefineClient = (address: string) => {
@@ -274,6 +292,8 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
       case 'clients': return 'Clients';
       case 'networks': return 'Networks';
       case 'types': return 'Types';
+      case 'investment-return': return 'Investment Return';
+      case 'trading-volume': return 'Trading Volume';
       case 'settings': return 'Settings';
       case 'subscription': return 'Subscription';
       case 'referral': return 'Referral Program';
@@ -333,19 +353,6 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
       );
     }
 
-    if (activeSection === 'investment-return') {
-      return (
-        <InvestmentReturnPage
-          onBack={handleBackFromSection}
-          onAssetClick={handleInvestmentReturnAssetClick}
-        />
-      );
-    }
-
-    if (activeSection === 'trading-volume') {
-      return <TradingVolumePage onBack={handleBackFromSection} clients={displayClients} />;
-    }
-
     if (activeSection === 'gas') {
       return <GasFeesPage onBack={handleBackFromSection} clients={displayClients} />;
     }
@@ -363,25 +370,39 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
     switch (activeTab) {
       case 'dashboard':
         return (
-          <div className="space-y-6">
-            <PortfolioOverview onSectionClick={handleSectionClick} />
-            <PortfolioChart />
-            <AssetsTable onAssetClick={handleAssetClick} />
-            <ClientsSection
-              clients={displayClients}
-              transactions={displayTransactions}
-              onClientClick={handleClientClick}
-            />
-            <NetworksSection
-              transactions={displayTransactions}
-              onNetworkClick={handleNetworkClick}
-            />
-            <TypesSection
-              transactions={displayTransactions}
-              onTypeClick={handleTypeClick}
-            />
-            <TransactionsTable clients={displayClients} transactions={displayTransactions} />
-          </div>
+          <DashboardHome
+            panel={dashboardPanel}
+            onPanelChange={setDashboardPanel}
+            clients={displayClients}
+            transactions={displayTransactions}
+            onSectionClick={handleSectionClick}
+            onAssetClick={handleAssetClick}
+            onNetworkClick={handleNetworkClick}
+            onClientClick={handleClientClick}
+            onDefineClient={handleDefineClient}
+            onClientsChange={(newClients) => {
+              if (activeWalletId) {
+                useWalletStore.getState().setClients(activeWalletId, newClients);
+              }
+            }}
+            defineAddress={defineAddressTrigger}
+            onDefineConsumed={handleDefineConsumed}
+            onInvestmentReturnAssetClick={handleInvestmentReturnAssetClick}
+          />
+        );
+      case 'investment-return':
+        return (
+          <InvestmentReturnPage
+            onBack={() => handleTabChange('dashboard')}
+            onAssetClick={handleInvestmentReturnAssetClick}
+          />
+        );
+      case 'trading-volume':
+        return (
+          <TradingVolumePage
+            onBack={() => handleTabChange('dashboard')}
+            clients={displayClients}
+          />
         );
       case 'transactions':
         return (
@@ -390,20 +411,12 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
               clients={displayClients}
               transactions={displayTransactions}
             />
-            <AIAnalysisSection
-              transactions={displayTransactions}
-              clients={displayClients}
-              sectionTitle="Transactions"
-              sectionType="transactions"
-              page="transactions"
-            />
           </div>
         );
       case 'assets':
         return (
           <div className="space-y-6">
             <AssetsTab onAssetClick={handleAssetClick} />
-            <AIAnalysisSection sectionTitle="Assets" sectionType="assets" page="assets" />
           </div>
         );
       case 'clients':
@@ -422,13 +435,6 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
               defineAddress={defineAddressTrigger}
               onDefineConsumed={handleDefineConsumed}
             />
-            <AIAnalysisSection
-              transactions={displayTransactions}
-              clients={displayClients}
-              sectionTitle="Clients"
-              sectionType="clients"
-              page="clients"
-            />
           </div>
         );
       case 'networks':
@@ -437,12 +443,6 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
             <NetworksTab
               transactions={displayTransactions}
               onNetworkClick={handleNetworkClick}
-            />
-            <AIAnalysisSection
-              transactions={displayTransactions}
-              sectionTitle="Networks"
-              sectionType="networks"
-              page="networks"
             />
           </div>
         );

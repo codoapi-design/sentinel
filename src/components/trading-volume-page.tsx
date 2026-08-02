@@ -42,7 +42,7 @@ import {
 import { captureChartCard } from '@/lib/export/capture-chart';
 
 interface TradingVolumePageProps {
-  onBack: () => void;
+  onBack?: () => void;
   clients?: Client[];
 }
 
@@ -934,6 +934,15 @@ export function TradingVolumePage({ onBack, clients = [] }: TradingVolumePagePro
             ? { from: customFrom ?? today, to: customTo ?? today }
             : undefined
         }
+        tradingVolume={filtered ?? detail ?? undefined}
+        clients={clients}
+        assets={byToken.map(row => ({
+          symbol: row.tokenSymbol,
+          name: row.tokenSymbol,
+          valueUsd: row.volumeUsd || 0,
+          network: row.network,
+          tokenAddress: row.tokenAddress,
+        }))}
       />
     </div>
   );
@@ -946,7 +955,7 @@ function PageHeader({
   onDownloadExcel,
   exportDisabled = false,
 }: {
-  onBack: () => void;
+  onBack?: () => void;
   earliestTradeLabel: string | null;
   onDownloadPdf?: () => void | Promise<void>;
   onDownloadExcel?: () => void | Promise<void>;
@@ -955,14 +964,16 @@ function PageHeader({
   return (
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="w-9 h-9 rounded-lg bg-[#0f1011] border border-white/5 flex items-center justify-center hover:bg-[#191a1b] transition-colors"
-          aria-label="Back to dashboard"
-        >
-          <ArrowRight className="h-4 w-4 text-[#8a8f98]" />
-        </button>
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="w-9 h-9 rounded-lg bg-[#0f1011] border border-white/5 flex items-center justify-center hover:bg-[#191a1b] transition-colors"
+            aria-label="Back to dashboard"
+          >
+            <ArrowRight className="h-4 w-4 text-[#8a8f98]" />
+          </button>
+        ) : null}
         <div className="flex items-center gap-2.5">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#a855f7]/10">
             <ArrowLeftRight className="h-5 w-5 text-[#a855f7]" />

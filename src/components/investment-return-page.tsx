@@ -42,7 +42,7 @@ import {
 import { captureChartCard } from '@/lib/export/capture-chart';
 
 interface InvestmentReturnPageProps {
-  onBack: () => void;
+  onBack?: () => void;
   onAssetClick?: (asset: InvestmentReturnAssetParams) => void;
 }
 
@@ -795,6 +795,20 @@ export function InvestmentReturnPage({ onBack, onAssetClick }: InvestmentReturnP
         page="investment-return"
         period={activePeriod === 0 ? 'all' : `${activePeriod}d`}
         filters={isCustomActive ? { to: effectiveTo } : undefined}
+        investmentReturn={filtered ?? detail ?? undefined}
+        assets={assets.map(a => ({
+          symbol: a.tokenSymbol,
+          name: a.tokenSymbol,
+          valueUsd: a.marketValueOpenUsd ?? 0,
+          network: a.network,
+          tokenAddress: a.tokenAddress,
+          quantity: a.quantityOpen ?? null,
+          priceUsd:
+            a.quantityOpen > 0 && a.marketValueOpenUsd > 0
+              ? a.marketValueOpenUsd / a.quantityOpen
+              : null,
+        }))}
+        portfolioValueUsd={filtered?.marketValueOpenUsd ?? detail?.marketValueOpenUsd ?? null}
       />
     </div>
   );
@@ -807,7 +821,7 @@ function PageHeader({
   onDownloadExcel,
   exportDisabled = false,
 }: {
-  onBack: () => void;
+  onBack?: () => void;
   sinceLabel: string | null;
   onDownloadPdf?: () => void | Promise<void>;
   onDownloadExcel?: () => void | Promise<void>;
@@ -816,14 +830,16 @@ function PageHeader({
   return (
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="w-9 h-9 rounded-lg bg-[#0f1011] border border-white/5 flex items-center justify-center hover:bg-[#191a1b] transition-colors"
-          aria-label="Back to dashboard"
-        >
-          <ArrowRight className="h-4 w-4 text-[#8a8f98]" />
-        </button>
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="w-9 h-9 rounded-lg bg-[#0f1011] border border-white/5 flex items-center justify-center hover:bg-[#191a1b] transition-colors"
+            aria-label="Back to dashboard"
+          >
+            <ArrowRight className="h-4 w-4 text-[#8a8f98]" />
+          </button>
+        ) : null}
         <div className="flex items-center gap-2.5">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#0ecb81]/10">
             <LineChart className="h-5 w-5 text-[#0ecb81]" />

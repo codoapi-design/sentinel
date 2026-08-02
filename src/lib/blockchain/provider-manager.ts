@@ -306,20 +306,22 @@ export class ProviderManager {
         .filter(t => !isLikelySpamToken(t.symbol, t.name))
         .map(t => t.address);
 
-      const [nativePrice, priceMap] = await Promise.all([
-        this.pricing.getCurrentNativePriceUsd(chainId).catch(() => 0),
-        this.pricing.getCurrentTokenPricesUsd(chainId, erc20Addrs),
+      const [nativeSnap, priceSnaps] = await Promise.all([
+        this.pricing.getCurrentNativeMarketSnapshot(chainId).catch(() => ({
+          priceUsd: 0,
+          change24h: null as number | null,
+        })),
+        this.pricing.getCurrentTokenMarketSnapshots(chainId, erc20Addrs),
       ]);
 
       const tokens: TokenBalance[] = [];
       for (const t of raw) {
         const spam = isLikelySpamToken(t.symbol, t.name);
         const isNative = t.address === NATIVE_TOKEN_ADDRESS;
-        const priceUsd = spam
-          ? 0
-          : isNative
-            ? nativePrice
-            : priceMap.get(t.address.toLowerCase()) ?? 0;
+        const snap = isNative
+          ? nativeSnap
+          : priceSnaps.get(t.address.toLowerCase()) || { priceUsd: 0, change24h: null };
+        const priceUsd = spam ? 0 : snap.priceUsd;
         const valueUsd = t.balance * priceUsd;
         const row: TokenBalance = {
           ...t,
@@ -328,7 +330,7 @@ export class ProviderManager {
           isVerified: !spam && (isNative || priceUsd > 0),
           priceUsd,
           valueUsd,
-          change24h: null,
+          change24h: spam ? null : snap.change24h,
           provider: 'alchemy' as ProviderId,
         };
         // Persist only verified / market-priced non-spam assets.

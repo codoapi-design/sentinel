@@ -65,6 +65,63 @@ export interface AiAnalysisData {
   periodDays: number;
   periodLabel: string;
   generatedAt: number;
+  /** Server-issued request trace (Package 1). */
+  traceId?: string;
+  completionStatus?: 'exact' | 'partial' | 'pending' | 'failed' | string;
+  jobId?: string | null;
+  /** Package 2 reasoned intelligence (public subset). */
+  reasonedIntelligence?: {
+    schemaVersion: string;
+    selectedInsightIds: string[];
+    rankedInsightIds: string[];
+    approvedInsights?: Array<{
+      id: string;
+      type: string;
+      category: string;
+      title: string;
+      description?: string;
+      proposedMeaning?: string;
+      priority?: { score: number; level: string };
+      materiality?: { score: number; level: string };
+      reasoning?: { summary: string; selectedCauseIds?: string[]; hypotheses?: Array<{ languageState?: string; causeType?: string }> };
+      reasoningConfidence?: {
+        observationConfidence?: { score: number; level?: string };
+        causalConfidence?: { score: number; level?: string };
+        interpretationConfidence?: { score: number; level?: string };
+      };
+      limitations?: string[];
+    }>;
+    whatMatters: {
+      primaryFindingId: string | null;
+      secondaryFindingIds: string[];
+      headline: string;
+      whatChanged: string;
+      whyItMatters: string;
+      mainCause?: string;
+      mainOffset?: string;
+      importantAbsence?: string[];
+    };
+    monitoringPoints: Array<{
+      id: string;
+      relatedFindingId: string;
+      metric: string;
+      explanation: string;
+    }>;
+    attribution?: {
+      portfolio?: {
+        totalChangeUsd?: number;
+        contributors?: Array<{ entityId: string; contributionUsd: number; direction?: string }>;
+      };
+    };
+    limitations: string[];
+    versions: Record<string, string>;
+    diagnostics?: {
+      candidateCount: number;
+      approvedCount: number;
+      suppressedCount: number;
+      suppressionReasons: Record<string, number>;
+    };
+  };
 }
 
 export interface AiChatData extends AiAnalysisData {
@@ -88,6 +145,11 @@ export interface AiPageContext {
 export interface AiAnalyzeRequest extends AiPageContext {
   walletId: string;
   includeHidden?: boolean;
+  /**
+   * Rows currently shown on the page. Analyze treats these as primary ground
+   * truth. Chat must not send this — it searches the full wallet database.
+   */
+  screenSnapshot?: import('@/lib/ai-screen-snapshot').AiScreenSnapshot;
 }
 
 export interface AiChatHistoryMessage {
@@ -155,6 +217,14 @@ export function requestAnalysis(body: AiAnalyzeRequest, signal?: AbortSignal): P
   return postAi<AiAnalysisData>('/api/ai/analyze', body, signal);
 }
 
+export {
+  buildScreenSnapshot,
+  type AiScreenSnapshot,
+  type AiScreenAsset,
+  type AiScreenTransaction,
+  type AiScreenClient,
+} from '@/lib/ai-screen-snapshot';
+
 export function requestChat(body: AiChatRequest, signal?: AbortSignal): Promise<AiChatData> {
   return postAi<AiChatData>('/api/ai/chat', body, signal);
 }
@@ -166,16 +236,21 @@ export function requestChat(body: AiChatRequest, signal?: AbortSignal): Promise<
 /** Tab id → section key the tool planner recognises. */
 const TAB_SECTIONS: Record<string, string> = {
   dashboard: 'dashboard',
+  overview: 'dashboard',
   transactions: 'transactions',
   assets: 'assets',
   clients: 'clients',
   networks: 'networks',
   types: 'transactions',
+  'investment-return': 'investment-return',
+  'trading-volume': 'trading-volume',
 };
 
 /** The navigation state both dashboards keep, narrowed to what the agent needs. */
 export interface DashboardView {
   activeTab: string;
+  /** Active panel inside the Dashboard home workspace (when activeTab === 'dashboard'). */
+  dashboardPanel?: string | null;
   activeSection: string | null;
   activeAsset: string | null;
   activeClient: string | null;
@@ -208,6 +283,17 @@ export function resolveDashboardChatContext(view: DashboardView): AiPageContext 
   }
   if (view.activeSection) {
     return { page: view.activeSection, sectionType: view.activeSection };
+  }
+  // Dashboard workspace panels — AI should analyze only the open panel.
+  if (view.activeTab === 'dashboard' && view.dashboardPanel && view.dashboardPanel !== 'overview') {
+    const panel = view.dashboardPanel;
+    return {
+      page: panel,
+      sectionType: TAB_SECTIONS[panel] || panel,
+    };
+  }
+  if (view.activeTab === 'dashboard') {
+    return { page: 'dashboard', sectionType: 'dashboard' };
   }
   return { page: view.activeTab, sectionType: TAB_SECTIONS[view.activeTab] };
 }

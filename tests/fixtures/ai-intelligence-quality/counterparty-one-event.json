@@ -1,0 +1,13 @@
+{
+  "id": "counterparty-one-event-v1",
+  "version": "1.0.0",
+  "description": "One transaction at 100% share — must not be recurring dependency",
+  "portfolioValueUsd": 10000,
+  "interactionCount": 1,
+  "sharePct": 100,
+  "amountUsd": 120,
+  "expectations": {
+    "dependencySuppressed": true,
+    "observationRetained": true
+  }
+}

@@ -308,9 +308,12 @@ export function analyzeNetworks(input: IntelligenceInput): NetworkIntelligence {
   };
 
   const confidence = lowestConfidence(
-    deriveConfidence(dataQuality, { minSampleForHigh: 15, minSampleForMedium: 4 }),
+    input.dataGrounding === 'screen' &&
+      (ledger.pricedValueSharePct >= 80 || dataQuality.completeness >= 50)
+      ? 'high'
+      : deriveConfidence(dataQuality, { minSampleForHigh: 15, minSampleForMedium: 4 }),
     networks.length === 0 ? 'low' : 'high',
-    metrics.gasDataMissing ? 'medium' : 'high',
+    input.dataGrounding === 'screen' ? 'high' : metrics.gasDataMissing ? 'medium' : 'high',
   );
 
   const patterns = detectPatterns(metrics, period, confidence);

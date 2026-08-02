@@ -49,9 +49,14 @@ async function rpcReceipt(
     return null;
   }
   if (!response.ok) return null;
-  const json = (await response.json()) as { result?: typeof result; error?: unknown };
-  const result = json.result;
-  return result || null;
+  type ReceiptJson = {
+    gasUsed?: string;
+    effectiveGasPrice?: string;
+    gasPrice?: string;
+    from?: string;
+  };
+  const json = (await response.json()) as { result?: ReceiptJson | null; error?: unknown };
+  return json.result || null;
 }
 
 function parseReceiptGas(

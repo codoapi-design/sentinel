@@ -38,24 +38,42 @@ function promptUpgradeIfExpired(): boolean {
 export function useWalletAutoSync() {
   const activeWalletId = useWalletStore(state => state.activeWalletId);
   const isLoadingWallets = useWalletStore(state => state.isLoadingWallets);
-  const isSyncing = useWalletStore(state => state.isSyncing);
-  const lastSyncAt = useWalletStore(state => state.lastSyncAt);
   const currentPlan = useWalletStore(state => state.currentPlan);
-  const wallets = useWalletStore(state => state.wallets);
   const syncWallet = useWalletStore(state => state.syncWallet);
   const loadTransactionsFromDB = useWalletStore(state => state.loadTransactionsFromDB);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const syncIntervalMs =
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Prevents overlapping auto-syncs (Business plan interval can be shorter than sync duration). */
+  const inFlightRef = useRef(false);
+  const activeWalletIdRef = useRef(activeWalletId);
+  const isLoadingWalletsRef = useRef(isLoadingWallets);
+  const syncIntervalMsRef = useRef(
+    PLAN_LIMITS[currentPlan]?.syncIntervalMs ?? PLAN_LIMITS.pro.syncIntervalMs,
+  );
+
+  activeWalletIdRef.current = activeWalletId;
+  isLoadingWalletsRef.current = isLoadingWallets;
+  syncIntervalMsRef.current =
     PLAN_LIMITS[currentPlan]?.syncIntervalMs ?? PLAN_LIMITS.pro.syncIntervalMs;
 
+  const syncIntervalMs = syncIntervalMsRef.current;
+
   const runIncrementalRefresh = useCallback(async () => {
-    if (!activeWalletId || isLoadingWallets) return;
-    if (!isUUID(activeWalletId)) {
+    const walletId = activeWalletIdRef.current;
+    if (!walletId || isLoadingWalletsRef.current) return;
+    if (!isUUID(walletId)) {
       console.warn('[AutoSync] Active wallet ID is not a valid UUID, skipping sync');
       return;
     }
-    if (isSyncing[activeWalletId]) return;
+    if (inFlightRef.current) return;
+
+    const store = useWalletStore.getState();
+    if (store.isSyncing[walletId]) return;
+
+    const wallet = store.wallets.find(w => w.id === walletId);
+    if (!wallet) return;
+    // Wait until the wallet has completed at least one sync before auto-refresh.
+    if (!wallet.lastSyncedAt) return;
 
     const subState = useSubscriptionStore.getState();
     if (!subState.serverHydrated) return;
@@ -65,14 +83,20 @@ export function useWalletAutoSync() {
       return;
     }
 
-    const lastSync = lastSyncAt[activeWalletId] || 0;
-    if (Date.now() - lastSync < syncIntervalMs - 5_000) return;
+    const lastSync = store.lastSyncAt[walletId] || 0;
+    const interval = syncIntervalMsRef.current;
+    if (lastSync > 0 && Date.now() - lastSync < interval - 5_000) return;
 
-    const wallet = wallets.find(w => w.id === activeWalletId);
-    if (!wallet) return;
+    inFlightRef.current = true;
+    useWalletStore.setState(state => ({
+      isSyncing: { ...state.isSyncing, [walletId]: true },
+      wallets: state.wallets.map(w =>
+        w.id === walletId ? { ...w, isSyncing: true } : w,
+      ),
+    }));
 
     try {
-      const response = await fetch(`/api/wallets/${activeWalletId}/sync`, {
+      const response = await fetch(`/api/wallets/${walletId}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'incremental' }),
@@ -85,8 +109,14 @@ export function useWalletAutoSync() {
         return;
       }
 
+      // Another sync is already running server-side — do not retry.
+      if (response.status === 409) {
+        console.log('[AutoSync] Sync already in progress — skipped');
+        return;
+      }
+
       if (!response.ok) {
-        await syncWallet(activeWalletId, 'incremental');
+        console.warn('[AutoSync] Incremental sync failed:', response.status);
         return;
       }
 
@@ -94,17 +124,17 @@ export function useWalletAutoSync() {
       const changed = Boolean(result.changed);
 
       if (changed) {
-        await loadTransactionsFromDB(activeWalletId);
+        await loadTransactionsFromDB(walletId);
       }
 
       useWalletStore.setState(state => ({
-        lastSyncAt: { ...state.lastSyncAt, [activeWalletId]: Date.now() },
+        lastSyncAt: { ...state.lastSyncAt, [walletId]: Date.now() },
         wallets: state.wallets.map(w =>
-          w.id === activeWalletId
+          w.id === walletId
             ? { ...w, lastSyncedAt: new Date().toISOString(), isSyncing: false }
-            : w
+            : w,
         ),
-        isSyncing: { ...state.isSyncing, [activeWalletId]: false },
+        isSyncing: { ...state.isSyncing, [walletId]: false },
       }));
 
       console.log('[AutoSync] Incremental sync done:', {
@@ -114,34 +144,42 @@ export function useWalletAutoSync() {
       });
     } catch (error) {
       console.error('[AutoSync] error:', error);
+    } finally {
+      inFlightRef.current = false;
+      const id = activeWalletIdRef.current;
+      if (id) {
+        useWalletStore.setState(state => {
+          if (!state.isSyncing[id]) return state;
+          return {
+            isSyncing: { ...state.isSyncing, [id]: false },
+            wallets: state.wallets.map(w =>
+              w.id === id ? { ...w, isSyncing: false } : w,
+            ),
+          };
+        });
+      }
     }
-  }, [
-    activeWalletId,
-    isLoadingWallets,
-    isSyncing,
-    lastSyncAt,
-    syncIntervalMs,
-    wallets,
-    syncWallet,
-    loadTransactionsFromDB,
-  ]);
+  }, [loadTransactionsFromDB]);
 
   useEffect(() => {
     if (!activeWalletId || !isUUID(activeWalletId)) return;
 
+    // First auto-sync after a short delay so DB hydrate can finish first.
     const initialTimeout = setTimeout(() => {
-      runIncrementalRefresh();
-    }, 15_000);
+      void runIncrementalRefresh();
+    }, 20_000);
 
     intervalRef.current = setInterval(() => {
-      runIncrementalRefresh();
+      void runIncrementalRefresh();
     }, syncIntervalMs);
 
     return () => {
       clearTimeout(initialTimeout);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [activeWalletId, runIncrementalRefresh, syncIntervalMs]);
+    // Intentionally exclude runIncrementalRefresh identity churn from volatile store fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWalletId, syncIntervalMs]);
 
   const triggerSync = useCallback(async () => {
     if (!activeWalletId) return;
@@ -150,7 +188,12 @@ export function useWalletAutoSync() {
       toast.error('Cannot sync this wallet. Try removing and re-adding it.');
       return;
     }
-    if (isSyncing[activeWalletId]) return;
+
+    const store = useWalletStore.getState();
+    if (store.isSyncing[activeWalletId] || inFlightRef.current) {
+      toast.message('Sync already in progress…');
+      return;
+    }
 
     const subState = useSubscriptionStore.getState();
     if (!subState.serverHydrated) return;
@@ -183,7 +226,7 @@ export function useWalletAutoSync() {
         { id: toastId },
       );
     }
-  }, [activeWalletId, isSyncing, syncWallet]);
+  }, [activeWalletId, syncWallet]);
 
   return { triggerSync, syncIntervalMs };
 }

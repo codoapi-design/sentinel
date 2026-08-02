@@ -7,6 +7,8 @@ import {
   bsc,
   polygon,
 } from 'wagmi/chains';
+// Barrel export pulls optional Tempo (`accounts` peer). Bundler resolves that
+// peer via next.config alias → src/lib/stubs/accounts-optional.ts.
 import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors';
 
 // WalletConnect Project ID (free from https://cloud.walletconnect.com)

@@ -96,11 +96,13 @@ export function NetworkDetailPage({
   const chartTransactions = filtersReady ? filteredData : networkTransactions;
   const statsTransactions = filtersReady ? filteredData : networkTransactions;
 
+  const networkHoldings = useMemo(() => {
+    const raw = (portfolio?.tokens || []).filter(t => tokenMatchesNetwork(t, networkId));
+    return filterVisibleAssets(raw, showSpamAndDust);
+  }, [portfolio?.tokens, networkId, showSpamAndDust]);
+
   const holdingsSummary = useMemo((): ReportKV[] => {
-    const raw = (portfolio?.tokens || []).filter(t =>
-      tokenMatchesNetwork(t, networkId),
-    );
-    const visible = filterVisibleAssets(raw, showSpamAndDust);
+    const visible = networkHoldings;
     const totalUsd = visible.reduce((s, t) => s + (t.valueUsd || 0), 0);
     const bySymbol = new Map<string, number>();
     for (const t of visible) {
@@ -123,7 +125,7 @@ export function NetworkDetailPage({
         value: top || 'No assets on this network',
       },
     ];
-  }, [portfolio?.tokens, networkId, showSpamAndDust, networkLabel]);
+  }, [networkHoldings, networkLabel]);
 
   const isNetPositive = useMemo(() => {
     const revenue = statsTransactions
@@ -328,6 +330,23 @@ export function NetworkDetailPage({
       <AIAnalysisSection
         transactions={statsTransactions}
         clients={clients}
+        assets={(portfolio?.tokens || []).map(t => ({
+          symbol: t.symbol,
+          name: t.name,
+          quantity: t.balance,
+          priceUsd: t.priceUsd > 0 ? t.priceUsd : null,
+          valueUsd: t.valueUsd,
+          network: t.chain,
+          tokenAddress: t.address,
+          isSpam: t.isSpam,
+        }))}
+        portfolioValueUsd={
+          (portfolio?.totalValueUsd ?? 0) > 0
+            ? portfolio!.totalValueUsd
+            : (portfolio?.tokens || []).reduce((s, t) => s + (t.valueUsd || 0), 0)
+        }
+        assetsMode="merge"
+        transactionsMode="replace"
         sectionTitle={`${networkLabel} activity`}
         sectionColor={networkColor}
         sectionType="network"

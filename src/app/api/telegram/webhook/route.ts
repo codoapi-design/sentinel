@@ -9,9 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { AiQuotaError, assertAiQuota, SubscriptionEntitlementError } from '@/lib/ai/tools';
-
-// In-memory store for telegram-to-user mapping (should be DB in production)
-const telegramUserMap = new Map<string, { userId: string; plan: string; walletAddress?: string; connectedAt: number }>();
+import { telegramUserMap } from '@/lib/telegram/user-map';
 
 // Bot token
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -272,35 +270,5 @@ async function answerCallbackQuery(callbackQueryId: string): Promise<void> {
   }
 }
 
-// ============================================================
-// Helper: Send Telegram alert (used by other services)
-// ============================================================
-
-export async function sendTelegramAlert(
-  chatId: string,
-  alertType: string,
-  message: string
-): Promise<void> {
-  const formattedMessage = `🔔 ${alertType}\n━━━━━━━━━━━━━━━\n${message}\n\n📅 ${new Date().toLocaleString('ar-SA')}`;
-  await sendTelegramMessage(chatId, formattedMessage);
-}
-
-// ============================================================
-// Helper: Link user (called from connect API)
-// ============================================================
-
-export function linkTelegramUser(
-  chatId: string,
-  userId: string,
-  plan: string
-): void {
-  telegramUserMap.set(chatId, { userId, plan, connectedAt: Date.now() });
-}
-
-export function getTelegramUser(chatId: string) {
-  return telegramUserMap.get(chatId);
-}
-
-export function isTelegramConnected(chatId: string): boolean {
-  return telegramUserMap.has(chatId);
-}
+// Non-handler helpers live in `@/lib/telegram/user-map` (Next route modules
+// may only export HTTP method handlers).

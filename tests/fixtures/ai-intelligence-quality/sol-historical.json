@@ -1,0 +1,26 @@
+{
+  "id": "sol-historical-v1",
+  "version": "1.0.0",
+  "description": "SOL historical analysis benchmark (Package 2 Test A)",
+  "portfolioValueUsd": 9257,
+  "periodDays": 90,
+  "assets": [
+    { "symbol": "SOL", "valueUsd": 4329, "allocationPct": 46.77, "quantity": 23.5, "priceUsd": 184.21, "beginningQuantity": 25, "beginningPriceUsd": 188, "valueChangeUsd": -368 },
+    { "symbol": "ETH", "valueUsd": 4928, "allocationPct": 53.23, "quantity": 1.4, "priceUsd": 3520, "valueChangeUsd": 4928 }
+  ],
+  "portfolioChangeUsd": 4559,
+  "solChangeUsd": -368,
+  "solInflowUsd": 1628,
+  "solInflowInteractions": 1,
+  "solOutflowUsd": 1859,
+  "solOutflowInteractions": 4,
+  "solNetFlowUsd": -231,
+  "expectations": {
+    "solNegativeContributionHighPriority": true,
+    "oneInboundNotDependency": true,
+    "netFlowBelowMajorPerformance": true,
+    "selectedCountMin": 3,
+    "selectedCountMax": 5,
+    "noUnsupportedCause": true
+  }
+}

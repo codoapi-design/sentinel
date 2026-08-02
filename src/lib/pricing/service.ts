@@ -312,25 +312,111 @@ export class PricingService {
     chainId: number,
     tokenAddresses: string[],
   ): Promise<Map<string, number>> {
+    const snaps = await this.getCurrentTokenMarketSnapshots(chainId, tokenAddresses);
     const out = new Map<string, number>();
-    const chain = resolveChainKey(chainId);
-    if (!chain || tokenAddresses.length === 0) return out;
-
-    const unique = [...new Set(tokenAddresses.map(a => a.toLowerCase()).filter(Boolean))];
-    try {
-      const refs = unique.map(address => ({ chain, address }));
-      const { prices } = await getPriceService().getSpotPrices(refs);
-      for (const address of unique) {
-        const key = `${chain}:${address}`;
-        const quote = prices.get(key);
-        if (quote && typeof quote.priceUsd === 'number' && quote.priceUsd > 0) {
-          out.set(address, quote.priceUsd);
-        }
-      }
-    } catch (error) {
-      console.warn(`[Pricing] Spot token batch via PriceService failed (chain ${chainId}):`, error);
+    for (const [addr, snap] of snaps) {
+      if (snap.priceUsd > 0) out.set(addr, snap.priceUsd);
     }
     return out;
+  }
+
+  /**
+   * Spot price + 24h % change for ERC-20 contracts (CoinGecko token_price).
+   */
+  async getCurrentTokenMarketSnapshots(
+    chainId: number,
+    tokenAddresses: string[],
+  ): Promise<Map<string, { priceUsd: number; change24h: number | null }>> {
+    const out = new Map<string, { priceUsd: number; change24h: number | null }>();
+    const platform = CHAIN_PLATFORMS[chainId];
+    if (!platform || tokenAddresses.length === 0) return out;
+
+    const unique = [...new Set(tokenAddresses.map(a => a.toLowerCase()).filter(Boolean))];
+    const chunkSize = 40;
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      try {
+        const url =
+          `${this.baseUrl}/simple/token_price/${platform}` +
+          `?contract_addresses=${chunk.join(',')}` +
+          `&vs_currencies=usd&include_24hr_change=true`;
+        const response = await fetch(url, { headers: this.headers() });
+        if (!response.ok) continue;
+        const data = (await response.json()) as Record<
+          string,
+          { usd?: number; usd_24h_change?: number }
+        >;
+        for (const addr of chunk) {
+          const row = data[addr];
+          const priceUsd = typeof row?.usd === 'number' && row.usd > 0 ? row.usd : 0;
+          const change24h =
+            typeof row?.usd_24h_change === 'number' && Number.isFinite(row.usd_24h_change)
+              ? Math.round(row.usd_24h_change * 100) / 100
+              : null;
+          if (priceUsd > 0 || change24h != null) {
+            out.set(addr, { priceUsd, change24h });
+          }
+        }
+      } catch (error) {
+        console.warn(`[Pricing] token market snapshots failed (chain ${chainId}):`, error);
+      }
+    }
+
+    // Fill any missing prices via PriceService spot path (no 24h).
+    const missing = unique.filter(a => !out.has(a) || out.get(a)!.priceUsd <= 0);
+    if (missing.length > 0) {
+      const chain = resolveChainKey(chainId);
+      if (chain) {
+        try {
+          const { prices } = await getPriceService().getSpotPrices(
+            missing.map(address => ({ chain, address })),
+          );
+          for (const address of missing) {
+            const quote = prices.get(`${chain}:${address}`);
+            if (quote && quote.priceUsd > 0) {
+              const prev = out.get(address);
+              out.set(address, {
+                priceUsd: quote.priceUsd,
+                change24h: prev?.change24h ?? null,
+              });
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    return out;
+  }
+
+  /**
+   * Native spot price + 24h % change (CoinGecko /simple/price).
+   */
+  async getCurrentNativeMarketSnapshot(
+    chainId: number,
+  ): Promise<{ priceUsd: number; change24h: number | null }> {
+    const coinId = NATIVE_COIN_IDS[chainId] || 'ethereum';
+    try {
+      const url =
+        `${this.baseUrl}/simple/price?ids=${encodeURIComponent(coinId)}` +
+        `&vs_currencies=usd&include_24hr_change=true`;
+      const response = await fetch(url, { headers: this.headers() });
+      if (response.ok) {
+        const data = await response.json();
+        const row = data?.[coinId];
+        const priceUsd = typeof row?.usd === 'number' && row.usd > 0 ? row.usd : 0;
+        const change24h =
+          typeof row?.usd_24h_change === 'number' && Number.isFinite(row.usd_24h_change)
+            ? Math.round(row.usd_24h_change * 100) / 100
+            : null;
+        if (priceUsd > 0) return { priceUsd, change24h };
+      }
+    } catch (error) {
+      console.warn(`[Pricing] native market snapshot failed (chain ${chainId}):`, error);
+    }
+    const priceUsd = await this.getCurrentNativePrice(chainId);
+    return { priceUsd, change24h: null };
   }
 
   private async getCurrentTokenPrice(chainId: number, tokenAddress: string): Promise<number> {
