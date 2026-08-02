@@ -8,7 +8,11 @@ export interface ApprovedNumericValue {
   value: number;
   /** Optional labels that help asset attribution, e.g. "SOL", "portfolio". */
   labels?: string[];
-  unit?: 'usd' | 'pct' | 'count' | 'qty' | 'other';
+  unit?: 'usd' | 'pct' | 'count' | 'qty' | 'other' | 'pp';
+  /** Package 3 — temporal namespace. Historical values must not approve current claims. */
+  temporal?: 'current' | 'historical' | 'delta';
+  asOf?: string;
+  analysisId?: string;
 }
 
 export interface ValidateNarrativeArgs {
@@ -92,12 +96,21 @@ function roughlyEqual(
   return abs / scale <= relTol;
 }
 
+function isHistoricalContext(nearby: string): boolean {
+  return /\b(previously|last time|prior|historical|was|used to|before)\b/i.test(nearby);
+}
+
 function matchClaim(
   claim: ExtractedClaim,
   approved: ApprovedNumericValue[],
   opts: Required<Pick<ValidateNarrativeArgs, 'usdAbsTolerance' | 'usdRelTolerance' | 'pctAbsTolerance'>>,
 ): boolean {
+  const historicalCtx = isHistoricalContext(claim.nearby);
+  const hasHistoricalApproved = approved.some(x => x.temporal === 'historical');
   for (const a of approved) {
+    // Package 3 temporal namespaces: historical approved values cannot ground current claims.
+    if (a.temporal === 'historical' && !historicalCtx) continue;
+    if (a.temporal === 'current' && historicalCtx && hasHistoricalApproved) continue;
     if (claim.kind === 'usd') {
       if (a.unit && a.unit !== 'usd' && a.unit !== 'other') continue;
       // Sign inversion check

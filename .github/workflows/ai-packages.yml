@@ -1,0 +1,50 @@
+# Radareum AI package gates — Package 1 trust, Package 2 benchmark, Package 3 memory.
+# Do not alter lifecycle semantics, memory versions, RLS policies, or historical numeric rules here.
+
+name: AI Packages
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ai-packages-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: P1 · P2 · P3 · tsc · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package 1 tests
+        run: npm run test:ai:package1
+
+      - name: Package 2 benchmark
+        run: npm run test:ai:package2
+
+      - name: Package 3 tests
+        run: npm run test:ai:package3
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+        env:
+          # Build must not require live secrets; Next may still read public placeholders.
+          NEXT_TELEMETRY_DISABLED: '1'

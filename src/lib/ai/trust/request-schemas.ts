@@ -189,6 +189,8 @@ export const chatRequestSchema = z
     walletId: uuidSchema,
     message: z.string().trim().min(1).max(MAX_MESSAGE),
     history: z.array(chatHistoryItemSchema).max(MAX_HISTORY_MESSAGES).optional(),
+    /** Package 3 — server loads authoritative history when present. */
+    conversationId: uuidSchema.optional().nullable(),
     pageContext: pageContextSchema,
     includeHidden: z.boolean().optional(),
     idempotencyKey: z.string().trim().min(1).max(MAX_IDEMPOTENCY_KEY).optional(),

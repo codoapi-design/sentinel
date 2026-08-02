@@ -31,6 +31,12 @@ import {
   markUsageCharged,
   MAX_AI_BODY_BYTES,
 } from '@/lib/ai/trust';
+import {
+  appendAssistantMessage,
+  appendUserMessage,
+  ensureConversation,
+  loadRecentMessages,
+} from '@/lib/ai/memory';
 import { createCookieServerClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
@@ -106,6 +112,7 @@ export async function POST(request: NextRequest) {
         requestHash: buildRequestHash({
           walletId: body.walletId,
           message: body.message,
+          conversationId: body.conversationId ?? null,
         }),
       });
       if (claim.status === 'replay') {
@@ -119,13 +126,44 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Package 3 — server-authoritative conversation + history.
+    const conversation = await ensureConversation({
+      userId: user.id,
+      conversationId: body.conversationId,
+      walletId: body.walletId,
+    });
+
+    // Load prior turns before appending the current user message (avoid double user turn).
+    const priorMessages = await loadRecentMessages(conversation.id, user.id);
+    const history =
+      priorMessages.length > 0
+        ? priorMessages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+        : (body.history ?? []).map(m => ({
+            role: m.role,
+            content: m.content,
+          }));
+
+    await appendUserMessage({
+      conversationId: conversation.id,
+      userId: user.id,
+      content: body.message,
+      traceId: tracer.traceId,
+      metadata: {
+        page: pageContext.page ?? pageContext.sectionType ?? undefined,
+        source: 'server',
+      },
+    });
+
     // Server controls mode — ignore client body.mode entirely.
     const result = await runAnalysis({
       walletId: body.walletId,
       userId: user.id,
       mode: 'chat',
       question: body.message,
-      history: body.history ?? [],
+      history,
+      conversationId: conversation.id,
       includeHidden: body.includeHidden === true,
       user: { plan: quotaPlanId },
       sectionContext: {
@@ -140,6 +178,23 @@ export async function POST(request: NextRequest) {
         filters: pageContext.filters ?? null,
       },
     });
+
+    try {
+      await appendAssistantMessage({
+        conversationId: conversation.id,
+        userId: user.id,
+        content: result.narrative,
+        relatedAnalysisId: result.persistedAnalysisId,
+        traceId: result.traceId,
+        metadata: {
+          model: result.llm.model,
+          completionStatus: result.completionStatus,
+          source: 'server',
+        },
+      });
+    } catch (persistMsgError) {
+      console.warn('[AI Chat] assistant message persist skipped', persistMsgError);
+    }
 
     const charge = await shouldChargeUsage({ idempotencyKey, userId: user.id });
     if (charge) {
@@ -185,6 +240,10 @@ export async function POST(request: NextRequest) {
         ...(result.reasoningDiagnostics
           ? { reasoningDiagnostics: result.reasoningDiagnostics }
           : {}),
+        conversationId: conversation.id,
+        persistedAnalysisId: result.persistedAnalysisId ?? null,
+        historicalWhatMatters: result.historicalWhatMatters ?? null,
+        memoryUsed: result.memoryUsed,
       },
     };
 

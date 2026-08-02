@@ -1,0 +1,12 @@
+{
+  "events": [
+    {
+      "eventType": "insight_new",
+      "title": "high_asset_dependency detected"
+    },
+    {
+      "eventType": "insight_worsened",
+      "title": "high_asset_dependency worsened"
+    }
+  ]
+}

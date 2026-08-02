@@ -33,4 +33,16 @@ describe('M — RLS migration review (static)', () => {
     expect(schema).toMatch(/Users can view own wallets/);
     expect(schema).toMatch(/Users can view own transactions/);
   });
+
+  it('Package 3 migration enables RLS and service-only writes for analyses', () => {
+    const sql = read('supabase/migrations/20260802001000_add_ai_memory_package3.sql');
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS public\.ai_conversations/);
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS public\.ai_reasoned_analysis_results/);
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS public\.ai_insight_lifecycles/);
+    expect(sql).toMatch(/ALTER TABLE public\.ai_conversations ENABLE ROW LEVEL SECURITY/);
+    expect(sql).toMatch(/ALTER TABLE public\.ai_reasoned_analysis_results ENABLE ROW LEVEL SECURITY/);
+    expect(sql).toMatch(/Users can insert own user messages/);
+    expect(sql).toMatch(/role = 'user'/);
+    expect(sql).toMatch(/ON DELETE CASCADE/);
+  });
 });

@@ -181,6 +181,9 @@ export async function POST(request: NextRequest) {
         ...(result.reasoningDiagnostics
           ? { reasoningDiagnostics: result.reasoningDiagnostics }
           : {}),
+        persistedAnalysisId: result.persistedAnalysisId ?? null,
+        historicalWhatMatters: result.historicalWhatMatters ?? null,
+        memoryUsed: result.memoryUsed,
       },
     };
 

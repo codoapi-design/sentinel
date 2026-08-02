@@ -1,0 +1,7 @@
+{
+  "findingType": "high_asset_dependency",
+  "previousMateriality": 0.42,
+  "currentMateriality": 0.63,
+  "expectedState": "worsening",
+  "absenceWithPartialCoverage": "unknown"
+}

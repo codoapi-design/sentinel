@@ -55,6 +55,13 @@ server.log
 
 .env
 node_modules/
+# Local agent / probe scratch (never commit)
+scripts/tmp/
+scripts/tmp-*
+test-results/
+tsc-errors.tmp.txt
+playwright-report/
+
 # Junk files to never commit
 bun.lock
 b3os_*.json

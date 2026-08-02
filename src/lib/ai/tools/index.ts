@@ -95,6 +95,7 @@ import {
   type ReasoningDiagnostics,
 } from '@/lib/ai/intelligence-quality';
 import { RADAREUM_PROMPT_VERSION } from '@/lib/ai/llm/prompts';
+import { finalizeMemoryAfterAnalysis, prepareMemoryForRequest } from '@/lib/ai/memory';
 import { SubscriptionEntitlementError } from './usage';
 
 export * from './bundles';
@@ -144,6 +145,8 @@ export interface RunAnalysisArgs {
    * matching DB data. Chat must omit this so the agent searches the full wallet.
    */
   screenSnapshot?: AiScreenSnapshot | null;
+  /** Package 3 conversation id for continuity. */
+  conversationId?: string | null;
 }
 
 export interface AnalysisMetric {
@@ -232,6 +235,22 @@ export interface RunAnalysisResult {
   reasonedIntelligence?: PublicReasonedIntelligence;
   /** Package 2 diagnostics — only when explicitly enabled. */
   reasoningDiagnostics?: ReasoningDiagnostics;
+  /** Package 3 conversation / analysis persistence. */
+  conversationId?: string | null;
+  persistedAnalysisId?: string | null;
+  historicalWhatMatters?: {
+    mainChange?: string;
+    newIssues?: string[];
+    worseningIssues?: string[];
+    improvingIssues?: string[];
+    resolvedIssues?: string[];
+  } | null;
+  memoryUsed?: {
+    conversation: boolean;
+    preferences: string[];
+    previousAnalysis: boolean;
+    lifecycleRecords: number;
+  };
 }
 
 const MAX_INSIGHTS = 15;
@@ -656,6 +675,52 @@ export async function runAnalysis(args: RunAnalysisArgs): Promise<RunAnalysisRes
   });
   tracer.markEnd('reasoningMs');
 
+  // Package 3 — memory retrieval (pre) + persistence / lifecycle (post-reasoning)
+  tracer.markStart('memoryMs');
+  let memoryPrompt = '';
+  let memoryUsed:
+    | {
+        conversation: boolean;
+        preferences: string[];
+        previousAnalysis: boolean;
+        lifecycleRecords: number;
+      }
+    | undefined;
+  let persistedAnalysisId: string | null = null;
+  let historicalWhatMatters: RunAnalysisResult['historicalWhatMatters'] = null;
+  try {
+    const prior = await prepareMemoryForRequest({
+      userId: args.userId,
+      walletId: args.walletId,
+      question,
+      mode: args.mode,
+      conversationId: args.conversationId,
+      analysisType: args.mode === 'chat' ? 'chat' : 'dashboard',
+      page: section.page ?? section.sectionType,
+    });
+    const memoryFinal = await finalizeMemoryAfterAnalysis({
+      userId: args.userId,
+      walletId: args.walletId,
+      mode: args.mode,
+      analysisType: args.mode === 'chat' ? 'chat' : 'dashboard',
+      scope,
+      pkg: reasonedPackage,
+      traceId: tracer.traceId,
+      pipelineVersion: PIPELINE_VERSION,
+      responseSchemaVersion: RESPONSE_SCHEMA_VERSION,
+      conversationId: args.conversationId,
+      priorBundle: prior.bundle,
+    });
+    memoryPrompt = memoryFinal.memoryPrompt;
+    memoryUsed = memoryFinal.memoryUsed;
+    persistedAnalysisId = memoryFinal.persisted?.id ?? null;
+    historicalWhatMatters = memoryFinal.historicalWhatMatters?.sincePrevious ?? null;
+  } catch (memoryError) {
+    // Memory must not fail the authoritative analysis path.
+    console.warn('[ai/memory] finalize skipped', memoryError);
+  }
+  tracer.markEnd('memoryMs');
+
   const usesFullReport = tools.includes('generate_intelligence_report');
   tracer.markStart('llmMs');
   const narrative = await generateNarrative({
@@ -683,6 +748,7 @@ export async function runAnalysis(args: RunAnalysisArgs): Promise<RunAnalysisRes
       limitations: llmReasoning.limitations,
       monitoringPoints: llmReasoning.monitoringPoints.map(m => m.explanation),
     },
+    memoryPrompt: memoryPrompt || undefined,
   });
   tracer.markEnd('llmMs');
 
@@ -785,6 +851,10 @@ export async function runAnalysis(args: RunAnalysisArgs): Promise<RunAnalysisRes
     dataRequirementsPlan,
     reasonedIntelligence: publicReasoned,
     reasoningDiagnostics: includeDiagnostics ? reasonedPackage.diagnostics : undefined,
+    conversationId: args.conversationId ?? null,
+    persistedAnalysisId,
+    historicalWhatMatters,
+    memoryUsed,
   };
 }
 

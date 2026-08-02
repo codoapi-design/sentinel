@@ -127,6 +127,22 @@ export interface AiAnalysisData {
 export interface AiChatData extends AiAnalysisData {
   message: string;
   intents?: string[];
+  /** Package 3 — durable conversation id for cross-session continuity. */
+  conversationId?: string | null;
+  persistedAnalysisId?: string | null;
+  historicalWhatMatters?: {
+    mainChange?: string;
+    newIssues?: string[];
+    worseningIssues?: string[];
+    improvingIssues?: string[];
+    resolvedIssues?: string[];
+  } | null;
+  memoryUsed?: {
+    conversation: boolean;
+    preferences: string[];
+    previousAnalysis: boolean;
+    lifecycleRecords: number;
+  };
 }
 
 /** Page / section the request came from — forwarded verbatim to the runtime. */
@@ -161,9 +177,32 @@ export interface AiChatRequest {
   walletId: string;
   message: string;
   history?: AiChatHistoryMessage[];
+  /** Package 3 — when set, server loads authoritative history. */
+  conversationId?: string | null;
   pageContext?: AiPageContext;
   mode?: 'chat' | 'dashboard';
   includeHidden?: boolean;
+}
+
+export async function fetchConversationMessages(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<Array<{ id: string; role: 'user' | 'assistant' | 'system_event'; content: string }>> {
+  const response = await fetch(`/api/ai/conversations/${conversationId}/messages`, {
+    method: 'GET',
+    signal,
+  });
+  if (!response.ok) {
+    throw new AiRequestError('Failed to load conversation messages.', response.status);
+  }
+  const json = (await response.json()) as {
+    success?: boolean;
+    data?: { messages?: Array<{ id: string; role: string; content: string }> };
+  };
+  return (json.data?.messages ?? []).filter(
+    (m): m is { id: string; role: 'user' | 'assistant' | 'system_event'; content: string } =>
+      m.role === 'user' || m.role === 'assistant' || m.role === 'system_event',
+  );
 }
 
 /** Carries the HTTP status so callers can branch on 401 / 404 without parsing text. */

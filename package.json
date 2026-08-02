@@ -7,10 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:rls:live": "node scripts/package1-rls-live.mjs"
+    "test:ai:package1": "vitest run tests/ai/package1-entitlements.test.ts tests/ai/package1-evidence-engines.test.ts tests/ai/package1-http-routes.test.ts tests/ai/package1-integration.test.ts tests/ai/package1-jobs.test.ts tests/ai/package1-trust.test.ts tests/ai/rls-policy-review.test.ts",
+    "test:ai:package2": "vitest run tests/ai/package2-benchmark.test.ts tests/ai/package2-confidence-perf.test.ts tests/ai/package2-http-routes.test.ts tests/ai/package2-intelligence-quality.test.ts tests/ai/package2-narrative-constraints.test.ts tests/ai/package2-scenarios-cj.test.ts",
+    "test:ai:package3": "vitest run tests/ai/package3-concurrency.test.ts tests/ai/package3-evolution.test.ts tests/ai/package3-http-routes.test.ts tests/ai/package3-integration.test.ts tests/ai/package3-memory.test.ts tests/ai/package3-monitoring.test.ts tests/ai/package3-performance.test.ts tests/ai/package3-security-privacy.test.ts",
+    "test:ai:gates": "npm run test:ai:package1 && npm run test:ai:package2 && npm run test:ai:package3 && npm run typecheck",
+    "test:rls:live": "node scripts/package1-rls-live.mjs",
+    "test:rls:package3": "node scripts/package3-rls-live.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1041.0",

@@ -1,0 +1,9 @@
+{
+  "userId": "user-memory-fixture",
+  "preferences": [
+    { "key": "fiat_currency", "value": "USD" },
+    { "key": "analysis_depth", "value": "balanced" },
+    { "key": "response_style", "value": "concise" }
+  ],
+  "temporaryRequest": "Please answer briefly this time."
+}

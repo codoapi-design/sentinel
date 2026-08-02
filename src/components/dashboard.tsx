@@ -25,6 +25,7 @@ import { TypeDetailPage } from './type-detail-page';
 import { WalletBar } from './wallet-bar';
 import { AIAnalysisSection } from './ai-analysis-section';
 import { AIChat } from './ai-chat';
+import { AiMemoryPanel } from './ai-memory-panel';
 import { resolveDashboardChatContext, type AiPageContext } from '@/lib/ai-client';
 import { Button } from '@/components/ui/button';
 import { LogOut, Loader2, RefreshCw, Shield } from 'lucide-react';
@@ -472,6 +473,7 @@ export function Dashboard({ onLogout, isDemo }: DashboardProps) {
             </div>
             <TelegramSettings onUpgrade={() => setActiveTab('subscription')} />
             <EmailSettings onUpgrade={() => setActiveTab('subscription')} />
+            <AiMemoryPanel />
           </div>
         );
       case 'subscription':

@@ -260,6 +260,8 @@ export interface TraceTimings {
   contradictionsMs?: number;
   rankingMs?: number;
   selectionMs?: number;
+  /** Package 3 memory retrieval + persistence. */
+  memoryMs?: number;
   llmMs?: number;
   validationMs?: number;
   totalMs?: number;

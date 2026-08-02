@@ -9,6 +9,7 @@ import {
   Check,
   Copy,
   LogIn,
+  MoreHorizontal,
   RefreshCw,
   Send,
   Sparkles,
@@ -26,6 +27,7 @@ import {
   copyText,
   describeAiError,
   formatGeneratedAt,
+  fetchConversationMessages,
   requestChat,
   type AiChatHistoryMessage,
   type AiConfidence,
@@ -70,8 +72,9 @@ const ERROR_ICONS: Record<AiErrorKind, typeof AlertCircle> = {
   failure: AlertCircle,
 };
 
-/** The runtime is stateless — the client owns the thread and replays it each turn. */
+/** Fallback client history when conversationId is not yet established. */
 const MAX_HISTORY_MESSAGES = 10;
+const CONVERSATION_STORAGE_KEY = 'radareum.ai.conversationId';
 
 /** `false` while server-rendering, `true` once hydrated — the portal needs a DOM. */
 const subscribeToNothing = () => () => {};
@@ -91,6 +94,9 @@ export function AIChat({ pageContext }: AIChatProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   /** Last question sent, so a failed turn can be replayed. */
   const [lastPrompt, setLastPrompt] = useState('');
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [showConversationActions, setShowConversationActions] = useState(false);
 
   const activeWalletId = useWalletStore(state => state.activeWalletId);
 
@@ -127,6 +133,43 @@ export function AIChat({ pageContext }: AIChatProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen]);
 
+  // Package 3 — restore server conversation on open.
+  useEffect(() => {
+    if (!isOpen || historyLoaded) return;
+    let cancelled = false;
+    const stored =
+      typeof window !== 'undefined' ? window.localStorage.getItem(CONVERSATION_STORAGE_KEY) : null;
+    if (!stored) {
+      setHistoryLoaded(true);
+      return;
+    }
+    setConversationId(stored);
+    void fetchConversationMessages(stored)
+      .then(rows => {
+        if (cancelled) return;
+        const restored: ChatEntry[] = rows
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          }));
+        if (restored.length) setMessages(restored);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+          setConversationId(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, historyLoaded]);
+
   const send = useCallback(
     async (rawMessage: string, options: { replayLast?: boolean } = {}) => {
       const message = rawMessage.trim();
@@ -145,9 +188,11 @@ export function AIChat({ pageContext }: AIChatProps) {
       setLastPrompt(message);
       setError(null);
 
-      const history: AiChatHistoryMessage[] = messages
-        .slice(-MAX_HISTORY_MESSAGES)
-        .map(entry => ({ role: entry.role, content: entry.content }));
+      const history: AiChatHistoryMessage[] = conversationId
+        ? []
+        : messages
+            .slice(-MAX_HISTORY_MESSAGES)
+            .map(entry => ({ role: entry.role, content: entry.content }));
 
       if (!options.replayLast) {
         setMessages(current => [
@@ -169,6 +214,7 @@ export function AIChat({ pageContext }: AIChatProps) {
             walletId: activeWalletId,
             message,
             history,
+            conversationId,
             pageContext,
             mode: 'chat',
           },
@@ -176,6 +222,11 @@ export function AIChat({ pageContext }: AIChatProps) {
         );
 
         if (controller.signal.aborted) return;
+
+        if (data.conversationId) {
+          setConversationId(data.conversationId);
+          window.localStorage.setItem(CONVERSATION_STORAGE_KEY, data.conversationId);
+        }
 
         setMessages(current => [
           ...current,
@@ -199,7 +250,7 @@ export function AIChat({ pageContext }: AIChatProps) {
         if (!controller.signal.aborted) setIsThinking(false);
       }
     },
-    [activeWalletId, isThinking, messages, pageContext]
+    [activeWalletId, conversationId, isThinking, messages, pageContext]
   );
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -223,7 +274,26 @@ export function AIChat({ pageContext }: AIChatProps) {
     setError(null);
     setIsThinking(false);
     setLastPrompt('');
+    setConversationId(null);
+    setHistoryLoaded(true);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+    }
   }, []);
+
+  const renameConversation = async () => {
+    if (!conversationId) return;
+    const title = window.prompt('Conversation title');
+    if (!title?.trim()) return;
+    await fetch(`/api/ai/conversations/${conversationId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+    setShowConversationActions(false);
+  };
+  const archiveConversation = async () => {
+    if (!conversationId) return;
+    await fetch(`/api/ai/conversations/${conversationId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'archived' }) });
+    clearThread();
+    setShowConversationActions(false);
+  };
 
   const contextLabel = useMemo(() => describeContext(pageContext), [pageContext]);
 
@@ -251,10 +321,18 @@ export function AIChat({ pageContext }: AIChatProps) {
                   <p className="text-sm font-semibold text-[#f7f8f8]">Radareum AI</p>
                   <Sparkles className="h-3.5 w-3.5 text-[#0052ff]" />
                 </div>
-                <p className="text-[11px] text-[#8a8f98] truncate">{contextLabel}</p>
+                <p className="text-[11px] text-[#8a8f98] truncate">{conversationId ? 'Saved conversation' : contextLabel}</p>
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <div className="relative">
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-[#8a8f98] hover:text-[#f7f8f8]" aria-label="Conversation actions" onClick={() => setShowConversationActions(open => !open)}><MoreHorizontal className="h-4 w-4" /></Button>
+                {showConversationActions && <div className="absolute right-0 top-8 z-10 w-28 rounded-md border border-white/10 bg-[#191a1b] p-1 text-xs shadow-xl">
+                  <button className="block w-full rounded px-2 py-1.5 text-left hover:bg-white/5" onClick={() => void renameConversation()}>Rename</button>
+                  <button className="block w-full rounded px-2 py-1.5 text-left hover:bg-white/5" onClick={clearThread}>New chat</button>
+                  <button className="block w-full rounded px-2 py-1.5 text-left text-[#f6465d] hover:bg-white/5" onClick={() => void archiveConversation()}>Archive</button>
+                </div>}
+              </div>
               {messages.length > 0 && (
                 <Button
                   variant="ghost"

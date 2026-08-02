@@ -93,6 +93,8 @@ export interface GenerateNarrativeArgs {
     limitations: string[];
     monitoringPoints: string[];
   };
+  /** Package 3 memory prompt blocks. */
+  memoryPrompt?: string;
 }
 
 export interface GenerateNarrativeResult {
@@ -266,6 +268,7 @@ async function completeOnce(
       structuredOutput: true,
       structuredOutputInstructions: STRUCTURED_OUTPUT_INSTRUCTIONS,
       reasonedSummary: args.reasonedSummary,
+      memoryPrompt: args.memoryPrompt,
     }),
     temperature: args.temperature ?? DEFAULT_TEMPERATURE,
     maxTokens: args.maxTokens ?? defaultMaxTokens,

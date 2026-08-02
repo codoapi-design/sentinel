@@ -1,0 +1,25 @@
+{
+  "userId": "user-memory-fixture",
+  "walletId": "11111111-1111-4111-8111-111111111111",
+  "analysisType": "wallet_overview",
+  "a": {
+    "headline": "SOL concentration needs attention",
+    "findingId": "sol-concentration",
+    "findingType": "high_asset_dependency",
+    "category": "portfolio",
+    "entityId": "SOL",
+    "materiality": 0.42,
+    "priority": 0.61,
+    "portfolioChangeUsd": 120
+  },
+  "b": {
+    "headline": "SOL concentration increased",
+    "findingId": "sol-concentration",
+    "findingType": "high_asset_dependency",
+    "category": "portfolio",
+    "entityId": "SOL",
+    "materiality": 0.63,
+    "priority": 0.79,
+    "portfolioChangeUsd": 340
+  }
+}
